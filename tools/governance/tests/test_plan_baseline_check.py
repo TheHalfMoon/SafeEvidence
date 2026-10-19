@@ -58,7 +58,9 @@ class PlanBaselineCheckTest(unittest.TestCase):
 
     def test_crlf_checkout_does_not_drift(self):
         path = self.root / ARTIFACTS[1]
-        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+        # Normalize first: a Windows CI checkout may already be CRLF.
+        lf = path.read_bytes().replace(b"\r\n", b"\n")
+        path.write_bytes(lf.replace(b"\n", b"\r\n"))
         self.assertEqual(self.errors(), [])
 
     def test_admission_flip_fails(self):
