@@ -1,0 +1,26 @@
+{
+  "name": "scite",
+  "url": "https://scite.ai/features",
+  "evidence_id": "ev_735a6eef6b50be7db0bbf1c3f2af64a3c3f95c8f012e9f97f4d2b73ef5d18e41",
+  "title": "ERROR: The request could not be satisfied",
+  "script_count": 0,
+  "dom_count": 31,
+  "accessibility_count": 28,
+  "key_labels": [
+    [
+      "heading",
+      "403 ERROR"
+    ],
+    [
+      "heading",
+      "The request could not be satisfied."
+    ]
+  ],
+  "limitations": [
+    "Observation starts when REA attaches; prior network and console activity is unavailable.",
+    "Raw network headers, bodies, cookies, storage values, console objects, and WebSocket payloads are never retained; explicitly requested primitive console text is retained verbatim, while payload captures retain value-free shapes.",
+    "Source maps are reported only as declarative URLs and are not fetched.",
+    "URL-less scripts and console events without an allowed source URL are excluded because their origin cannot be proven.",
+    "CDP discovery omitted the target attachment state; attached is reported as unknown."
+  ]
+}
