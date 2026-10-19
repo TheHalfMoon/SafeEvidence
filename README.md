@@ -166,3 +166,9 @@ post-merge GitHub Actions passed at main
 **P00: CLOSED_CANONICAL (planning only). P01: PRE_ENTRY_GATES_PENDING.**
 See `docs/P01_ENTRY_READINESS_2026-10-08.md` and the original P1 registers.
 No clinical qualification, live medical device or finished product is implied.
+
+## V1 planning baseline
+
+The copy-first implementation plan, source transplant matrix, REA research
+dossier and freeze manifest are indexed in `docs/PLAN_FREEZE.md`. Planning
+only: no donor code is imported and no clinical capability is claimed.

@@ -373,3 +373,19 @@ MedScale whole-file EncryptedVault is not eligible for canonical private
 authority as-is. SafeOCR is a real critical OCR field-verification donor
 candidate subject to qualification; DAL's negative abstention results are
 prior evidence, not a promotion claim.
+
+## 2026-10-19 live-head audit corrections
+
+- `TheHalfMoon/MESC` redirects to `TheHalfMoon/MedOrigin`; its `litdb`
+  package (literature adapters, screening/review logs, PRISMA summary) is now
+  a COPY_BOUNDED candidate (T15).
+- Repository visibility changed: DAL, ottari, kernux, Morize, Inercative,
+  Signthos, Wispral, Sentrdel and Ecra are private as of 2026-10-19.
+  Section 2's "public" wording is historical.
+- RRnlp model weights (Zenodo 5139998, 5939332) are GPL-2.0; minimap tables
+  are UMLS-derived. BENCHMARK only.
+- docling.rs default features enable URL/image/YouTube/remote-VLM network
+  fetch; fastembed-rs defaults download ONNX Runtime binaries and use hf-hub.
+- MedCPT code is a US-Government public-domain work; Hugging Face weights
+  declare `license: other` and need separate review.
+- Authoritative per-file pins: `docs/evidence/source_transplant_pins_2026-10-19.json`.
