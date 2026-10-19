@@ -67,6 +67,7 @@ Read in this order before planning or changing architecture:
 26. `docs/P01_ENTRY_READINESS_2026-10-08.md` (current P01 entry state)
 27. `docs/P01_CLINICAL_EVALUATION_CHARTER_DRAFT_2026-10-08.md` (unapproved)
 28. `docs/P01_P1_GATE_TRACKER_2026-10-08.md` (41 original gates, unassigned)
+29. `docs/PLAN_FREEZE.md` and `docs/plan/*_V1.md` (V1 copy-first planning baseline; implementation sequencing, never gate relaxation)
 
 If documents conflict, stop treating the conflict as resolved and record it explicitly.
 

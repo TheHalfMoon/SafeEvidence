@@ -1087,3 +1087,12 @@ clinical probability percentage.
 P00 remains OPEN until real independent post-repair reviewer reports support
 closeout. Do not implement product code or merge this repair into main
 prematurely.
+
+## V1 planning baseline (2026-10-19)
+
+The executable copy-first roadmap is `docs/plan/SAFEEVIDENCE_MASTER_PLAN_V1.md`
+with its companion architecture, transplant, feature, work-packet and test
+matrices. Freeze state is recorded only in `docs/PLAN_FREEZE.md`. This program
+plan remains valid for phase vocabulary and history; where the V1 baseline is
+more specific (decisions D-01…D-16, conflicts C1…C21), the V1 baseline governs
+implementation sequencing. No gate in this file is relaxed by the V1 baseline.

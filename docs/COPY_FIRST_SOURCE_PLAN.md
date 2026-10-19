@@ -329,3 +329,15 @@ workflow, and integration with SafeEvidence decision assurance.
   where rights/runtime qualification permits.
 - commandMed decision mechanics are reusable; its patient lexical policy content
   is not copied unchanged for clinician evidence questions.
+
+## 18. V1 transplant matrix supersedes candidate rows (2026-10-19)
+
+Live-head inspection on 2026-10-19 produced the file-level
+`docs/plan/SOURCE_TRANSPLANT_MATRIX_V1.md` and blob-pinned
+`docs/evidence/source_transplant_pins_2026-10-19.json`. Corrections to this
+file: PICOX and RRnlp move to BENCHMARK (notebook-only repository; GPL-2.0
+model weights), es3 moves to REFERENCE (web application), docling.rs is a
+challenger built without default network features, MedScale "encrypted vault
+primitives" are not copy targets (ottari vault slice T03 is), OpenMed is
+re-pinned at `8440bdac59621981372d318f43c8bfb2d6625b86` (v3.0.0), and MESC is
+now `TheHalfMoon/MedOrigin`. Admission rules in this file are unchanged.
