@@ -40,7 +40,7 @@ Scope: `V1` = in first release scope; `VS-1` = in the first vertical slice;
 | F28 | Desktop workstation | T36 | C | WP-18a, WP-18 | TA-20 | — | VS-1 (Ask) / V1 |
 | F29 | Accessibility | T36 tests, G | C/G | WP-19 | TA-22 | — | V1 |
 | F30 | FHIR patient context (read-only) | T09, T17 | C | WP-21 | TA-24 | — | DEFERRED until Issue #4 (patient context is clinical scope) |
-| F31 | Mobile Ask / Scan / Saved | T24, T03, T20, T29 | D/C | WP-22 | TA-25 | — | V1-PARTIAL (after desktop V1) |
+| F31 | Mobile Ask / Scan / Saved | T24, T03, T20, T29 | D/C | WP-22 | TA-25, TA-29 | — | V1-PARTIAL (after desktop V1) |
 | F32 | Desktop↔mobile pairing/sync | iroh (candidate) | D | — | — | — | DEFERRED (P17) |
 | F33 | Interop exports (EBMonFHIR, RIS, SoF, EvidenceSnapshot) | T26, T15, T18 | REF/C/W | WP-10, WP-14 | TA-12, TA-16 | L11 | V1 |
 | F34 | SafeEvidenceBench | T14, T27, T28, SYNERGY, BEIR | C/BENCH | WP-20 | TA-23 | — | V1 |
@@ -54,5 +54,7 @@ Coverage check: 39 features; 39 have a source decision; 34 are scheduled in
 V1/VS-1 with a WP and an acceptance test; 5 are explicitly DEFERRED with a
 named future phase or gate (F30 keeps its WP-21/TA-24 definition for when
 Issue #4 admits patient context). No feature is planned as
-generic greenfield where a donor exists (verified in
-`docs/reviews/PLAN_V1_INDEPENDENT_VALIDATION_2026-10-19.md`).
+generic greenfield where a donor exists (reviewed in
+`docs/reviews/PLAN_V1_INDEPENDENT_VALIDATION_2026-10-19.md`; donor-coverage
+defects F11, F12, F14 and F16 were found and fixed; this is a review, not an
+exhaustive feature-by-feature donor search).

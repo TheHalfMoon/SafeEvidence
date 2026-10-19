@@ -30,14 +30,14 @@ SHA-256 over LF-normalized bytes (`plan_baseline_check.normalized_digest`).
 
 | Artifact | SHA-256 |
 |---|---|
-| `docs/plan/SAFEEVIDENCE_MASTER_PLAN_V1.md` | `9139a8aa67d4e13326e758375b3266d58ed2659e7e8fd7fc86c7e74384d5d1b6` |
+| `docs/plan/SAFEEVIDENCE_MASTER_PLAN_V1.md` | `eb4ae242914ee1d90627d15890d0daf0eb9a539bd02823fc9809f30a88dc90c9` |
 | `docs/plan/ARCHITECTURE_SPEC_V1.md` | `4404480e6f9e1edf6dd294fed89fef396bdef9c374fd1617520479278beb7283` |
 | `docs/plan/SOURCE_TRANSPLANT_MATRIX_V1.md` | `77fce3380cba41fe273a79bc1f6e52794c771a7e2bdde5269cb4e8813ca7f915` |
-| `docs/plan/FEATURE_COVERAGE_MATRIX_V1.md` | `c617e95331afc6bb5856b8daee5c0c23e934bafffb1e6b7ddf94fe1bcd4fef2c` |
-| `docs/plan/IMPLEMENTATION_WORK_PACKETS_V1.md` | `eb6d6452fe306feaef40ff549accd3bd76c6dbb6dbc2cf2a1551c986340f8d61` |
+| `docs/plan/FEATURE_COVERAGE_MATRIX_V1.md` | `ab45642209f1a4362fa1fd4f20410087c8fb72a4e5c598b4859d3af619b83605` |
+| `docs/plan/IMPLEMENTATION_WORK_PACKETS_V1.md` | `93e42c265dd5b559566c57bdd961cb694e920d8dfd57105c7b9e2678ff894492` |
 | `docs/plan/TEST_ACCEPTANCE_MATRIX_V1.md` | `d7257e79516344988204d931088f76896d42ffb561270e07d6d122397538f5e3` |
 | `docs/research/REA_RESEARCH_DOSSIER_V1_2026-10-19.md` | `9ca6e847c09d92c27f3ced7e36faf0ede8eb28b2b667366c806f04f5f867d168` |
-| `docs/reviews/PLAN_V1_INDEPENDENT_VALIDATION_2026-10-19.md` | `72f8becda46bbd2f9e3aef9a790a4d83c64416751d58c8bf2d13add3dfcb5d8c` |
+| `docs/reviews/PLAN_V1_INDEPENDENT_VALIDATION_2026-10-19.md` | `76fb45297e537af99a6ea8071b96e1641bfa5e2740ecd01c14bb85ebc966896b` |
 | `docs/evidence/source_transplant_pins_2026-10-19.json` | `e1393814a2a1193da380ad382b58503be293e30ba63cd80d963f75a1dbaeb46b` |
 
 Raw REA evidence: `docs/research/rea-2026-10-19-windows/SHA256SUMS` (7 REA JSON captures + browser observation log)

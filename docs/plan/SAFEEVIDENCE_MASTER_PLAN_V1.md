@@ -100,9 +100,9 @@ older documents are amended by pointer, not silently rewritten.
 |---|---|---|---|
 | M0 Admission | First rights rows, SBOM/notice tooling, synthetic scope extension signed | WP-00, WP-01 | TA-01..TA-03 pass; signed rows exist |
 | M1 VS-1 (synthetic) | Ask vertical slice on synthetic corpus | WP-02, WP-03*, WP-04*, WP-06*, WP-07 (BM25), WP-08*, WP-09, WP-11a, WP-12 (template), WP-18a, WP-23a | VS-1 criteria in work-packet file |
-| M2 Evidence V1 | Live acquisition (rights-admitted subset), dense retrieval tournament, appraisal, dedup, documents/OCR, measurement | WP-04, WP-05, WP-07, WP-10, WP-13, WP-M0 | TA-05..TA-15, TA-M0 |
+| M2 Evidence V1 | Live acquisition (rights-admitted subset), dense retrieval tournament, appraisal, dedup, documents/OCR, measurement | WP-04, WP-05, WP-07, WP-10, WP-11, WP-13, WP-M0 | TA-05..TA-15, TA-29, TA-30, TA-M0; live fetch stays disabled (fixture transport only) until TA-29 and TA-30 pass |
 | M3 Deep Review | Screening, PRISMA, extraction, meta-analysis, living alerts, exports | WP-14..WP-17 | TA-16..TA-19 |
-| M4 Desktop V1 engineering | Full workstation, bilingual UX, security qualification, benchmark | WP-11, WP-18, WP-19, WP-20, WP-23 | TA-20..TA-23, TA-26, TA-27, TA-29, TA-30 |
+| M4 Desktop V1 engineering | Full workstation, bilingual UX, security qualification, benchmark | WP-18, WP-19, WP-20, WP-23 | TA-20..TA-23, TA-26, TA-27, TA-29, TA-30 (re-run on the full product) |
 | M5 Mobile | iOS/Android foundation, Ask/Scan | WP-22 | TA-25 |
 | M6 Release candidate | Signed offline installer, TUF pack updates | WP-24 | TA-28 + GATE_TRUST |
 | External | Clinical evaluation (Issue #4), patient context (WP-21), real-PHI readiness | — | owned outside engineering |
@@ -121,7 +121,7 @@ overlaps. Each step is one bounded PR series; each cites its admission IDs.
 5. **WP-08** deterministic checks (VS-1a) → **WP-09** applicability.
 6. **WP-11a** assurance subset (T13 port) → **WP-12** template brief + AnswerProofManifest → wire **WP-18a** Ask view.
 7. **VS-1 integration** → **M1 exit review** (Codex + Opus + OCR review per `GAP_REVIEW.md`).
-8. **WP-04** live acquisition via broker with D-16 query preview (rights-admitted subset) ∥ **WP-05** dedup/overlap ∥ **WP-13** documents/OCR.
+8. **WP-04** live acquisition via broker with D-16 query preview (rights-admitted subset; enabled only after TA-29 and TA-30 pass) ∥ **WP-05** dedup/overlap ∥ **WP-13** documents/OCR.
 9. **WP-08** NLI model (VS-1b, after EXT-07) → **WP-07** dense tournament (MedCPT/fastembed/sqlite-vec) → **WP-10** appraisal/GRADE → **WP-11** full assurance (T14 metrics) → **WP-M0** measurement (freeze budgets).
 10. **WP-14** screening/PRISMA → **WP-15** extraction → **WP-16** meta-analysis → **WP-17** living alerts (per-query opt-in).
 11. **WP-12** generator tournament (D-06, sandboxed worker) ∥ **WP-18** full workstation ∥ **WP-19** bilingual/a11y ∥ **WP-20** benchmark.

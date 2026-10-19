@@ -30,7 +30,7 @@ TA-20; there is no application yet to run it against.
 | F3 | P1 | "Xberg network-free" true only for core crate; OCR presets pull hf-hub/reqwest/ureq; `xberg-ffi` defaults include remote LLM/URL ingestion | Fixed and independently confirmed: exact admitted feature set (`xberg` `pdf-native` + `xberg-paddle-ocr`), `xberg-ffi` not admitted, new TA-29 dependency-tree denial (T20, D-02, WP-01, WP-13) |
 | F4 | P1 | P00 D7 (outbound-query visibility, no narrative, private results) missing; surveillance would auto-send | Fixed: new decision D-16, private query-derived store, per-query opt-in surveillance, TA-30 (ARCH §3/§4, WP-04, WP-17) |
 | F5 | P1 | Dependency/execution-order contradictions (WP-11 needed WP-10; WP-18 needed WP-13/14) | Fixed: VS-1 sub-packets WP-11a and WP-18a; execution order rewritten; checker now rejects dependency cycles |
-| F6 | P1 | Feature matrix cited this report while it was a stub | Fixed by this report; the claim is now backed by R1 §3 below |
+| F6 | P1 | Feature matrix cited this report while it was a stub | Fixed: report written; the feature-matrix wording now says "reviewed" (defects F11, F12, F14, F16 fixed), not exhaustive verification |
 | F7 | P1 | Public disclosure of private-repo status and path pins | Fixed conservatively: the 49 path pins of private repositories (T03, T06, T14, T30, T32) were removed from the public pins JSON and replaced by SHA-256 commitments; the full list is a founder-held private record; prose no longer names new private file paths. Remaining founder decision EXT-08: whether stating the repositories' private status is acceptable |
 | F8 | P2 | `pack_runtime.rs` imports excluded runtimes | Fixed: removed from T07 and from pins |
 | F9 | P2 | Donor journal-kill test depends on an excluded vault module | Fixed: marked adapted (T03, TA-05) |
@@ -46,6 +46,21 @@ TA-20; there is no application yet to run it against.
 | F19 | P2 | Browser observations lacked a captured artifact | Fixed within copyright limits: contemporaneous `BROWSER_OBSERVATION_LOG.md` with SHA-256; third-party page text not redistributed, rows are reproducible from recorded URL/query |
 | F20 | P3 | Count/ID drift ("13 slices", L6→WP-13, D-08 "qualified") | Fixed |
 | F21 | P3 | Checker gaps | Fixed: matrix-vs-pins commit check and dependency-cycle check with unit tests |
+
+## 2a. R1 re-verification at `b170dc8`
+
+Verdict READY_AFTER_FIXES. F1–F21 were confirmed resolved in the plan
+documents themselves. The five redaction commitments were rebuilt and matched,
+and no private path leaked into `origin/main..b170dc8`. The checker and 145
+tests passed. New findings and their disposition:
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| N1 | P2 | WP-22 still cited "T20 FFI" after `xberg-ffi` was excluded | Fixed: mobile reaches Xberg through the SafeEvidence UniFFI surface; F31 adds TA-29 |
+| N2 | P2 | Live egress in M2 was gated by TA-29/TA-30 only at M4 | Fixed: M2 requires TA-29/TA-30, and live fetch stays disabled until they pass |
+| N3 | P3 | WP-11 appeared in both M2 and M4 | Fixed: WP-11 is in M2 only |
+| N4 | P3 | The "verified" wording overstated the donor-coverage review | Fixed (see F6) |
+| N5 | P3 | Prose describes private-repo internals at a functional level | Founder decision, covered by EXT-08 |
 
 ## 3. What R1 verified (evidence summary)
 
