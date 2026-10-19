@@ -123,13 +123,19 @@ class PlanBaselineCheckTest(unittest.TestCase):
         self.assertTrue(any("T13: matrix commit" in e for e in self.errors()))
 
     def test_frozen_state_requires_tag_and_commit(self):
-        self.edit(FREEZE, "Freeze state: `FREEZE_PENDING`", "Freeze state: `FROZEN`")
+        # The canonical baseline is frozen; break both mandatory metadata fields.
+        self.edit(FREEZE, "Freeze tag: `plan-v1.0.0`", "Freeze tag: `invalid`")
+        path = self.root / FREEZE
+        data = path.read_text(encoding="utf-8")
+        data, count = re.subn(r"Freeze commit: `[0-9a-f]{40}`", "Freeze commit: `invalid`", data)
+        self.assertEqual(count, 1)
+        path.write_text(data, encoding="utf-8")
         errors = self.errors()
         self.assertTrue(any("Freeze tag" in e for e in errors))
         self.assertTrue(any("Freeze commit" in e for e in errors))
 
     def test_hidden_freeze_state_is_not_authority(self):
-        self.edit(FREEZE, "Freeze state: `FREEZE_PENDING`", "<!-- Freeze state: `FROZEN` -->")
+        self.edit(FREEZE, "Freeze state: `FROZEN`", "<!-- Freeze state: `FROZEN` -->")
         self.assertTrue(any("exactly one 'Freeze state:'" in e for e in self.errors()))
 
 
