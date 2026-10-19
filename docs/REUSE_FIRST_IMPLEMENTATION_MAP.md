@@ -450,3 +450,12 @@ Corrections:
 - DAL negative Study-0 evidence must be retained;
 - V1 has no user-facing clinical confidence percentage;
 - every donor is copied only when its rights register allows the exact mode.
+
+## V1 file-level map (2026-10-19)
+
+Phase-by-phase reuse in §11 is now realized as work packets WP-00…WP-24 in
+`docs/plan/IMPLEMENTATION_WORK_PACKETS_V1.md`, each citing transplant packets
+T01…T36 with exact blob pins. The MedScale lexical retriever is confirmed to be
+a token-overlap scorer (oracle only); `medscale-pack` is copied as a
+format/store/runtime slice, not the full crate; the MedScale Tauri 2 shell
+(`apps/desktop-tauri`) is the desktop copy donor (T36).
