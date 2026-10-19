@@ -2,9 +2,9 @@
 
 Freeze state: `FREEZE_PENDING`
 
-Baseline version: `plan-v1.0.0` (to be tagged on the merge commit of the
-planning PR **only after** that PR is approved by a human reviewer and merged
-under branch protection).
+Baseline version: `plan-v1.0.0` (to be tagged on the final freeze-record
+merge commit after the validated planning PR is normally merged with the
+founder-approved no-human-review governance policy).
 
 ## 1. What a freeze means here
 
@@ -20,9 +20,22 @@ packet remain with the implementation team.
 
 1. `python tools/governance/plan_baseline_check.py --root .` → PASS (digests below match).
 2. Existing required checks pass (P00 docs, P01 pre-entry ×3 OS, G01a ×3 OS).
-3. At least one approving human review on the planning PR (branch protection).
-4. Normal merge to `main`; this file amended with `Freeze state: \`FROZEN\``,
-   `Freeze tag: \`plan-v1.0.0\``, and `Freeze commit: \`<merge SHA>\``; annotated tag pushed.
+3. Independent agent/automated review findings are documented and resolved.
+   **Founder governance decision (2026-10-19): no human approving GitHub review is
+   required for the planning freeze.** The human-review branch rule may be
+   changed by the repository administrator; required CI and normal PR merges
+   remain mandatory. This is an explicit policy change, not an approval review.
+4. Normally merge the validated planning PR to `main` (record the merge SHA),
+   then submit a small freeze-record PR changing this file to
+   the freeze state to `FROZEN`, the freeze tag to `plan-v1.0.0`, and
+   the baseline commit to the first planning PR merge SHA. After its CI passes,
+   normally merge that record PR and push an annotated tag on its final merge
+   commit. The tag therefore captures the **FROZEN manifest** as well as all
+   the original content-digested planning artifacts.
+
+This founder waiver concerns the **GitHub human-review requirement for the
+planning freeze only**. It does not approve any donor import, model/data
+license, clinical evaluation, regulatory claim, or release gate.
 
 ## 2. Frozen artifacts and content digests
 
