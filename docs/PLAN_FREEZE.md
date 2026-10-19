@@ -1,10 +1,17 @@
 # SafeEvidence Plan Freeze Manifest — V1
 
-Freeze state: `FREEZE_PENDING`
+Freeze state: `FROZEN`
 
-Baseline version: `plan-v1.0.0` (to be tagged on the final freeze-record
-merge commit after the validated planning PR is normally merged with the
-founder-approved no-human-review governance policy).
+Baseline version: `plan-v1.0.0` (the annotated tag is applied to the final
+freeze-record merge commit; the planning baseline merger is identified below).
+
+Freeze tag: `plan-v1.0.0`
+Freeze commit: `dfea5e59330a6cfda40da56b1a2c435fc1012a3b`
+
+The **Freeze commit** field identifies the normal merge commit that introduced
+the immutable planning artifacts, not the subsequent self-referential freeze
+record commit. The annotated tag is placed on the freeze-record merge commit
+after its required checks pass.
 
 ## 1. What a freeze means here
 
