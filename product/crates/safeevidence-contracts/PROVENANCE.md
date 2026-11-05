@@ -11,7 +11,9 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
   comment, copied from the donor's `lib.rs` (listed in the row, outside the frozen T01 pins).
 - Copied unchanged, listed in the row but outside the frozen T01 pins: `src/text/*.rs`, needed by the pinned
   `tests/text_span_coords.rs`, which is adapted by crate name.
-- Not copied: two pinned `medscale-core` tests, which need donor modules outside T01.
+- Adapted from pinned donor tests: `tests/record_semantics_019.rs` keeps four of six tests, with imports changed;
+  `tests/source_immutability.rs` is rewritten around `SourceRecord`, because the donor used a store helper and an
+  always-failing overwrite stub. Exclusions: `docs/plan/PLAN_AMENDMENT_V1_3.md`.
 - `tests/fixtures/t17/` is admission `ADM-0004` (T17): the frozen fixture plus its source note, which is outside
   the frozen pins, with the donor's LICENSE and NOTICE. T17's span code and Python are not copied.
 - T01 still carries `ClinicalAssertion` and `confidence` fields; see the ledger's gating note.
