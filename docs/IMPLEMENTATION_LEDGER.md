@@ -10,12 +10,15 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `e284f60c9854f1f1f59d11b094d6d8ab52979c1b` |
+| `main` at last update | `61fd74c6f1a7b63f116bd1b91dd17a56af5093c4` |
 | Milestone | M0, in progress |
 | Active packet | WP-00 and WP-01 |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml`), ADM-0003 (T03); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 not claimed ; T03 vault slice, TA-05 not claimed |
 | Next executable task | WP-02 Study/Report/Proof types; T11 SBOM generator (TA-02); TA-29 script |
+
+Required checks on `main` (founder decision, 2026-11-05): `foundation-documents`, `preentry structure`, `synthetic-only`
+and `product`, the last three on Ubuntu, Windows and macOS.
 
 ## Milestones
 
@@ -43,6 +46,9 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | `cargo fmt`, `cargo clippy` locally | **Not run.** Local 1.97.1 toolchain lacks `cargo-fmt.exe` and `cargo-clippy.exe`; hosted CI covers both |
 
 ## Known defects
+
+**Sequencing breach:** T03 merged before TA-03 and TA-04 passed, ahead of the frozen WP-01 and WP-02
+exits it depends on. Publication cannot be undone. WP-01, WP-02, M0 and M1 exit stay open until both pass.
 
 T03 shares `HIMSAT/...` domain strings with the donor. Windows DPAPI entropy and recovery envelopes are
 therefore compatible across the two products. Separate these before any release; independent test

@@ -53,6 +53,7 @@ pub enum ReasonCode {
     PostVerificationFailed,
     ProofRaceInvalidated,
     CurrentnessUnknown,
+    UnsupportedLanguage,
     None,
 }
 
