@@ -88,6 +88,77 @@ pub enum ReportVersionKind {
     Retraction,
 }
 
+/// Current publication standing of a report version.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PublicationState {
+    Current,
+    Corrected,
+    ExpressionOfConcern,
+    Retracted,
+    Withdrawn,
+    Superseded,
+    Unknown,
+}
+
+impl PublicationState {
+    /// Only a known-current version may support a claim. A corrected source must be
+    /// re-read at its corrected version first, as the proof contract requires.
+    #[must_use]
+    pub const fn citable(self) -> bool {
+        matches!(self, Self::Current)
+    }
+}
+
+/// A monotonic local validity watermark. It says nothing beyond its last update.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ValidityEpoch(pub u64);
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReportVersionLink {
+    pub report: ReportId,
+    pub version: ReportVersionId,
+    pub kind: ReportVersionKind,
+    pub links_to: Option<ReportVersionId>,
+    pub publication_state: PublicationState,
+    pub validity_epoch: ValidityEpoch,
+}
+
+impl ReportVersionLink {
+    /// A retraction or correction notice cannot leave its target looking current.
+    #[must_use]
+    pub const fn is_consistent(&self) -> bool {
+        match self.kind {
+            ReportVersionKind::Retraction => {
+                matches!(self.publication_state, PublicationState::Retracted)
+            }
+            ReportVersionKind::ExpressionOfConcern => {
+                matches!(
+                    self.publication_state,
+                    PublicationState::ExpressionOfConcern
+                )
+            }
+            ReportVersionKind::Correction => {
+                !matches!(self.publication_state, PublicationState::Current)
+            }
+            _ => true,
+        }
+    }
+}
+
+/// Which study and result a review includes, and the decision behind it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewIncludedStudyLink {
+    pub review: ReviewId,
+    pub study: StudyId,
+    pub result: Known<ResultId>,
+    pub status: LinkStatus,
+    pub decision: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StudyArm {
@@ -335,4 +406,15 @@ pub fn decide_pooling(
             results: refused.into_iter().collect(),
         })
     }
+}
+
+/// The recorded decision about one synthesis: what was accepted or refused, on what
+/// independence evidence, for which model and source version.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SynthesisInputDecision {
+    pub outcome: Result<PoolingDecision, PoolingRefusal>,
+    pub independence_evidence: Vec<String>,
+    pub model: Known<String>,
+    pub source_version: String,
 }
