@@ -21,7 +21,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Milestone | Status | Blocked by |
 |---|---|---|
-| M0 Admission | `IMPLEMENTED_UNTESTED` for TA-01 until CI passes on the merged commit | EXT-01 (D2 recorded on Issue #5; no rows signed), TA-02, TA-03, TA-29 |
+| M0 Admission | `IMPLEMENTED_UNTESTED` for TA-01 until CI passes on the merged commit | EXT-01 ([D2 recorded](https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204); no rows signed), TA-02, TA-03, TA-29 |
 | M1 VS-1 (synthetic) | `NOT_STARTED` | M0 |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |

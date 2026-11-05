@@ -178,6 +178,29 @@ class AdmissionTests(unittest.TestCase):
         )
         self.assertTrue(check.validate(self.root))
 
+    def test_non_canonical_dest_cannot_evade_shared_destination_check(self):
+        for dest in ("product/./x/a.rs", "product//x/a.rs", "product/x/a.rs/"):
+            with self.subTest(dest=dest):
+                other = self.mutated(admission_id="ADM-0002")
+                other["files"][0]["dest_path"] = dest
+                self.assertTrue(self.errors(good_row(), other))
+
+    def test_mixed_line_endings_are_not_a_checkout_difference(self):
+        data = BYTES + b"second line\n"
+        row = good_row()
+        row["files"][0].update(git_blob_oid=check.git_blob_oid(data), bytes=len(data))
+        (self.root / "product/x/a.rs").write_bytes(data.replace(b"\n", b"\r\n", 1))
+        self.assertTrue(self.errors(row))
+
+    def test_blank_admission_id_denies(self):
+        self.assertTrue(self.errors(self.mutated(admission_id=" ")))
+
+    def test_float_schema_version_denies(self):
+        (self.root / check.MANIFEST).write_text(
+            '{"schema_version":1.0,"admissions":[]}', encoding="utf-8"
+        )
+        self.assertTrue(check.validate(self.root))
+
     def test_unknown_keys_deny(self):
         self.assertTrue(self.errors(self.mutated(extra="x")))
 

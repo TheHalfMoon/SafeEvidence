@@ -57,7 +57,7 @@ def safe_relative(path: object) -> bool:
     if not isinstance(path, str) or not path or "\\" in path or ":" in path:
         return False
     pure = PurePosixPath(path)
-    if pure.is_absolute() or ".." in pure.parts or ".git" in pure.parts:
+    if str(pure) != path or pure.is_absolute() or ".." in pure.parts or ".git" in pure.parts:
         return False
     return not any(part.endswith((".", " ")) for part in pure.parts)
 
@@ -70,6 +70,8 @@ def matches_blob(data: bytes, oid: str, size: int) -> bool:
     """Accept a checkout whose only difference is CRLF conversion of an LF blob."""
     if len(data) == size and git_blob_oid(data) == oid:
         return True
+    if data.count(b"\n") != data.count(b"\r\n"):
+        return False
     normalized = data.replace(b"\r\n", b"\n")
     return len(normalized) == size and git_blob_oid(normalized) == oid
 
@@ -123,7 +125,7 @@ def check_row(
         errors.append(f"{label}: row keys differ")
         return
     identifier = row["admission_id"]
-    if not isinstance(identifier, str) or not identifier or identifier in ids:
+    if not isinstance(identifier, str) or not identifier.strip() or identifier in ids:
         errors.append(f"{label}: admission_id missing or duplicated")
     if isinstance(identifier, str):
         ids.add(identifier)
@@ -188,7 +190,7 @@ def validate(root: Path, relative: str = MANIFEST) -> list[str]:
     if not isinstance(document, dict) or set(document) != TOP_KEYS:
         return ["admission manifest top-level keys differ"]
     version = document["schema_version"]
-    if isinstance(version, bool) or version != 1 or not isinstance(document["admissions"], list):
+    if type(version) is not int or version != 1 or not isinstance(document["admissions"], list):
         return ["admission manifest schema differs"]
     errors: list[str] = []
     ids: set = set()
