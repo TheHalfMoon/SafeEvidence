@@ -58,7 +58,10 @@ tracked separately.
 
 ## Exact-slice import admission ledger
 
-This ledger is initially EMPTY. No row in the candidate discovery table
+Product admissions are recorded and validated in
+`docs/evidence/source_admissions.json` (`tools/governance/source_admission_check.py`).
+The table below records only the G01a baseline, which holds NO_ADMISSIONS. No row
+in the candidate discovery table
 certifies redistributability or permits an automatic vendor/copy operation.
 
 Before the first imported byte, add one admission row per exact component:

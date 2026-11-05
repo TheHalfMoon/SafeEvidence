@@ -65,3 +65,14 @@ documentation repair.
 A founder-stated permission alone does not certify other rightsholders'
 code or nested assets. If permission evidence is pending, code copying and
 distribution must wait. No source is silently relicensed into Apache-2.0.
+
+## Admitted copied components
+
+| Admission | Component | Source | License | Destination |
+|---|---|---|---|---|
+| ADM-0001 | T01 contracts | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/crates/safeevidence-contracts` |
+| ADM-0002 | T11 `deny.toml` (adapted) | same revision | Apache-2.0 | `product/deny.toml` |
+
+Runtime Rust dependencies keep their own licenses. `product/Cargo.lock` is the exact
+closure; `cargo deny check` enforces the allowlist in `product/deny.toml` in CI. A full
+SBOM (TA-02) is not generated yet.

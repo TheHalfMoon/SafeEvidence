@@ -13,9 +13,9 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | `main` at last update | `e284f60c9854f1f1f59d11b094d6d8ab52979c1b` |
 | Milestone | M0, in progress |
 | Active packet | WP-00 and WP-01, limited to tooling until rows exist |
-| Admissions | `NO_ADMISSIONS` |
-| Product code | Empty `product/` workspace; no contract code yet |
-| Next executable task | First signed admission rows (T01 first), SBOM and license gates |
+| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml`); G01a baseline holds `NO_ADMISSIONS` |
+| Product code | T01 contracts in `product/`; WP-02 additions not started |
+| Next executable task | WP-02 Study/Report/Proof types; T11 SBOM generator (TA-02); TA-29 script |
 
 ## Milestones
 
@@ -49,4 +49,4 @@ are verified; none is corrected yet.
 
 ## Source imports
 
-None.
+See `docs/evidence/source_admissions.json`.

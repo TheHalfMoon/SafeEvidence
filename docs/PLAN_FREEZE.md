@@ -77,7 +77,8 @@ and PR #44's `docs/research/rea-2026-10-19/` (11 files).
   `62fc04d01d398da93b4dacf0ab2f33e3f1440462`.
 - Frozen architecture decisions D-01 … D-16: `docs/plan/ARCHITECTURE_SPEC_V1.md` §3.
 - Conflict resolutions C1 … C21: `docs/plan/SAFEEVIDENCE_MASTER_PLAN_V1.md` §4.
-- Admission state: **NO_ADMISSIONS** (unchanged; `docs/DONOR_RIGHTS_REGISTER.md`).
+- Admission state at freeze: **NO_ADMISSIONS** (`docs/DONOR_RIGHTS_REGISTER.md`). Later
+  product rows: `docs/evidence/source_admissions.json`.
 
 ## 4. Readiness classification of every work packet
 

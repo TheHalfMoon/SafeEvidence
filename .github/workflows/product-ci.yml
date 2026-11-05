@@ -13,7 +13,7 @@ jobs:
   product:
     name: product (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -42,6 +42,13 @@ jobs:
         shell: bash
         working-directory: product
         run: cargo fetch --locked
+      - name: Install cargo-deny
+        shell: bash
+        run: cargo +1.98.1 install cargo-deny --version 0.20.2 --locked
+      - name: Check licenses, advisories, bans and sources
+        shell: bash
+        working-directory: product
+        run: cargo deny check
       - name: Format
         shell: bash
         working-directory: product

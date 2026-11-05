@@ -1,4 +1,172 @@
 {
   "schema_version": 1,
-  "admissions": []
+  "admissions": [
+    {
+      "admission_id": "ADM-0001",
+      "packet": "T01",
+      "repo": "AbdulazizShehri/MedScale",
+      "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Cargo.lock closure under product/deny.toml; no native libraries or models",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "crates/medscale-contracts/src/evidence/mod.rs",
+          "git_blob_oid": "e6f2d5754a8a594051c3b1edb1a84503695f7523",
+          "bytes": 5550,
+          "dest_path": "product/crates/safeevidence-contracts/src/evidence/mod.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/objects/authority_classes.rs",
+          "git_blob_oid": "e1e019eb6e2000a49583c42eadc25411de78e9a0",
+          "bytes": 1605,
+          "dest_path": "product/crates/safeevidence-contracts/src/objects/authority_classes.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/objects/eval_proj_audit.rs",
+          "git_blob_oid": "bbe28942b803824d4cf746cd759b5f92411c83cd",
+          "bytes": 1634,
+          "dest_path": "product/crates/safeevidence-contracts/src/objects/eval_proj_audit.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/objects/identity.rs",
+          "git_blob_oid": "2e27748220544c9cbca66a7b690439ba072be937",
+          "bytes": 909,
+          "dest_path": "product/crates/safeevidence-contracts/src/objects/identity.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/objects/ids.rs",
+          "git_blob_oid": "afbad94c25314fe6242844dc30d9d035334f974c",
+          "bytes": 2530,
+          "dest_path": "product/crates/safeevidence-contracts/src/objects/ids.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/objects/mod.rs",
+          "git_blob_oid": "83fb29560ca3fb3b03406781bc72adbd63e81d62",
+          "bytes": 907,
+          "dest_path": "product/crates/safeevidence-contracts/src/objects/mod.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/objects/record_semantics.rs",
+          "git_blob_oid": "29679a6dff0d25c7841b323b45c532a3be9ff282",
+          "bytes": 5912,
+          "dest_path": "product/crates/safeevidence-contracts/src/objects/record_semantics.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/objects/scope.rs",
+          "git_blob_oid": "8d16f2d6d5c7e4c531d9c1b51b8b5df3711b059b",
+          "bytes": 975,
+          "dest_path": "product/crates/safeevidence-contracts/src/objects/scope.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/objects/source.rs",
+          "git_blob_oid": "8ae541c859914c7f11a6a6b713ca461d8b7783bb",
+          "bytes": 1753,
+          "dest_path": "product/crates/safeevidence-contracts/src/objects/source.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/objects/time_effect.rs",
+          "git_blob_oid": "2dbb64e310cd053fe5b096e4b634678c6c00f58a",
+          "bytes": 10392,
+          "dest_path": "product/crates/safeevidence-contracts/src/objects/time_effect.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/medscale-contracts/tests/object_no_coercion.rs",
+          "git_blob_oid": "053df681fd5d497fb5230a0d8c71c0a058d081dd",
+          "bytes": 1913,
+          "dest_path": "product/crates/safeevidence-contracts/tests/object_no_coercion.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/medscale-contracts/tests/object_roundtrip.rs",
+          "git_blob_oid": "aa1b5b4ab88d852bca260ddc8b480c4156ab7fe1",
+          "bytes": 4662,
+          "dest_path": "product/crates/safeevidence-contracts/tests/object_roundtrip.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/record_semantics_019.rs",
+          "git_blob_oid": "62bd2641ccc2645e579677b1e29f5907763f14b7",
+          "bytes": 7394,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/source_immutability.rs",
+          "git_blob_oid": "d140b0255c6536d0d309b38a6f2a1136bbaafa0e",
+          "bytes": 680,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/text_span_coords.rs",
+          "git_blob_oid": "b05f4b5111f7374b2b082c933210a13423a25897",
+          "bytes": 1096,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0002",
+      "packet": "T11",
+      "repo": "AbdulazizShehri/MedScale",
+      "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Cargo.lock closure under product/deny.toml; no native libraries or models",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "crates/medscale-core/src/release_sbom.rs",
+          "git_blob_oid": "97f5165b20db16f1bd3212e594ba8fa672e8300f",
+          "bytes": 17423,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/release_sbom_054.rs",
+          "git_blob_oid": "79bb1bfbfc99bc470227d5deef96e72b73501f06",
+          "bytes": 9131,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "deny.toml",
+          "git_blob_oid": "d20fdb3e9708096befaf4f9fee3ccef8d1ab2deb",
+          "bytes": 1405,
+          "dest_path": "product/deny.toml",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "scripts/generate-release-sbom.ps1",
+          "git_blob_oid": "5c0db999609c89bcca583099a2f36fd6bd80848e",
+          "bytes": 9262,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    }
+  ]
 }
