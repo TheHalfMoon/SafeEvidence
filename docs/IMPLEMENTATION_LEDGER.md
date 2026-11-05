@@ -10,18 +10,18 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `1a10bc59e452c6486aced95227fa1e8be53bad20` |
-| Milestone | M0, not entered |
-| Active packet | None; WP-00 and WP-01 are `BLOCKED_EXTERNAL` |
+| `main` at last update | `e284f60c9854f1f1f59d11b094d6d8ab52979c1b` |
+| Milestone | M0, in progress |
+| Active packet | WP-00 and WP-01, limited to tooling until rows exist |
 | Admissions | `NO_ADMISSIONS` |
-| Product code | None. Only the synthetic G01a crate exists |
-| Next executable task | Founder decisions D1-D4 in `docs/decisions/M0_FOUNDER_DECISION_PACKET_2026-11-05.md` |
+| Product code | Empty `product/` workspace; no contract code yet |
+| Next executable task | First signed admission rows (T01 first), SBOM and license gates |
 
 ## Milestones
 
 | Milestone | Status | Blocked by |
 |---|---|---|
-| M0 Admission | `BLOCKED_EXTERNAL` | EXT-01, EXT-02 |
+| M0 Admission | `IMPLEMENTED_UNTESTED` for TA-01 until CI passes on the merged commit | EXT-01 ([D2 recorded](https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204); no rows signed), TA-02, TA-03, TA-29 |
 | M1 VS-1 (synthetic) | `NOT_STARTED` | M0 |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |

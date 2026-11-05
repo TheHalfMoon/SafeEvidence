@@ -89,6 +89,8 @@ and PR #44's `docs/research/rea-2026-10-19/` (11 files).
 | `DEFERRED` | Planned, outside V1 | P13 computable guidelines, P17 sync, P19 voice, citation-context signal |
 | Authorized today | Only the existing G01a synthetic stdlib baseline and documentation work | — |
 
+Update 2026-11-05: EXT-02 is ratified in `docs/decisions/M0_EXT02_RATIFICATION_2026-11-05.md`, which also authorizes synthetic work in `product/`. EXT-01 rows remain per component.
+
 ## 5. External approvals and qualification dependencies (not closable by engineering)
 
 | ID | Dependency | Owner needed | Evidence that closes it | Blocks |

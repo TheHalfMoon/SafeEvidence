@@ -1,0 +1,56 @@
+name: Product Workspace
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  product:
+    name: product (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-15]
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - name: Checkout exact reviewed revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Check exact Git HEAD
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Validate source admissions
+        shell: bash
+        run: python tools/governance/source_admission_check.py --root .
+      - name: Install pinned toolchain
+        shell: bash
+        working-directory: product
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+      - name: Fetch locked dependencies
+        shell: bash
+        working-directory: product
+        run: cargo fetch --locked
+      - name: Format
+        shell: bash
+        working-directory: product
+        run: cargo fmt --all -- --check
+      - name: Test with Cargo offline after fetch
+        shell: bash
+        working-directory: product
+        run: cargo test --offline --locked --workspace --all-targets
+      - name: Lint with Cargo offline after fetch
+        shell: bash
+        working-directory: product
+        run: cargo clippy --offline --locked --workspace --all-targets -- -D warnings

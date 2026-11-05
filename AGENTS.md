@@ -35,6 +35,15 @@ source/contributor rights, pack and release-trust decisions. These gates
 are BLOCKED for dependent clinical/product/source work. No patient data,
 models, donor sources, signed packs, production release, or P02 are admitted.
 
+## EXT-02 synthetic scope extension (2026-11-05)
+
+The founder extended engineering scope beyond stdlib-only G01a, as recorded in
+`docs/decisions/M0_EXT02_RATIFICATION_2026-11-05.md`. Product code lives in the
+`product/` workspace: synthetic data only, and copied bytes only under a
+`VERIFIED_ALLOWED` row. G01a stays unchanged at the repository root. Issues #3 and #4,
+model weights, real corpora, signed packs, live fetch and release remain excluded.
+Current status: `docs/IMPLEMENTATION_LEDGER.md`.
+
 ## Authority order
 
 Read in this order before planning or changing architecture:
