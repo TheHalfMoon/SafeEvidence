@@ -17,6 +17,9 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 not claimed ; T03 vault slice, TA-05 not claimed |
 | Next executable task | WP-02 Study/Report/Proof types; T11 SBOM generator (TA-02); TA-29 script |
 
+Required checks on `main` (founder decision, 2026-11-05): `foundation-documents`, `preentry structure`, `synthetic-only`
+and `product`, the last three on Ubuntu, Windows and macOS.
+
 ## Milestones
 
 | Milestone | Status | Blocked by |
