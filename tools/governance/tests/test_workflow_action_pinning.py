@@ -24,7 +24,7 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/p00-foundation-docs.yml": "ffc5b4246ee09dad96caed7cf759e8565fe0e80b2e6ffe8642cfa6ad2d1b8db6",
     ".github/workflows/p01-preentry-governance.yml": "efe37c703ed5c24ec230e355ef2579070507d626b00f6f17f93a418ebe6dbfab",
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
-    ".github/workflows/product-ci.yml": "99974b688d5c8e94e9e73f028ee101d1188d194c839b33d25b5f036b819aeb86",
+    ".github/workflows/product-ci.yml": "a8c60450c9c40f3eb27857272ea1ef0345e9d1472d4fa524cc0ba6b3d700089f",
 }
 
 CHECKOUT_LINE = re.compile(r"^\s*uses:\s*actions/checkout@([^\s#]+)", re.MULTILINE)

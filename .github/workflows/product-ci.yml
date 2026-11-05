@@ -26,6 +26,11 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Check exact Git HEAD
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - name: Validate source admissions
         shell: bash
         run: python tools/governance/source_admission_check.py --root .
@@ -41,11 +46,11 @@ jobs:
         shell: bash
         working-directory: product
         run: cargo fmt --all -- --check
-      - name: Test with network disabled after fetch
+      - name: Test with Cargo offline after fetch
         shell: bash
         working-directory: product
         run: cargo test --offline --locked --workspace --all-targets
-      - name: Lint with network disabled after fetch
+      - name: Lint with Cargo offline after fetch
         shell: bash
         working-directory: product
         run: cargo clippy --offline --locked --workspace --all-targets -- -D warnings

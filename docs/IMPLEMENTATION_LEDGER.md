@@ -12,7 +12,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 |---|---|
 | `main` at last update | `e284f60c9854f1f1f59d11b094d6d8ab52979c1b` |
 | Milestone | M0, in progress |
-| Active packet | WP-00 and WP-01 |
+| Active packet | WP-00 and WP-01, limited to tooling until rows exist |
 | Admissions | `NO_ADMISSIONS` |
 | Product code | Empty `product/` workspace; no contract code yet |
 | Next executable task | First signed admission rows (T01 first), SBOM and license gates |
@@ -21,7 +21,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Milestone | Status | Blocked by |
 |---|---|---|
-| M0 Admission | In progress; TA-01 validator tests pass locally, CI pending | TA-02, TA-03, TA-29, first rows |
+| M0 Admission | `IMPLEMENTED_UNTESTED` for TA-01 until CI passes on the merged commit | EXT-01 (D2 recorded on Issue #5; no rows signed), TA-02, TA-03, TA-29 |
 | M1 VS-1 (synthetic) | `NOT_STARTED` | M0 |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |

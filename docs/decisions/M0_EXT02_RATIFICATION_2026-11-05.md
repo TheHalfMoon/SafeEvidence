@@ -1,12 +1,18 @@
 # EXT-02 Synthetic Scope Extension — Ratification (2026-11-05)
 
-State: **EFFECTIVE ON NORMAL MERGE WITH POST-MERGE CI PASS.** Scope below only.
+State: **Effective only when all of these hold:** this record is carried by a commit
+with a GitHub-verified signature and DCO; required CI passes on the exact PR head; the
+PR merges normally; and post-merge CI passes on the resulting `main`. Scope below only.
 
 ## Decision
 
 Founder decision D1 and D3, in response to
 `docs/decisions/M0_FOUNDER_DECISION_PACKET_2026-11-05.md`, recorded verbatim at
 <https://github.com/TheHalfMoon/SafeEvidence/issues/17#issuecomment-6647499829>.
+
+The founder decided by selecting the listed options in the Claude Code session, not by
+writing free text as packet §3 described. The record quotes the question and the selected
+answer.
 
 Accountable engineering owner: the founder.
 
