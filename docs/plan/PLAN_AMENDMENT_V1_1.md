@@ -32,29 +32,37 @@ are unchanged.
 
 ## C. VS-1a route
 
-Amends the M1 packet list and the VS-1 execution order. Reason: earliest end-to-end proof,
-with no reduction in what VS-1 must finally pass.
+Amends the M1 packet list and the VS-1 execution order. Reason: earliest end-to-end proof.
+
+**Declared reduction:** frozen VS-1 routes Arabic questions through normalization. Here, VS-1 answers
+them with reason-coded abstention, which TA-08's VS-1 gate allows. Arabic normalization moves to V1.
+Other VS-1 acceptance rows are unchanged.
+
+**Declared dependency change:** frozen WP-03 depends on WP-02's exit, and WP-02 on WP-01's. T03 was merged
+(ADM-0003) with TA-03 and TA-04 unpassed, ahead of those exits. WP-02 onward may proceed with both open,
+but none of WP-01, WP-02 or M0 is complete, and M1 cannot exit, until both pass.
 
 1. Headless path: fixture, PICO normalization, FTS5, deterministic checks, applicability,
-   sufficiency, template brief, outcome. The brief is frozen as the candidate. Stops at
-   `VERIFIED_UNCOMMITTED`.
+   sufficiency, template brief, outcome. The brief is frozen as the candidate, and the frozen
+   text is verified again. Stops at `VERIFIED_UNCOMMITTED`.
 2. T13 parity on the P00-conformant subset.
 3. T03 subset and atomic `AnswerProofManifest` commit.
 4. Tauri Ask view (T36).
 
 Deferred from VS-1a: T14, T15, WP-23a (to M2 entry, valid only while VS-1a runs no worker
 process), and Arabic normalization (returns with WP-06's V1 promotion gate). With no worker in
-VS-1a, TA-14's crash and timeout clauses use fault injection at the brief step, and the real
-worker clauses return with the WP-12 generator. Arabic queries return `ABSTAIN` with
+VS-1a, TA-14's crash and timeout clauses use fault injection at the brief, verification and commit
+boundaries, and the real worker clauses return with the WP-12 generator. Arabic queries return `ABSTAIN` with
 `UNSUPPORTED_LANGUAGE`, which TA-08's VS-1 gate allows. RTL rendering and Arabic offsets stay
 in scope. TA-08 joins the VS-1 done list.
 
-T05 and T07 are deferred from VS-1a only. VS-1a records `NETWORK_LOCKED` capture evidence; that
-is evidence, not a TA-21 pass. T05 returns before VS-1 is done, because TA-21 needs both halves. A digest-checked fixture
+T05 and T07 are deferred from VS-1a only. With no broker, VS-1a records no-socket capture evidence;
+that is not a `NETWORK_LOCKED` run or a TA-21 pass. T05 returns before VS-1 is done, because TA-21
+needs both modes. T07 returns at WP-04's pack work. A digest-checked fixture
 loader replaces T07 for VS-1a; it carries a validity epoch and rights state, fails closed when
 either is absent, and gives no pack-trust claim.
 
-TA-29 splits by clause: its Xberg clauses bind WP-13, where T20 enters; the HTTP-client denial
+TA-29 splits by clause: its Xberg and docling.rs clauses bind WP-13, where T20 enters; the HTTP-client denial
 clause binds WP-01 and VS-1 as written. This moves when the Xberg clauses apply, not what they require.
 
 ## D. Open, not adopted
@@ -68,8 +76,8 @@ risk.
 
 ## E. Work not dependent on this amendment
 
-The frozen sequence continues meanwhile where it needs nothing here, including WP-03 (T03) and
-WP-06 span work under existing rows and decisions. §C ordering and B7 apply only once in force.
+§C ordering and B7 apply only once in force. Before that, work continues only where its frozen
+dependencies are met or the declared change in §C applies.
 
 ## F. Review requirements
 

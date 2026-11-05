@@ -47,6 +47,9 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 
 ## Known defects
 
+**Sequencing breach:** T03 merged before TA-03 and TA-04 passed, ahead of the frozen WP-01 and WP-02
+exits it depends on. Publication cannot be undone. WP-01, WP-02, M0 and M1 exit stay open until both pass.
+
 T03 shares `HIMSAT/...` domain strings with the donor. Windows DPAPI entropy and recovery envelopes are
 therefore compatible across the two products. Separate these before any release; independent test
 vectors must be recomputed outside the code when that happens, and fixed wire offsets must not shift.
