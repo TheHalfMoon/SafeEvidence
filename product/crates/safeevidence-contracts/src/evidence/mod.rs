@@ -24,10 +24,13 @@ pub enum EvidenceCorpusRights {
 }
 
 impl EvidenceCorpusRights {
-    /// Fails closed: unknown rights are never admissible.
+    /// Restricted and unknown items stay out until a restriction record can be checked.
     #[must_use]
     pub const fn admissible(self) -> bool {
-        !matches!(self, Self::Unknown)
+        matches!(
+            self,
+            Self::SyntheticOwned | Self::PublicDomain | Self::OpenLicense
+        )
     }
 }
 

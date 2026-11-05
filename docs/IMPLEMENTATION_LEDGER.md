@@ -10,12 +10,12 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `61fd74c6f1a7b63f116bd1b91dd17a56af5093c4` |
+| `main` at last update | `e06f7ea16e933b2041136a6fabbf479f202d7ad2` |
 | Milestone | M0, in progress |
 | Active packet | WP-00 and WP-01 |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml`), ADM-0003 (T03), ADM-0004 (T17 fixture); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 not claimed ; T03 vault slice, TA-05 not claimed |
-| Next executable task | WP-02 Study/Report/Proof types; T11 SBOM generator (TA-02); TA-29 script |
+| Next executable task | Adapt the two pinned T01 tests for TA-04; T11 SBOM generator (TA-02); TA-29 script |
 
 Required checks on `main` (founder decision, 2026-11-05): `foundation-documents`, `preentry structure`, `synthetic-only`
 and `product`, the last three on Ubuntu, Windows and macOS.

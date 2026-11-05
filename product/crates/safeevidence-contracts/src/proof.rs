@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::assurance::{ProofState, ReasonCode, TerminalOutcome};
 use crate::objects::DigestSha256;
-use crate::study::{ResultId, StudyId};
+use crate::study::{Known, ResultId, StudyId};
 
 /// Exact coordinates of evidence in one immutable source version.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,8 +37,8 @@ pub struct ProofClaim {
     pub material: bool,
     pub support: SupportLabel,
     pub spans: Vec<EvidenceSpan>,
-    pub studies: Vec<StudyId>,
-    pub results: Vec<ResultId>,
+    pub studies: Known<Vec<StudyId>>,
+    pub results: Known<Vec<ResultId>>,
 }
 
 /// Versions of everything that shaped the answer.
@@ -52,8 +52,26 @@ pub struct ProofComponents {
     pub verifier: String,
     pub generator: Option<String>,
     pub tools: Vec<String>,
+    pub prompts: Vec<String>,
     pub policy: String,
     pub thresholds: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ApplicabilityState {
+    Applicable,
+    ApplicableWithLimits,
+    Unresolved,
+    NotApplicable,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ContradictionState {
+    None,
+    NonMaterial,
+    Material,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,8 +84,8 @@ pub struct AnswerProofManifest {
     pub rights_grant_version: String,
     pub validity_epoch: u64,
     pub components: ProofComponents,
-    pub applicability: String,
-    pub contradiction: String,
+    pub applicability: ApplicabilityState,
+    pub contradiction: ContradictionState,
     pub outcome: TerminalOutcome,
     pub reason: ReasonCode,
     pub post_verification_passed: bool,
@@ -85,7 +103,25 @@ pub enum ManifestDefect {
     PostVerificationFailed,
     OutcomeCannotCommit,
     MissingRightsGrant,
-    AssuredStateWithoutCommit,
+    StateCannotCommit,
+    ReasonForbidsCommit,
+    MaterialContradiction,
+    ApplicabilityForbidsCommit,
+    LimitsRequireCaution,
+    MissingIdentity,
+    MissingValidityEpoch,
+}
+
+fn state_can_commit(state: ProofState) -> bool {
+    matches!(
+        state,
+        ProofState::VerifiedUncommitted | ProofState::Committed
+    )
+}
+
+/// Limits are allowed only as an explicit caution. Every other reason denies a commit.
+fn is_caution_reason(reason: ReasonCode) -> bool {
+    matches!(reason, ReasonCode::CurrentnessUnknown)
 }
 
 /// Defects that forbid this manifest from backing a committed answer.
@@ -95,20 +131,52 @@ pub fn commit_defects(manifest: &AnswerProofManifest) -> Vec<ManifestDefect> {
     if !manifest.outcome.may_commit() {
         defects.push(ManifestDefect::OutcomeCannotCommit);
     }
+    if !state_can_commit(manifest.state) {
+        defects.push(ManifestDefect::StateCannotCommit);
+    }
     if !manifest.post_verification_passed {
         defects.push(ManifestDefect::PostVerificationFailed);
     }
     if manifest.rights_grant_version.trim().is_empty() {
         defects.push(ManifestDefect::MissingRightsGrant);
     }
+    if manifest.reason != ReasonCode::None && !is_caution_reason(manifest.reason) {
+        defects.push(ManifestDefect::ReasonForbidsCommit);
+    }
+    if manifest.contradiction == ContradictionState::Material {
+        defects.push(ManifestDefect::MaterialContradiction);
+    }
+    if matches!(
+        manifest.applicability,
+        ApplicabilityState::Unresolved | ApplicabilityState::NotApplicable
+    ) {
+        defects.push(ManifestDefect::ApplicabilityForbidsCommit);
+    }
+    let limited = is_caution_reason(manifest.reason)
+        || manifest.applicability == ApplicabilityState::ApplicableWithLimits;
+    if limited && manifest.outcome == TerminalOutcome::Answer {
+        defects.push(ManifestDefect::LimitsRequireCaution);
+    }
+    if manifest.proof_id.trim().is_empty()
+        || manifest.verified_at_utc.trim().is_empty()
+        || manifest.components.retriever.trim().is_empty()
+        || manifest.components.verifier.trim().is_empty()
+        || manifest.components.policy.trim().is_empty()
+        || manifest.components.thresholds.trim().is_empty()
+    {
+        defects.push(ManifestDefect::MissingIdentity);
+    }
+    if manifest.validity_epoch == 0 {
+        defects.push(ManifestDefect::MissingValidityEpoch);
+    }
     if !manifest.claims.iter().any(|claim| claim.material) {
         defects.push(ManifestDefect::NoMaterialClaim);
     }
-    if manifest.state.is_currently_assured() && !manifest.outcome.may_commit() {
-        defects.push(ManifestDefect::AssuredStateWithoutCommit);
-    }
     let mut seen = BTreeSet::new();
     for claim in &manifest.claims {
+        if claim.claim_id.trim().is_empty() {
+            defects.push(ManifestDefect::MissingIdentity);
+        }
         if !seen.insert(claim.claim_id.as_str()) {
             defects.push(ManifestDefect::DuplicateClaimId(claim.claim_id.clone()));
         }

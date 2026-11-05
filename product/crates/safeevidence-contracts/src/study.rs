@@ -102,10 +102,11 @@ pub enum PublicationState {
 }
 
 impl PublicationState {
-    /// Fails closed: only a known-current or corrected source may support a claim.
+    /// Only a known-current version may support a claim. A corrected source must be
+    /// re-read at its corrected version first, as the proof contract requires.
     #[must_use]
     pub const fn citable(self) -> bool {
-        matches!(self, Self::Current | Self::Corrected)
+        matches!(self, Self::Current)
     }
 }
 
@@ -123,6 +124,28 @@ pub struct ReportVersionLink {
     pub links_to: Option<ReportVersionId>,
     pub publication_state: PublicationState,
     pub validity_epoch: ValidityEpoch,
+}
+
+impl ReportVersionLink {
+    /// A retraction or correction notice cannot leave its target looking current.
+    #[must_use]
+    pub const fn is_consistent(&self) -> bool {
+        match self.kind {
+            ReportVersionKind::Retraction => {
+                matches!(self.publication_state, PublicationState::Retracted)
+            }
+            ReportVersionKind::ExpressionOfConcern => {
+                matches!(
+                    self.publication_state,
+                    PublicationState::ExpressionOfConcern
+                )
+            }
+            ReportVersionKind::Correction => {
+                !matches!(self.publication_state, PublicationState::Current)
+            }
+            _ => true,
+        }
+    }
 }
 
 /// Which study and result a review includes, and the decision behind it.

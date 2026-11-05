@@ -25,6 +25,26 @@ fn donor_spans_are_ordered_and_land_on_boundaries_of_their_note() {
         let slice = &NOTE[byte_start..byte_end];
         assert_eq!(slice.chars().count() as u64, end - start);
         assert_eq!(slice, slice.trim(), "{span} has stray whitespace");
+        // A shifted offset would split a token, so each edge must fall on a token boundary.
+        let before = NOTE[..byte_start].chars().next_back();
+        let after = NOTE[byte_end..].chars().next();
+        assert!(
+            !before.is_some_and(char::is_alphanumeric),
+            "{span} starts inside a token"
+        );
+        assert!(
+            !after.is_some_and(char::is_alphanumeric),
+            "{span} ends inside a token"
+        );
+        let label = span["label"].as_str().unwrap();
+        let digits = slice.chars().filter(char::is_ascii_digit).count();
+        match label {
+            "patient_name" => assert_eq!(digits, 0, "{span}"),
+            "email" => assert!(slice.contains('@'), "{span}"),
+            "date" | "date_of_birth" => assert_eq!(digits, 8, "{span}"),
+            "medical_record_number" | "phone_number" => assert!(digits > 0, "{span}"),
+            other => panic!("unexpected label {other}"),
+        }
     }
 }
 
