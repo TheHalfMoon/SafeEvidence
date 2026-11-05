@@ -13,6 +13,22 @@ use crate::objects::{DigestSha256, OpaqueId};
 pub enum EvidenceCorpusRights {
     /// SafeEvidence-owned synthetic fixture; not licensed external literature.
     SyntheticOwned,
+    /// Item rights verified as public domain.
+    PublicDomain,
+    /// Item rights verified under a recorded open license.
+    OpenLicense,
+    /// Usable only under a recorded restriction.
+    Restricted,
+    /// Rights not established. Never eligible for a pack or a citation.
+    Unknown,
+}
+
+impl EvidenceCorpusRights {
+    /// Fails closed: unknown rights are never admissible.
+    #[must_use]
+    pub const fn admissible(self) -> bool {
+        !matches!(self, Self::Unknown)
+    }
 }
 
 /// Document lifecycle within an evidence corpus (metadata only).

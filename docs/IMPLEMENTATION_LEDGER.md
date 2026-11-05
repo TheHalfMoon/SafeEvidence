@@ -13,7 +13,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | `main` at last update | `61fd74c6f1a7b63f116bd1b91dd17a56af5093c4` |
 | Milestone | M0, in progress |
 | Active packet | WP-00 and WP-01 |
-| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml`), ADM-0003 (T03); G01a baseline holds `NO_ADMISSIONS` |
+| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml`), ADM-0003 (T03), ADM-0004 (T17 fixture); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 not claimed ; T03 vault slice, TA-05 not claimed |
 | Next executable task | WP-02 Study/Report/Proof types; T11 SBOM generator (TA-02); TA-29 script |
 
@@ -24,7 +24,7 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 
 | Milestone | Status | Blocked by |
 |---|---|---|
-| M0 Admission | `IMPLEMENTED_UNTESTED` for TA-01 until CI passes on the merged commit | Rows beyond ADM-0001 and ADM-0002 ([D2](https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204)), TA-02, TA-03, TA-29 |
+| M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2` | TA-02, TA-29; TA-04 (two pinned T01 tests not run); rows for T12, T13, T30, T36 |
 | M1 VS-1 (synthetic) | `NOT_STARTED` | M0 |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
@@ -49,7 +49,8 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 
 **TA-03:** Linux (empty network namespace) and macOS (sandbox profile) run all checks under OS-level denial.
 Windows blocks named programs only, because default-deny outbound lost the hosted runner. Its build and build
-scripts run before the block, and unlisted programs are not blocked. TA-03 and A4 require isolation on all three
+scripts run before the block, and unlisted programs are not blocked. Post-merge CI passed at `e06f7ea`, so TA-03 passes
+under `plan-v1.2`. TA-03 and A4 require isolation on all three
 OSes. The founder accepted the Windows form for now (`docs/plan/PLAN_AMENDMENT_V1_2.md`), to be revisited before
 any release. TA-03 passes only when its controls pass in CI on all three OSes on the exact commit.
 

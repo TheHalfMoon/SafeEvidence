@@ -118,8 +118,8 @@
           "source_path": "crates/medscale-core/tests/text_span_coords.rs",
           "git_blob_oid": "b05f4b5111f7374b2b082c933210a13423a25897",
           "bytes": 1096,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/text_span_coords.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/src/lib.rs",
@@ -127,6 +127,20 @@
           "bytes": 2174,
           "dest_path": "product/crates/safeevidence-contracts/src/lib.rs",
           "modification": "adapted"
+        },
+        {
+          "source_path": "crates/medscale-core/src/text/convert.rs",
+          "git_blob_oid": "99880d2e232f8c0dca9e0a7ae797fabd1258bef7",
+          "bytes": 1517,
+          "dest_path": "product/crates/safeevidence-contracts/src/text/convert.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/medscale-core/src/text/mod.rs",
+          "git_blob_oid": "14080e61019b753f16587b8cb7fe0956717b20c2",
+          "bytes": 136,
+          "dest_path": "product/crates/safeevidence-contracts/src/text/mod.rs",
+          "modification": "none"
         }
       ]
     },
@@ -455,6 +469,51 @@
           "bytes": 6591,
           "dest_path": "product/crates/safeevidence-vault/src/lib.rs",
           "modification": "adapted"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0004",
+      "packet": "T17",
+      "repo": "maziyarpanahi/openmed",
+      "source_commit": "8440bdac59621981372d318f43c8bfb2d6625b86",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
+      "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE and NOTICE travel with the fixture",
+      "transitive": "none; test fixtures only",
+      "assets": "synthetic donor fixture text, stated non-PHI by its source",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "fixtures/parity/expected_spans.json",
+          "git_blob_oid": "bbdb9ee1df91e729a6e21099779a614c570f8a81",
+          "bytes": 614,
+          "dest_path": "product/crates/safeevidence-contracts/tests/fixtures/t17/expected_spans.json",
+          "modification": "none"
+        },
+        {
+          "source_path": "fixtures/parity/synthetic_clinical_note.txt",
+          "git_blob_oid": "5ef5d0c51976253c960c76cd77677edbc79d222b",
+          "bytes": 153,
+          "dest_path": "product/crates/safeevidence-contracts/tests/fixtures/t17/synthetic_clinical_note.txt",
+          "modification": "none"
+        },
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+          "bytes": 11357,
+          "dest_path": "product/crates/safeevidence-contracts/tests/fixtures/t17/LICENSE",
+          "modification": "none"
+        },
+        {
+          "source_path": "NOTICE",
+          "git_blob_oid": "a0e83b3eb8068d81ea28b80bffb3b97103d523d0",
+          "bytes": 3797,
+          "dest_path": "product/crates/safeevidence-contracts/tests/fixtures/t17/NOTICE",
+          "modification": "none"
         }
       ]
     }
