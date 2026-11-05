@@ -3,8 +3,8 @@
 
 use safeevidence_release::{
     BuildEnvironment, ExpectedBinding, NativeDependency, PackAsset, ReleaseArtifact,
-    ReleaseSbomInput, RustDependency, WorkspacePackage, generate_release_sbom, lock_package_names,
-    native_dependencies, packages_missing_from_document, verify_release_sbom,
+    ReleaseSbomInput, RustDependency, WorkspacePackage, classify_native, generate_release_sbom,
+    lock_packages, packages_missing_from_document, verify_release_sbom,
 };
 
 fn fixture_input() -> ReleaseSbomInput {
@@ -187,7 +187,13 @@ const LOCK: &str = "version = 4\n\n[[package]]\nname = \"serde\"\nversion = \"1.
 #[test]
 fn every_lock_package_listed_passes_coverage() {
     let document = generate_release_sbom(&fixture_input());
-    assert_eq!(lock_package_names(LOCK), ["serde", "safeevidence-core"]);
+    assert_eq!(
+        lock_packages(LOCK).unwrap(),
+        [
+            ("serde".to_owned(), "1.0.0".to_owned()),
+            ("safeevidence-core".to_owned(), "0.1.0".to_owned())
+        ]
+    );
     assert!(
         packages_missing_from_document(LOCK, &document)
             .unwrap()
@@ -201,23 +207,54 @@ fn package_absent_from_document_is_reported() {
     let lock = format!("{LOCK}\n[[package]]\nname = \"unlisted\"\nversion = \"1.0.0\"\n");
     assert_eq!(
         packages_missing_from_document(&lock, &document).unwrap(),
-        ["unlisted"]
+        ["unlisted 1.0.0"]
     );
 }
 
 #[test]
-fn malformed_document_is_an_error_not_full_coverage() {
-    assert!(packages_missing_from_document(LOCK, "not json").is_err());
-    assert!(packages_missing_from_document(LOCK, "{}").is_err());
+fn another_version_of_a_listed_crate_is_not_coverage() {
+    let document = generate_release_sbom(&fixture_input());
+    let lock = format!("{LOCK}\n[[package]]\nname = \"serde\"\nversion = \"0.9.0\"\n");
+    assert_eq!(
+        packages_missing_from_document(&lock, &document).unwrap(),
+        ["serde 0.9.0"]
+    );
 }
 
 #[test]
-fn bundled_native_code_is_classified_when_present() {
-    assert!(native_dependencies(LOCK).is_empty());
-    let lock = "name = \"libsqlite3-sys\"\nname = \"openssl-src\"\n";
-    let names: Vec<_> = native_dependencies(lock)
-        .into_iter()
-        .map(|dep| dep.name)
-        .collect();
+fn malformed_input_is_an_error_not_full_coverage() {
+    assert!(packages_missing_from_document(LOCK, "not json").is_err());
+    assert!(packages_missing_from_document(LOCK, "{}").is_err());
+    assert!(lock_packages("").is_err());
+    assert!(lock_packages("name = \"a\"\nname = \"b\"\nversion = \"1\"\n").is_err());
+    assert!(lock_packages("name = \"a\"\n").is_err());
+}
+
+#[test]
+fn native_bindings_are_classified_and_unknown_ones_fail() {
+    let known = classify_native(&["libsqlite3-sys".to_owned(), "openssl-sys".to_owned()]).unwrap();
+    let names: Vec<_> = known.into_iter().map(|dep| dep.name).collect();
     assert_eq!(names, ["sqlcipher", "openssl"]);
+    assert_eq!(
+        classify_native(&["openssl-sys".to_owned(), "zz-sys".to_owned()]),
+        Err(vec!["zz-sys".to_owned()])
+    );
+}
+
+#[test]
+fn compound_license_uses_expression_and_serial_is_uuid_shaped() {
+    let mut input = fixture_input();
+    input.rust_deps[0].license = Some("MIT OR Apache-2.0".to_owned());
+    let document: serde_json::Value = serde_json::from_str(&generate_release_sbom(&input)).unwrap();
+    let serde = document["components"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|component| component["name"] == "serde")
+        .unwrap();
+    assert_eq!(serde["licenses"][0]["expression"], "MIT OR Apache-2.0");
+    let serial = document["serialNumber"].as_str().unwrap();
+    let uuid = serial.strip_prefix("urn:uuid:").unwrap();
+    let groups: Vec<usize> = uuid.split('-').map(str::len).collect();
+    assert_eq!(groups, [8, 4, 4, 4, 12]);
 }

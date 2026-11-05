@@ -3,13 +3,13 @@
 //!
 //! Usage, from `product/`: `sbom <output-path>`
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 use safeevidence_release::{
-    BuildEnvironment, ExpectedBinding, NativeDependency, ReleaseSbomInput, RustDependency,
-    WorkspacePackage, generate_release_sbom, native_dependencies, packages_missing_from_document,
+    BuildEnvironment, ExpectedBinding, ReleaseSbomInput, RustDependency, WorkspacePackage,
+    classify_native, generate_release_sbom, lock_packages, packages_missing_from_document,
     sha256_hex, verify_release_sbom,
 };
 
@@ -26,8 +26,23 @@ fn output(program: &str, args: &[&str]) -> Result<String, String> {
         .map_err(|error| format!("{program}: {error}"))
 }
 
+fn host_triple() -> Result<String, String> {
+    output("rustc", &["-vV"])?
+        .lines()
+        .find_map(|line| line.strip_prefix("host: "))
+        .map(str::to_owned)
+        .ok_or_else(|| "rustc -vV has no host line".to_owned())
+}
+
 fn run(out: &PathBuf) -> Result<usize, String> {
+    // A dirty tree would pair this lock and these sources with a commit that does not hold them.
+    let dirty = output("git", &["status", "--porcelain"])?;
+    if !dirty.is_empty() {
+        return Err(format!("working tree is not clean:\n{dirty}"));
+    }
     let lock = std::fs::read("Cargo.lock").map_err(|error| format!("Cargo.lock: {error}"))?;
+    let lock_text =
+        String::from_utf8(lock.clone()).map_err(|error| format!("Cargo.lock: {error}"))?;
     let metadata = output(
         "cargo",
         &["metadata", "--format-version", "1", "--locked", "--offline"],
@@ -41,8 +56,9 @@ fn run(out: &PathBuf) -> Result<usize, String> {
         .filter_map(serde_json::Value::as_str)
         .collect();
 
-    let mut workspace_packages = Vec::new();
-    let mut rust_deps = Vec::new();
+    let mut licenses = BTreeMap::new();
+    let mut member_names = BTreeSet::new();
+    let mut native_crates = BTreeSet::new();
     for package in metadata["packages"]
         .as_array()
         .ok_or("metadata has no packages")?
@@ -51,28 +67,44 @@ fn run(out: &PathBuf) -> Result<usize, String> {
         let version = package["version"]
             .as_str()
             .ok_or("package without version")?;
-        let license = package["license"].as_str().map(str::to_owned);
+        licenses.insert(
+            (name.to_owned(), version.to_owned()),
+            package["license"].as_str().map(str::to_owned),
+        );
         if members.contains(package["id"].as_str().unwrap_or_default()) {
+            member_names.insert(name.to_owned());
+        }
+        if package["links"].is_string() || name.ends_with("-sys") {
+            native_crates.insert(name.to_owned());
+        }
+    }
+
+    // The lock, not metadata, decides what is listed. Metadata only supplies licenses.
+    let mut workspace_packages = Vec::new();
+    let mut rust_deps = Vec::new();
+    for (name, version) in lock_packages(&lock_text)? {
+        let license = licenses
+            .get(&(name.clone(), version.clone()))
+            .cloned()
+            .flatten();
+        if member_names.contains(&name) {
             workspace_packages.push(WorkspacePackage {
-                name: name.to_owned(),
-                version: version.to_owned(),
+                name,
+                version,
                 license,
             });
         } else {
             rust_deps.push(RustDependency {
-                name: name.to_owned(),
-                version: version.to_owned(),
+                name,
+                version,
                 license,
             });
         }
     }
 
-    let names: Vec<String> = workspace_packages
-        .iter()
-        .map(|package| package.name.clone())
-        .collect();
-    let lock_text = String::from_utf8_lossy(&lock);
-    let native_deps: Vec<NativeDependency> = native_dependencies(&lock_text);
+    let native_list: Vec<String> = native_crates.into_iter().collect();
+    let native_deps = classify_native(&native_list)
+        .map_err(|unknown| format!("unclassified native crates: {unknown:?}"))?;
     let input = ReleaseSbomInput {
         source_sha: output("git", &["rev-parse", "HEAD"])?,
         tree_sha: output("git", &["rev-parse", "HEAD^{tree}"])?,
@@ -80,7 +112,7 @@ fn run(out: &PathBuf) -> Result<usize, String> {
         build_env: BuildEnvironment {
             os: std::env::consts::OS.to_owned(),
             os_version: "not-recorded".to_owned(),
-            target_triple: std::env::consts::ARCH.to_owned(),
+            target_triple: host_triple()?,
             rustc: output("rustc", &["--version"])?,
             cargo: output("cargo", &["--version"])?,
         },
@@ -91,13 +123,15 @@ fn run(out: &PathBuf) -> Result<usize, String> {
         pack_assets: vec![],
     };
     let document = generate_release_sbom(&input);
+    // Checks the document's structure and bindings. Its inputs come from this same run, so
+    // the Cargo.lock comparison below is the independent coverage check.
     let report = verify_release_sbom(
         &document,
         &ExpectedBinding {
             source_sha: input.source_sha.clone(),
             tree_sha: input.tree_sha.clone(),
             cargo_lock_sha256: input.cargo_lock_sha256.clone(),
-            workspace_package_names: names,
+            workspace_package_names: member_names.into_iter().collect(),
         },
     );
     if !report.ok {

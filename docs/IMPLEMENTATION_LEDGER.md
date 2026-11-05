@@ -13,8 +13,8 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | `main` at last update | `02e551d2912f4921fda88fc317278df4695ebe93` |
 | Milestone | M0, in progress |
 | Active packet | WP-00 and WP-01 |
-| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml`), ADM-0003 (T03), ADM-0004 (T17 fixture); G01a baseline holds `NO_ADMISSIONS` |
-| Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 not claimed ; T03 vault slice, TA-05 not claimed |
+| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture); G01a baseline holds `NO_ADMISSIONS` |
+| Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3` ; T03 vault slice, TA-05 not claimed |
 | Next executable task | Rows for T12, T13, T30, T36; first headless Ask path |
 
 Required checks on `main` (founder decision, 2026-11-05): `foundation-documents`, `preentry structure`, `synthetic-only`

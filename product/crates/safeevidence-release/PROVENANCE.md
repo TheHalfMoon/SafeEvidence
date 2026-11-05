@@ -8,4 +8,5 @@ Admission `ADM-0002` (T11) in `docs/evidence/source_admissions.json`.
 - Not carried: the committed-document and doctor tests (donor files and modules); `generate-release-sbom.ps1`.
 - `src/bin/sbom.rs` is SafeEvidence-written; it replaces the donor script.
 - This is engineering evidence. `release_ready` stays false; no signing or reproducible build is claimed. Native
-  entries are a hand-kept list, so a new native dependency needs adding by hand.
+  bindings come from a hand-kept table; an unlisted `links` or `-sys` crate fails the run. The document has not
+  been validated against the CycloneDX schema.

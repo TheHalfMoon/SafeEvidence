@@ -201,15 +201,33 @@ def validate(root: Path, relative: str = MANIFEST) -> list[str]:
     return errors
 
 
+def notice_rows(text: str) -> dict[str, list[str]]:
+    """Exact `| ADM-nnnn | ... | `destination` |` table rows, with their destinations."""
+    rows: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) == 5 and re.fullmatch(r"ADM-[0-9]{4}", cells[0]):
+            rows[cells[0]] = re.findall(r"`([^`]+)`", cells[4])
+    return rows
+
+
 def missing_notices(root: Path, relative: str = MANIFEST) -> list[str]:
-    """TA-02: every admitted row must be listed in the public notices file."""
+    """TA-02: each admitted row needs a notices row covering each copied file's destination."""
     document = json.loads((root / relative).read_text(encoding="utf-8"))
-    notices = (root / NOTICES).read_text(encoding="utf-8")
-    return [
-        row["admission_id"]
-        for row in document["admissions"]
-        if row["state"] == "VERIFIED_ALLOWED" and row["admission_id"] not in notices
-    ]
+    rows = notice_rows((root / NOTICES).read_text(encoding="utf-8"))
+    problems = []
+    for row in document["admissions"]:
+        if row["state"] != "VERIFIED_ALLOWED":
+            continue
+        identifier = row["admission_id"]
+        if identifier not in rows:
+            problems.append(identifier)
+            continue
+        for entry in row["files"]:
+            dest = entry["dest_path"]
+            if dest and not any(dest == d or dest.startswith(d.rstrip("/") + "/") for d in rows[identifier]):
+                problems.append(f"{identifier}: {dest}")
+    return problems
 
 
 def main() -> int:

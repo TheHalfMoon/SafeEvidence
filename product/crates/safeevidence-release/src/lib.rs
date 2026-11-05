@@ -131,10 +131,28 @@ fn license_json(license: &Option<String>) -> serde_json::Value {
             "license": { "name": "UNLICENSED-workspace-no-public-license" }
         }),
         Some(id) if !id.is_empty() && id != "NOASSERTION" => {
-            serde_json::json!({ "license": { "id": id } })
+            // A compound SPDX expression is not a valid license id.
+            if id.contains(' ') || id.contains('/') {
+                serde_json::json!({ "expression": id })
+            } else {
+                serde_json::json!({ "license": { "id": id } })
+            }
         }
         _ => serde_json::json!({ "license": { "name": "NOASSERTION" } }),
     }
+}
+
+/// A deterministic RFC 4122-shaped serial derived from the tree identity.
+fn serial_number(tree_sha: &str) -> String {
+    let hex = sha256_hex(tree_sha.as_bytes());
+    format!(
+        "urn:uuid:{}-{}-4{}-8{}-{}",
+        &hex[..8],
+        &hex[8..12],
+        &hex[13..16],
+        &hex[17..20],
+        &hex[20..32]
+    )
 }
 
 /// Generates the deterministic CycloneDX 1.5 release SBOM document.
@@ -226,7 +244,7 @@ pub fn generate_release_sbom(input: &ReleaseSbomInput) -> String {
         "bomFormat": SBOM_FORMAT,
         "specVersion": SBOM_SPEC_VERSION,
         "version": 1,
-        "serialNumber": format!("urn:uuid:safeevidence-054-{}", &input.tree_sha[..input.tree_sha.len().min(12)]),
+        "serialNumber": serial_number(&input.tree_sha),
         "metadata": {
             "timestamp": ZERO_TIME,
             "tools": [{ "vendor": "SafeEvidence", "name": "safeevidence-release", "version": "054" }],
@@ -407,45 +425,123 @@ pub fn verify_release_sbom(document: &str, expected: &ExpectedBinding) -> Verifi
     }
 }
 
-/// Native code built through a Rust dependency. Enumerated explicitly, and classified
-/// rather than silently omitted, as `NativeDependency` requires.
-#[must_use]
-pub fn native_dependencies(cargo_lock: &str) -> Vec<NativeDependency> {
-    const KNOWN: [(&str, &str, &str); 2] = [
-        (
-            "libsqlite3-sys",
-            "sqlcipher",
-            "bundled through libsqlite3-sys",
-        ),
-        ("openssl-src", "openssl", "vendored through openssl-src"),
-    ];
-    let packages = lock_package_names(cargo_lock);
-    KNOWN
-        .iter()
-        .filter(|(crate_name, _, _)| packages.iter().any(|name| name == crate_name))
-        .map(|(_, name, detail)| NativeDependency {
-            name: (*name).to_owned(),
-            classification: "bundled-source".to_owned(),
-            detail: (*detail).to_owned(),
-        })
-        .collect()
-}
+/// Classification for every crate that binds native code. Unknown ones fail closed, so a new
+/// native binding cannot enter the SBOM unclassified.
+const NATIVE_BINDINGS: [(&str, &str, &str, &str); 8] = [
+    (
+        "libsqlite3-sys",
+        "sqlcipher",
+        "bundled-source",
+        "bundled through libsqlite3-sys",
+    ),
+    (
+        "openssl-sys",
+        "openssl",
+        "bundled-source",
+        "vendored through openssl-src",
+    ),
+    (
+        "core-foundation-sys",
+        "core-foundation",
+        "os-provided",
+        "Apple system framework",
+    ),
+    (
+        "security-framework-sys",
+        "security-framework",
+        "os-provided",
+        "Apple system framework",
+    ),
+    (
+        "windows-sys",
+        "windows-api",
+        "os-provided",
+        "Windows system libraries",
+    ),
+    (
+        "linux-raw-sys",
+        "linux-kernel-abi",
+        "os-provided",
+        "Linux kernel interface definitions",
+    ),
+    (
+        "js-sys",
+        "javascript-host",
+        "not-applicable",
+        "WebAssembly targets only; not built here",
+    ),
+    (
+        "wasm-bindgen-shared",
+        "wasm-bindgen",
+        "not-applicable",
+        "WebAssembly targets only; not built here",
+    ),
+];
 
-/// Package names in a `Cargo.lock`. Workspace members are included.
-#[must_use]
-pub fn lock_package_names(cargo_lock: &str) -> Vec<String> {
-    cargo_lock
-        .lines()
-        .filter_map(|line| line.strip_prefix("name = \""))
-        .filter_map(|rest| rest.strip_suffix('"'))
-        .map(str::to_owned)
-        .collect()
-}
-
-/// Lock packages with no component of that name in an SBOM document.
+/// Classifies native-binding crates.
 ///
 /// # Errors
-/// Returns an error if the document is not a CycloneDX JSON object with components.
+/// Returns every crate with no classification.
+pub fn classify_native(crates: &[String]) -> Result<Vec<NativeDependency>, Vec<String>> {
+    let mut unknown = Vec::new();
+    let mut classified: Vec<NativeDependency> = Vec::new();
+    for crate_name in crates {
+        match NATIVE_BINDINGS.iter().find(|entry| entry.0 == crate_name) {
+            Some((_, name, classification, detail)) => {
+                if !classified.iter().any(|dep| dep.name == *name) {
+                    classified.push(NativeDependency {
+                        name: (*name).to_owned(),
+                        classification: (*classification).to_owned(),
+                        detail: (*detail).to_owned(),
+                    });
+                }
+            }
+            None => unknown.push(crate_name.clone()),
+        }
+    }
+    if unknown.is_empty() {
+        Ok(classified)
+    } else {
+        Err(unknown)
+    }
+}
+
+/// Name and version of every package in a `Cargo.lock`, the source of truth for coverage.
+///
+/// # Errors
+/// Returns an error if a package has no version, or the lock lists no packages.
+pub fn lock_packages(cargo_lock: &str) -> Result<Vec<(String, String)>, String> {
+    let mut packages = Vec::new();
+    let mut name: Option<String> = None;
+    for line in cargo_lock.lines() {
+        if let Some(value) = line
+            .strip_prefix("name = \"")
+            .and_then(|v| v.strip_suffix('"'))
+        {
+            if let Some(previous) = name.replace(value.to_owned()) {
+                return Err(format!("package {previous} has no version"));
+            }
+        } else if let Some(value) = line
+            .strip_prefix("version = \"")
+            .and_then(|v| v.strip_suffix('"'))
+            && let Some(current) = name.take()
+        {
+            packages.push((current, value.to_owned()));
+        }
+    }
+    if let Some(previous) = name {
+        return Err(format!("package {previous} has no version"));
+    }
+    if packages.is_empty() {
+        return Err("lock lists no packages".to_owned());
+    }
+    Ok(packages)
+}
+
+/// Lock packages with no component of that exact name and version in an SBOM document.
+///
+/// # Errors
+/// Returns an error if the lock or the document cannot be read.
 pub fn packages_missing_from_document(
     cargo_lock: &str,
     document: &str,
@@ -455,13 +551,14 @@ pub fn packages_missing_from_document(
     let components = value["components"]
         .as_array()
         .ok_or("document has no components")?;
-    let listed: std::collections::BTreeSet<&str> = components
+    let listed: std::collections::BTreeSet<(&str, &str)> = components
         .iter()
-        .filter_map(|component| component["name"].as_str())
+        .filter_map(|component| Some((component["name"].as_str()?, component["version"].as_str()?)))
         .collect();
-    Ok(lock_package_names(cargo_lock)
+    Ok(lock_packages(cargo_lock)?
         .into_iter()
-        .filter(|name| !listed.contains(name.as_str()))
+        .filter(|(name, version)| !listed.contains(&(name.as_str(), version.as_str())))
+        .map(|(name, version)| format!("{name} {version}"))
         .collect())
 }
 

@@ -201,11 +201,32 @@ class AdmissionTests(unittest.TestCase):
         )
         self.assertTrue(check.validate(self.root))
 
-    def test_admitted_row_must_appear_in_notices(self):
+    def write_notices(self, text):
+        (self.root / check.NOTICES).write_text(text, encoding="utf-8")
+
+    def test_admitted_row_needs_an_exact_notice_row(self):
         self.errors(good_row())
-        (self.root / check.NOTICES).write_text("no rows here", encoding="utf-8")
-        self.assertEqual(check.missing_notices(self.root), ["ADM-0001"])
-        (self.root / check.NOTICES).write_text("ADM-0001 listed", encoding="utf-8")
+        for text in (
+            "no rows here",
+            "ADM-0001 mentioned in prose",
+            "| ADM-00012 | c | s | l | `product/x` |",
+            "| ADM-000 | c | s | l | `product/x` |",
+        ):
+            with self.subTest(text=text):
+                self.write_notices(text)
+                self.assertEqual(check.missing_notices(self.root), ["ADM-0001"])
+        self.write_notices("| ADM-0001 | c | s | l | `product/x` |")
+        self.assertEqual(check.missing_notices(self.root), [])
+
+    def test_notice_row_must_cover_each_copied_destination(self):
+        self.errors(good_row())
+        for dest in ("product/y", "product/xy", "product/x/a.rs.txt"):
+            with self.subTest(dest=dest):
+                self.write_notices(f"| ADM-0001 | c | s | l | `{dest}` |")
+                self.assertEqual(
+                    check.missing_notices(self.root), ["ADM-0001: product/x/a.rs"]
+                )
+        self.write_notices("| ADM-0001 | c | s | l | `product/x/a.rs` |")
         self.assertEqual(check.missing_notices(self.root), [])
 
     def test_unknown_keys_deny(self):
