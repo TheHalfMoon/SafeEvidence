@@ -22,8 +22,8 @@ for url in "'"$PROBE_HOST"'" "'"$PROBE_IP"'"; do
   esac
 done
 cargo fmt --all -- --check
-cargo test --offline --locked --workspace --all-targets -- --nocapture 2>&1 | grep -E "TA-03 test-binary control|^test result|^error" || true
 cargo test --offline --locked --workspace --all-targets
+cargo test --offline --locked -p safeevidence-contracts --test ta03_network_denied -- --nocapture
 cargo clippy --offline --locked --workspace --all-targets -- -D warnings
 cargo deny --offline check'
 

@@ -11,6 +11,9 @@ fn outbound_socket_is_denied_under_isolation() {
     }
     let target: SocketAddr = "1.1.1.1:443".parse().expect("literal address");
     let attempt = TcpStream::connect_timeout(&target, Duration::from_secs(10));
-    assert!(attempt.is_err(), "outbound socket succeeded under isolation");
+    assert!(
+        attempt.is_err(),
+        "outbound socket succeeded under isolation"
+    );
     println!("TA-03 test-binary control: {:?}", attempt.err());
 }

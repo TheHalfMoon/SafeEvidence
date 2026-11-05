@@ -29,7 +29,7 @@ PINNED_WORKFLOW_SHA256 = {
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.
 TA03_SCRIPT = "tools/ci/ta03_isolated.sh"
-TA03_SCRIPT_SHA256 = "620cb231aafd63909caff8c1bdbd408cf794a7e2807e62dae46e63caf9c0cbed"
+TA03_SCRIPT_SHA256 = "9e8e38bcc7320a277a21971b9bfa2bbadecd8c2c7e616a17ce5d365650746368"
 
 CHECKOUT_LINE = re.compile(r"^\s*uses:\s*actions/checkout@([^\s#]+)", re.MULTILINE)
 # Reject additions to the execution surface, not just a moving checkout tag.
