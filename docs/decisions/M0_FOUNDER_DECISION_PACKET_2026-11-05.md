@@ -73,6 +73,11 @@ GitHub API; per-file and transitive review is **not done**.
 | T17 | `maziyarpanahi/openmed` @ `8440bdac` | Apache-2.0; NOTICE present | External project with many contributors; public-license route | Span logic and tests only; NOTICE carried |
 | Crates | `rusqlite`, `tauri` closures | Per crate | Public-license route | Closure rows do not exist; `cargo deny` not yet run |
 
+Plan dependency: frozen WP-00 also lists T05, T07, T14 and T15. Omitting them here
+relies on the VS-1a scope reduction proposed in
+`docs/reviews/EGM_PLAN_CHALLENGE_2026-11-05.md` §4, which needs `plan-v1.1`. Until
+then, these rows alone do not satisfy WP-00 as frozen.
+
 Founder decision needed for all founder-owned rows: whether `TheHalfMoon` and
 `AbdulazizShehri` are the same rightsholder, and who is behind the other identities.
 The register states that a common GitHub identity is not itself a documented transfer.
