@@ -58,10 +58,14 @@ tracked separately.
 
 ## Exact-slice import admission ledger
 
-This ledger is initially EMPTY. No row in the candidate discovery table
+Product admissions are recorded and validated in
+`docs/evidence/source_admissions.json` (`tools/governance/source_admission_check.py`).
+The table below records only the G01a baseline, which holds NO_ADMISSIONS. No row
+in the candidate discovery table
 certifies redistributability or permits an automatic vendor/copy operation.
 
-Before the first imported byte, add one admission row per exact component:
+Before the first imported byte, add one admission row per exact component to the
+JSON ledger above. The columns below remain the review checklist for each row:
 
 | Admission ID | Repo | Full source SHA | Exact paths / content digests | Owner and contributor authority | Verified governing code license or separate-grant reference | Mode and compatibility analysis | Required notices / copyleft or attribution | Transitive code/native library | Model weights/tokenizers | Dataset/publication text | Terminology/assets/fonts | Export/redistribution territories and conditions | Security/test owner | State |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|

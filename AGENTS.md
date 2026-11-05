@@ -33,7 +33,8 @@ continues to require phase owner decisions; Issue #4 requires qualified
 clinical intended-use and evaluation authority; Issue #5 requires exact
 source/contributor rights, pack and release-trust decisions. These gates
 are BLOCKED for dependent clinical/product/source work. No patient data,
-models, donor sources, signed packs, production release, or P02 are admitted.
+models, signed packs, production release, or P02 are admitted. Donor sources are
+admitted only by a row in `docs/evidence/source_admissions.json`.
 
 ## EXT-02 synthetic scope extension (2026-11-05)
 
@@ -42,6 +43,8 @@ The founder extended engineering scope beyond stdlib-only G01a, as recorded in
 `product/` workspace: synthetic data only, and copied bytes only under a
 `VERIFIED_ALLOWED` row. G01a stays unchanged at the repository root. Issues #3 and #4,
 model weights, real corpora, signed packs, live fetch and release remain excluded.
+`NO_ADMISSIONS` statements in this repository describe the G01a baseline; product
+admissions are only the rows in `docs/evidence/source_admissions.json`.
 Current status: `docs/IMPLEMENTATION_LEDGER.md`.
 
 ## Authority order
