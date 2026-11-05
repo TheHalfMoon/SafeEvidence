@@ -81,7 +81,8 @@ fn independent_trials_are_not_falsely_merged() {
         &[],
     )
     .expect("independent trials pool");
-    assert_eq!(accepted, vec![result("a"), result("b")]);
+    assert_eq!(accepted.accepted, vec![result("a"), result("b")]);
+    assert!(!accepted.requires_covariance_method);
 }
 
 #[test]
@@ -89,7 +90,11 @@ fn shared_control_multi_arm_needs_known_covariance() {
     let arms = [input("t1_vs_c", "rct", "p"), input("t2_vs_c", "rct", "p")];
     assert_unit_refusal(&arms, &[]);
     let covered = arms.map(with_covariance);
-    assert!(decide_pooling(&covered, &[]).is_ok());
+    assert!(
+        decide_pooling(&covered, &[])
+            .unwrap()
+            .requires_covariance_method
+    );
 }
 
 #[test]
@@ -126,6 +131,59 @@ fn pooled_ipd_or_review_is_never_a_new_study_even_without_a_link() {
         let covered_trial = with_covariance(input("trial", "s2", "g2"));
         assert_unit_refusal(&[secondary, covered_trial], &[]);
     }
+}
+
+#[test]
+fn secondary_contribution_refused_among_three_inputs() {
+    let mut review = input("review", "s0", "g0");
+    review.kind = ContributionKind::SystematicReview;
+    assert_unit_refusal(
+        &[review, input("t1", "s1", "g1"), input("t2", "s2", "g2")],
+        &[],
+    );
+}
+
+#[test]
+fn dependence_detected_between_non_adjacent_inputs() {
+    assert_unit_refusal(
+        &[
+            input("a", "s1", "g1"),
+            input("b", "s2", "g2"),
+            input("c", "s1", "g3"),
+        ],
+        &[],
+    );
+    assert_unit_refusal(
+        &[
+            input("a", "s1", "g1"),
+            input("b", "s2", "g2"),
+            input("a", "s3", "g3"),
+        ],
+        &[],
+    );
+}
+
+#[test]
+fn lone_secondary_contribution_is_not_double_counted() {
+    let mut review = input("review", "s0", "g0");
+    review.kind = ContributionKind::SystematicReview;
+    assert!(decide_pooling(&[review], &[]).is_ok());
+}
+
+#[test]
+fn empty_covariance_reference_does_not_cover() {
+    let blank = |mut value: SynthesisInput| {
+        value.covariance = Known::Known(CovarianceRef(ScopedId {
+            scope: String::new(),
+            id: " ".into(),
+            version: 0,
+        }));
+        value
+    };
+    assert_unit_refusal(
+        &[blank(input("a", "s", "g")), blank(input("b", "s", "g"))],
+        &[],
+    );
 }
 
 #[test]

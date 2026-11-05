@@ -212,6 +212,19 @@ pub enum PoolingRefusal {
     PoolingRefusedMissingDenominator { results: Vec<ResultId> },
 }
 
+/// Accepted inputs. When `requires_covariance_method` is true they share
+/// participants, so only a method using the named covariance may pool them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PoolingDecision {
+    pub accepted: Vec<ResultId>,
+    pub requires_covariance_method: bool,
+}
+
+fn is_named_reference(reference: &CovarianceRef) -> bool {
+    !reference.0.scope.trim().is_empty() && !reference.0.id.trim().is_empty()
+}
+
 /// Node in the overlap graph; a typed tuple so strings cannot collide.
 type OverlapNode = (bool, String, String);
 
@@ -274,7 +287,7 @@ fn overlap_sets(
 pub fn decide_pooling(
     inputs: &[SynthesisInput],
     overlaps: &[OverlapLink],
-) -> Result<Vec<ResultId>, PoolingRefusal> {
+) -> Result<PoolingDecision, PoolingRefusal> {
     if inputs.is_empty() {
         return Err(PoolingRefusal::PoolingRefusedUnitOfAnalysis { results: vec![] });
     }
@@ -289,6 +302,7 @@ pub fn decide_pooling(
 
     let mut parents = overlap_sets(inputs, overlaps);
     let mut refused = BTreeSet::new();
+    let mut requires_covariance_method = false;
     for (position, first) in inputs.iter().enumerate() {
         let secondary = first.kind != ContributionKind::PrimaryStudy;
         if matches!(first.participants, Known::Unknown { .. }) || (secondary && inputs.len() > 1) {
@@ -301,16 +315,21 @@ pub fn decide_pooling(
             let overlapping = find(&mut parents, &node_a) == find(&mut parents, &node_b);
             let covered = matches!(
                 (&first.covariance, &second.covariance),
-                (Known::Known(a), Known::Known(b)) if a == b
+                (Known::Known(a), Known::Known(b)) if a == b && is_named_reference(a)
             );
-            if same_result || ((shared_study || overlapping) && !covered) {
+            let dependent = shared_study || overlapping;
+            if same_result || (dependent && !covered) {
                 refused.insert(first.result.clone());
                 refused.insert(second.result.clone());
             }
+            requires_covariance_method |= dependent;
         }
     }
     if refused.is_empty() {
-        Ok(inputs.iter().map(|input| input.result.clone()).collect())
+        Ok(PoolingDecision {
+            accepted: inputs.iter().map(|input| input.result.clone()).collect(),
+            requires_covariance_method,
+        })
     } else {
         Err(PoolingRefusal::PoolingRefusedUnitOfAnalysis {
             results: refused.into_iter().collect(),
