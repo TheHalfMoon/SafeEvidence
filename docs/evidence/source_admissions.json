@@ -174,6 +174,289 @@
           "modification": "not_copied"
         }
       ]
+    },
+    {
+      "admission_id": "ADM-0003",
+      "packet": "T03",
+      "repo": "TheHalfMoon/ottari",
+      "source_commit": "73706029849bcbe51243624e37f03a1969dc74ca",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Cargo.lock closure under product/deny.toml; bundled SQLCipher and vendored OpenSSL native code",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "crates/himsat-core/Cargo.toml",
+          "git_blob_oid": "93ac85619389b40466d5c23f52693fb30ad77a9c",
+          "bytes": 1958,
+          "dest_path": "product/crates/safeevidence-vault/Cargo.toml",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault.rs",
+          "git_blob_oid": "9a4f73f7975b001e570944d361e148084b8a5951",
+          "bytes": 20899,
+          "dest_path": "product/crates/safeevidence-vault/src/vault.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_android_keystore.rs",
+          "git_blob_oid": "aa52c69e4ff43e2109398c4029016c61e47d898a",
+          "bytes": 33028,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_android_keystore.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_apple_keychain.rs",
+          "git_blob_oid": "6fb64ea31867576af3f29184fa7ba4bc605fa380",
+          "bytes": 38383,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_apple_keychain.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_backup.rs",
+          "git_blob_oid": "94fe48e19cdadb2553a86f52ef1a6e63a33263f2",
+          "bytes": 35341,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_backup.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_backup_bootstrap.rs",
+          "git_blob_oid": "3d761b707ff60d5cd6d8541722480dc35227f595",
+          "bytes": 17302,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_backup_bootstrap.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_backup_creation.rs",
+          "git_blob_oid": "15497a756d4a1af4b4f2a558024460a097efa938",
+          "bytes": 34369,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_backup_creation.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_backup_index.rs",
+          "git_blob_oid": "863bcfe96806ac4f82095adfb08b2c9fa44c1123",
+          "bytes": 31809,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_backup_index.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_backup_packaging.rs",
+          "git_blob_oid": "b0a441d58d005fe74bfb3323711d9a08b663e2f9",
+          "bytes": 39180,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_backup_packaging.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_backup_provider.rs",
+          "git_blob_oid": "5834ca9455eea10b89bb9af93b1a03d1df66662a",
+          "bytes": 28619,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_backup_provider.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_backup_restore.rs",
+          "git_blob_oid": "89daafa658db4b6691f5811ede44be12d9333ce3",
+          "bytes": 134924,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_backup_restore.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_backup_restore_publication.rs",
+          "git_blob_oid": "bb5815d51087f451ef339ff262caceeeabc16b59",
+          "bytes": 35736,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_backup_restore_publication.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_backup_sqlcipher.rs",
+          "git_blob_oid": "2ed7eb11670588e61febb04ccd14285ed5b9a2bc",
+          "bytes": 9664,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_backup_sqlcipher.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_backup_verify.rs",
+          "git_blob_oid": "f423c04fc372bf4dd2b146e9412485b35ff6c796",
+          "bytes": 30493,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_backup_verify.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_blob.rs",
+          "git_blob_oid": "4d341cb14597745c6a23ca2901e01cb2c1bb4915",
+          "bytes": 23161,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_blob.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_deletion.rs",
+          "git_blob_oid": "755130a04af9d149421a76e654768099891b2c66",
+          "bytes": 43934,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_deletion.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_freshness.rs",
+          "git_blob_oid": "c45308872155f0737c140a7508f48edca4f7040a",
+          "bytes": 10987,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_freshness.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_io.rs",
+          "git_blob_oid": "f49c225d084f85f3d91e8f5a7b688bb34605685e",
+          "bytes": 17941,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_io.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_keys.rs",
+          "git_blob_oid": "0a722f73223abccb0758884aae2421f49784648a",
+          "bytes": 25509,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_keys.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_lease.rs",
+          "git_blob_oid": "7268fe2a885056ad0427c6faa48188c795666c48",
+          "bytes": 16391,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_lease.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_linux_secret_service.rs",
+          "git_blob_oid": "7e31aca618a40fdbcf95247495964c66a6968038",
+          "bytes": 29226,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_linux_secret_service.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_manifest.rs",
+          "git_blob_oid": "e0a7ae1c750552c6c5c9e4c3aa545ab14069469f",
+          "bytes": 40042,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_manifest.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_migration.rs",
+          "git_blob_oid": "024c6b127558d3724e6edc3c32816f333125dee1",
+          "bytes": 11694,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_migration.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_nonce.rs",
+          "git_blob_oid": "b25171c918bd7c7fc9d757f51870b3fa43fb4607",
+          "bytes": 23133,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_nonce.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_protector.rs",
+          "git_blob_oid": "f5665413c9d0e7649d20bc9044857db1c21ca6b6",
+          "bytes": 17877,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_protector.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_recovery.rs",
+          "git_blob_oid": "ce824f6548f2f53774de172864ecc6405c7f0f15",
+          "bytes": 28921,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_recovery.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_restore.rs",
+          "git_blob_oid": "2b08831de452e6028f774b4257552dce174f7070",
+          "bytes": 23016,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_restore.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_rotation.rs",
+          "git_blob_oid": "53df695159a593806cc8db8bd4339065c41ec05e",
+          "bytes": 141696,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_rotation.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_sqlcipher.rs",
+          "git_blob_oid": "bd2660b8ea4ecc758e07e66f4a1af5146a0040a2",
+          "bytes": 70097,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_sqlcipher.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/src/vault_windows_dpapi.rs",
+          "git_blob_oid": "2ea4466d0cd4516fb58a58ce45e02653d6a90df7",
+          "bytes": 35389,
+          "dest_path": "product/crates/safeevidence-vault/src/vault_windows_dpapi.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/tests/b005d_journal_kill.rs",
+          "git_blob_oid": "e0922d21e6f6802a4944c8666815273edea89a0d",
+          "bytes": 9705,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/himsat-core/tests/b204_recovery_negative.rs",
+          "git_blob_oid": "47ce708b13d0cab99de45b78dbad8faeaaa36651",
+          "bytes": 5106,
+          "dest_path": "product/crates/safeevidence-vault/tests/b204_recovery_negative.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/tests/b205_crypto_adversarial.rs",
+          "git_blob_oid": "d9e98e62e30384c2d5a01caff7b6afd312961d8c",
+          "bytes": 14606,
+          "dest_path": "product/crates/safeevidence-vault/tests/b205_crypto_adversarial.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/tests/b306_plaintext_spill.rs",
+          "git_blob_oid": "edbef493d7701b9907502e294e0ff8f2b2d96010",
+          "bytes": 13050,
+          "dest_path": "product/crates/safeevidence-vault/tests/b306_plaintext_spill.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/tests/b307_copy_verify_publish.rs",
+          "git_blob_oid": "1e9cb1392bddc8eb380ff077a793892adad8946c",
+          "bytes": 12550,
+          "dest_path": "product/crates/safeevidence-vault/tests/b307_copy_verify_publish.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-core/tests/b405_protector_fail_closed.rs",
+          "git_blob_oid": "d27f26c4e72c636a94de2525c25d5e49488a1988",
+          "bytes": 6232,
+          "dest_path": "product/crates/safeevidence-vault/tests/b405_protector_fail_closed.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/himsat-events/src/lib.rs",
+          "git_blob_oid": "d539558987c688d6e5d66b71c97c0848eac3a9cc",
+          "bytes": 18650,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/himsat-core/src/lib.rs",
+          "git_blob_oid": "6014de536fdc140c962e1d81b0fda4b9a8c882d5",
+          "bytes": 6591,
+          "dest_path": "product/crates/safeevidence-vault/src/lib.rs",
+          "modification": "adapted"
+        }
+      ]
     }
   ]
 }
