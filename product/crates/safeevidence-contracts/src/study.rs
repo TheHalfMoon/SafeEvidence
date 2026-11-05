@@ -1,7 +1,7 @@
 //! Study/report/result identities and the double-count guard
 //! (`docs/P00_STUDY_INDEPENDENCE_CONTRACT.md`). A report is never a study.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +20,14 @@ pub struct ScopedId {
     pub scope: String,
     pub id: String,
     pub version: u32,
+}
+
+impl ScopedId {
+    /// The same entity at any version. Independence never depends on a version.
+    #[must_use]
+    pub fn same_entity(&self, other: &Self) -> bool {
+        self.scope == other.scope && self.id == other.id
+    }
 }
 
 macro_rules! typed_id {
@@ -146,6 +154,7 @@ impl OutcomeReconciliation {
                 registered.definition != self.reported.definition
                     || registered.timepoint != self.reported.timepoint
                     || registered.unit != self.reported.unit
+                    || registered.method != self.reported.method
             }
             Known::Unknown { .. } => true,
         }
@@ -158,11 +167,10 @@ pub enum OverlapState {
     Confirmed,
     Possible,
     Unknown,
-    /// Independently established as non-overlapping.
-    Excluded,
 }
 
-/// Declared participant overlap between two contributions to a synthesis.
+/// Declared participant overlap. All results named under one `group`, by any
+/// of its links, are treated as sharing participants.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OverlapLink {
@@ -192,9 +200,22 @@ pub enum PoolingRefusal {
     PoolingRefusedMissingDenominator { results: Vec<ResultId> },
 }
 
+fn shares_declared_group(
+    first: &ResultId,
+    second: &ResultId,
+    members: &BTreeMap<String, Vec<&ResultId>>,
+) -> bool {
+    members.values().any(|group| {
+        group.iter().any(|member| member.0.same_entity(&first.0))
+            && group.iter().any(|member| member.0.same_entity(&second.0))
+    })
+}
+
 /// Pooled inputs need one independent contribution per participant group, or
-/// known covariance for those that share participants. Otherwise refuse;
-/// narrative synthesis remains available to the caller.
+/// one shared covariance reference for those that share participants. Otherwise
+/// refuse; narrative synthesis remains available to the caller. This compares
+/// covariance references only: whether a reference truly covers the structure
+/// belongs to the statistical method that consumes it.
 ///
 /// # Errors
 /// Returns the refusal naming every affected result. Empty input is refused
@@ -208,11 +229,19 @@ pub fn decide_pooling(
     }
     let missing: Vec<ResultId> = inputs
         .iter()
-        .filter(|input| matches!(input.denominator, Known::Unknown { .. }))
+        .filter(|input| !matches!(input.denominator, Known::Known(total) if total > 0))
         .map(|input| input.result.clone())
         .collect();
     if !missing.is_empty() {
         return Err(PoolingRefusal::PoolingRefusedMissingDenominator { results: missing });
+    }
+
+    let mut members: BTreeMap<String, Vec<&ResultId>> = BTreeMap::new();
+    for link in overlaps {
+        let key = format!("{}\0{}", link.group.0.scope, link.group.0.id);
+        let group = members.entry(key).or_default();
+        group.push(&link.first);
+        group.push(&link.second);
     }
 
     let mut refused = BTreeSet::new();
@@ -221,25 +250,18 @@ pub fn decide_pooling(
             refused.insert(first.result.clone());
         }
         for second in &inputs[position + 1..] {
-            let shared_study = first.study == second.study;
+            let same_result = first.result.0.same_entity(&second.result.0);
+            let shared_study = first.study.0.same_entity(&second.study.0);
             let shared_group = matches!(
                 (&first.participants, &second.participants),
-                (Known::Known(a), Known::Known(b)) if a == b
+                (Known::Known(a), Known::Known(b)) if a.0.same_entity(&b.0)
             );
-            let declared = overlaps.iter().any(|link| {
-                link.state != OverlapState::Excluded
-                    && ((link.first == first.result && link.second == second.result)
-                        || (link.first == second.result && link.second == first.result))
-            });
-            let excluded = overlaps.iter().any(|link| {
-                link.state == OverlapState::Excluded
-                    && ((link.first == first.result && link.second == second.result)
-                        || (link.first == second.result && link.second == first.result))
-            });
-            let dependent = shared_group || declared || (shared_study && !excluded);
-            let covered = matches!(first.covariance, Known::Known(_))
-                && matches!(second.covariance, Known::Known(_));
-            if dependent && !covered {
+            let declared = shares_declared_group(&first.result, &second.result, &members);
+            let covered = matches!(
+                (&first.covariance, &second.covariance),
+                (Known::Known(a), Known::Known(b)) if a.0.same_entity(&b.0)
+            );
+            if same_result || ((shared_study || shared_group || declared) && !covered) {
                 refused.insert(first.result.clone());
                 refused.insert(second.result.clone());
             }

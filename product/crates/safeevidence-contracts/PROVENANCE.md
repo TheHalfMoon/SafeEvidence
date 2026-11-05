@@ -10,6 +10,7 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
 - `src/lib.rs` is SafeEvidence-written apart from `AUTHORITY_SCHEMA_VERSION` and its doc
   comment, copied from the donor's `lib.rs` (listed in the row, outside the frozen T01 pins).
 - Not copied: three pinned `medscale-core` tests, which need donor modules outside T01.
-- `src/study.rs` and `src/assurance.rs` are SafeEvidence-written from the P00 contracts
-  (GREENFIELD_JUSTIFIED in the transplant matrix §5).
-- Not yet done: the rights and publication fields required by T01's adaptation.
+- `src/study.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED, transplant matrix §5).
+  `src/assurance.rs` is SafeEvidence-written; it encodes the P00 contract vocabulary directly.
+- Not yet done: the rights and publication fields required by T01's adaptation;
+  `AnswerProofManifest`, `SynthesisInputDecision`, `ReviewIncludedStudyLink`, `ReportVersionLink`.

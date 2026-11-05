@@ -19,7 +19,7 @@ fn parses<T: DeserializeOwned>(wire: &str) -> bool {
 }
 
 #[test]
-fn wire_vocabulary_is_exactly_the_contract() {
+fn every_contract_wire_name_parses() {
     for wire in ["RETRIEVE_EVIDENCE", "USE_TOOL", "REQUEST_CONTEXT"] {
         assert!(parses::<ControlAction>(wire), "{wire}");
     }
@@ -97,8 +97,6 @@ fn proof_transitions_are_exactly_the_allowed_set() {
         (VerifiedUncommitted, Rejected),
         (Committed, CurrentlyInvalidated),
         (Committed, CurrentnessUnknown),
-        (CurrentnessUnknown, Committed),
-        (CurrentnessUnknown, CurrentlyInvalidated),
     ];
     for from in STATES {
         for to in STATES {
@@ -112,14 +110,42 @@ fn proof_transitions_are_exactly_the_allowed_set() {
 }
 
 #[test]
-fn nothing_reaches_committed_without_verification() {
+fn nothing_reaches_committed_except_from_verified() {
     for from in STATES {
-        if from.may_transition_to(ProofState::Committed) {
-            assert!(matches!(
-                from,
-                ProofState::VerifiedUncommitted | ProofState::CurrentnessUnknown
-            ));
-        }
+        assert_eq!(
+            from.may_transition_to(ProofState::Committed),
+            from == ProofState::VerifiedUncommitted,
+            "{from:?}"
+        );
+    }
+}
+
+#[test]
+fn stale_proof_cannot_regain_assured_status() {
+    for to in STATES {
+        assert!(
+            !ProofState::CurrentnessUnknown.may_transition_to(to),
+            "{to:?}"
+        );
+    }
+}
+
+#[test]
+fn proof_state_wire_names_match_the_contract() {
+    for (state, wire) in [
+        (ProofState::DraftPrivate, "DRAFT_PRIVATE"),
+        (ProofState::CandidateFrozen, "CANDIDATE_FROZEN"),
+        (ProofState::Verifying, "VERIFYING"),
+        (ProofState::VerifiedUncommitted, "VERIFIED_UNCOMMITTED"),
+        (ProofState::Committed, "COMMITTED"),
+        (ProofState::Rejected, "REJECTED"),
+        (ProofState::CurrentlyInvalidated, "CURRENTLY_INVALIDATED"),
+        (ProofState::CurrentnessUnknown, "CURRENTNESS_UNKNOWN"),
+    ] {
+        assert_eq!(
+            serde_json::to_string(&state).unwrap(),
+            format!("\"{wire}\"")
+        );
     }
 }
 

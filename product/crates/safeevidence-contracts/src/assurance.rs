@@ -72,7 +72,8 @@ pub enum ProofState {
 
 impl ProofState {
     /// The contract's state machine. Post-commit states change current
-    /// validity only; historical bytes and the manifest stay unchanged.
+    /// validity only; historical bytes and the manifest stay unchanged. A
+    /// proof cannot regain assured status: requalifying means a new proof.
     #[must_use]
     pub const fn may_transition_to(self, next: Self) -> bool {
         matches!(
@@ -84,10 +85,6 @@ impl ProofState {
                 | (
                     Self::Committed,
                     Self::CurrentlyInvalidated | Self::CurrentnessUnknown
-                )
-                | (
-                    Self::CurrentnessUnknown,
-                    Self::Committed | Self::CurrentlyInvalidated
                 )
         )
     }

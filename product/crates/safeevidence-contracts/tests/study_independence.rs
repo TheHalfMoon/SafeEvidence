@@ -60,6 +60,8 @@ fn assert_unit_refusal(inputs: &[SynthesisInput], overlaps: &[OverlapLink]) {
 fn reports_of_one_rct_are_not_independent_studies() {
     for pair in [
         ("protocol", "primary"),
+        ("registry", "primary"),
+        ("abstract", "primary"),
         ("preprint", "primary"),
         ("primary", "follow_up"),
         ("primary", "correction"),
@@ -72,7 +74,7 @@ fn reports_of_one_rct_are_not_independent_studies() {
 }
 
 #[test]
-fn different_trials_with_matching_titles_are_not_falsely_merged() {
+fn independent_trials_are_not_falsely_merged() {
     let accepted = decide_pooling(
         &[input("a", "trial_a", "pa"), input("b", "trial_b", "pb")],
         &[],
@@ -140,19 +142,84 @@ fn review_plus_included_trial_refused_even_when_overlap_only_possible() {
 }
 
 #[test]
-fn excluded_overlap_within_one_study_allows_disjoint_cohorts() {
-    let inputs = [
-        input("north", "registry", "pn"),
-        input("south", "registry", "ps"),
-    ];
-    assert_unit_refusal(&inputs, &[]);
-    assert!(
-        decide_pooling(
-            &inputs,
-            &[overlap("north", "south", OverlapState::Excluded)]
-        )
-        .is_ok()
+fn duplicate_result_never_pools_even_with_covariance() {
+    assert_unit_refusal(&[input("a", "s1", "g1"), input("a", "s2", "g2")], &[]);
+    let same = with_covariance(input("a", "s", "g"));
+    assert_unit_refusal(&[same.clone(), same], &[]);
+}
+
+#[test]
+fn different_covariance_references_do_not_cover_shared_participants() {
+    let mut first = input("a", "s", "g");
+    let mut second = input("b", "s", "g");
+    first.covariance = Known::Known(CovarianceRef(sid("c1")));
+    second.covariance = Known::Known(CovarianceRef(sid("c2")));
+    assert_unit_refusal(&[first, second], &[]);
+}
+
+#[test]
+fn one_sided_covariance_does_not_cover() {
+    assert_unit_refusal(
+        &[with_covariance(input("a", "s", "g")), input("b", "s", "g")],
+        &[],
     );
+}
+
+#[test]
+fn version_bump_does_not_make_a_new_study_or_group() {
+    let mut later = input("b", "s", "g");
+    later.study.0.version = 2;
+    if let Known::Known(group) = &mut later.participants {
+        group.0.version = 2;
+    }
+    assert_unit_refusal(&[input("a", "s", "g"), later], &[]);
+    let mut other_study_same_group = input("b", "other", "g");
+    if let Known::Known(group) = &mut other_study_same_group.participants {
+        group.0.version = 2;
+    }
+    assert_unit_refusal(&[input("a", "s", "g"), other_study_same_group], &[]);
+}
+
+#[test]
+fn shared_participants_across_studies_refused() {
+    assert_unit_refusal(&[input("a", "s1", "g"), input("b", "s2", "g")], &[]);
+}
+
+#[test]
+fn overlap_link_applies_in_either_direction() {
+    let inputs = [input("a", "s1", "g1"), input("b", "s2", "g2")];
+    assert_unit_refusal(&inputs, &[overlap("a", "b", OverlapState::Possible)]);
+    assert_unit_refusal(&inputs, &[overlap("b", "a", OverlapState::Possible)]);
+}
+
+#[test]
+fn overlap_group_reaches_results_through_an_absent_member() {
+    assert_unit_refusal(
+        &[input("a", "s1", "g1"), input("c", "s2", "g2")],
+        &[
+            overlap("a", "b", OverlapState::Confirmed),
+            overlap("b", "c", OverlapState::Confirmed),
+        ],
+    );
+}
+
+#[test]
+fn overlap_links_on_other_results_do_not_block_independent_inputs() {
+    let accepted = decide_pooling(
+        &[input("a", "s1", "g1"), input("c", "s2", "g2")],
+        &[overlap("x", "y", OverlapState::Confirmed)],
+    );
+    assert!(accepted.is_ok());
+}
+
+#[test]
+fn zero_denominator_is_treated_as_missing() {
+    let mut zero = input("a", "s1", "g1");
+    zero.denominator = Known::Known(0);
+    assert!(matches!(
+        decide_pooling(&[zero, input("b", "s2", "g2")], &[]),
+        Err(PoolingRefusal::PoolingRefusedMissingDenominator { .. })
+    ));
 }
 
 #[test]
@@ -179,6 +246,20 @@ fn switched_outcome_keeps_discrepancy() {
         reported: definition("mortality", "12m"),
     };
     assert!(unregistered.has_discrepancy());
+    let mut other_unit = definition("mortality", "12m");
+    other_unit.unit = Known::Known("deaths per 1000".into());
+    let unit_changed = OutcomeReconciliation {
+        registered: Known::Known(definition("mortality", "12m")),
+        reported: other_unit,
+    };
+    assert!(unit_changed.has_discrepancy());
+    let mut other_method = definition("mortality", "12m");
+    other_method.method = Known::Known("adjudicated".into());
+    let method_changed = OutcomeReconciliation {
+        registered: Known::Known(definition("mortality", "12m")),
+        reported: other_method,
+    };
+    assert!(method_changed.has_discrepancy());
 }
 
 #[test]
