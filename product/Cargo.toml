@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/safeevidence-contracts", "crates/safeevidence-vault", "crates/safeevidence-release"]
+members = ["crates/safeevidence-contracts", "crates/safeevidence-vault", "crates/safeevidence-release", "crates/safeevidence-ask"]
 
 [workspace.package]
 version = "0.0.0"
