@@ -47,6 +47,9 @@ jobs:
       - name: Install cargo-deny
         shell: bash
         run: cargo +1.98.1 install cargo-deny --version 0.20.2 --locked
+      - name: Check TA-29 dependency denial
+        shell: bash
+        run: python tools/ci/ta29_dependency_denial.py
       - name: Fetch advisory database
         shell: bash
         working-directory: product
