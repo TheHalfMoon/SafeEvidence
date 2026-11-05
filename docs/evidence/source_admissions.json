@@ -163,15 +163,15 @@
           "source_path": "crates/medscale-core/src/release_sbom.rs",
           "git_blob_oid": "97f5165b20db16f1bd3212e594ba8fa672e8300f",
           "bytes": 17423,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-release/src/lib.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-core/tests/release_sbom_054.rs",
           "git_blob_oid": "79bb1bfbfc99bc470227d5deef96e72b73501f06",
           "bytes": 9131,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-release/tests/release_sbom_054.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "deny.toml",

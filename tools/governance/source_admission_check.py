@@ -17,6 +17,7 @@ import sys
 from pathlib import Path, PurePosixPath
 
 MANIFEST = "docs/evidence/source_admissions.json"
+NOTICES = "THIRD_PARTY_NOTICES.md"
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 STATES = {"CANDIDATE", "RIGHTS_UNKNOWN", "VERIFIED_ALLOWED", "REFERENCE_ONLY", "DENIED"}
 BASES = {"FOUNDER_OWNED", "PUBLIC_LICENSE", "SEPARATE_PERMISSION_VERIFIED"}
@@ -200,11 +201,43 @@ def validate(root: Path, relative: str = MANIFEST) -> list[str]:
     return errors
 
 
+def notice_rows(text: str) -> dict[str, list[str]]:
+    """Exact `| ADM-nnnn | ... | `destination` |` table rows, with their destinations."""
+    rows: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) == 5 and re.fullmatch(r"ADM-[0-9]{4}", cells[0]):
+            rows[cells[0]] = re.findall(r"`([^`]+)`", cells[4])
+    return rows
+
+
+def missing_notices(root: Path, relative: str = MANIFEST) -> list[str]:
+    """TA-02: each admitted row needs a notices row covering each copied file's destination."""
+    document = json.loads((root / relative).read_text(encoding="utf-8"))
+    rows = notice_rows((root / NOTICES).read_text(encoding="utf-8"))
+    problems = []
+    for row in document["admissions"]:
+        if row["state"] != "VERIFIED_ALLOWED":
+            continue
+        identifier = row["admission_id"]
+        if identifier not in rows:
+            problems.append(identifier)
+            continue
+        for entry in row["files"]:
+            dest = entry["dest_path"]
+            if dest and not any(dest == d or dest.startswith(d.rstrip("/") + "/") for d in rows[identifier]):
+                problems.append(f"{identifier}: {dest}")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=".")
     args = parser.parse_args()
-    errors = validate(Path(args.root).resolve())
+    root = Path(args.root).resolve()
+    errors = validate(root)
+    if not errors:
+        errors = [f"{item} missing from {NOTICES}" for item in missing_notices(root)]
     for error in errors:
         print(f"FAIL: {error}")
     if errors:

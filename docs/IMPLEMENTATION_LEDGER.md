@@ -10,12 +10,12 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `506f172f636f320d41379ba689627b0832d7a83c` |
+| `main` at last update | `02e551d2912f4921fda88fc317278df4695ebe93` |
 | Milestone | M0, in progress |
 | Active packet | WP-00 and WP-01 |
-| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml`), ADM-0003 (T03), ADM-0004 (T17 fixture); G01a baseline holds `NO_ADMISSIONS` |
-| Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 not claimed ; T03 vault slice, TA-05 not claimed |
-| Next executable task | T11 SBOM generator (TA-02); TA-29 script; first headless Ask path |
+| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture); G01a baseline holds `NO_ADMISSIONS` |
+| Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3` ; T03 vault slice, TA-05 not claimed |
+| Next executable task | Rows for T12, T13, T30, T36; first headless Ask path |
 
 Required checks on `main` (founder decision, 2026-11-05): `foundation-documents`, `preentry structure`, `synthetic-only`
 and `product`, the last three on Ubuntu, Windows and macOS.
@@ -24,7 +24,7 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 
 | Milestone | Status | Blocked by |
 |---|---|---|
-| M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2` | TA-02, TA-29; TA-04 (awaiting review and CI, narrowed by `plan-v1.3`); rows for T12, T13, T30, T36 |
+| M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED` | TA-02 (awaiting review and CI); rows for T12, T13, T30, T36 |
 | M1 VS-1 (synthetic) | `NOT_STARTED` | M0 |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
@@ -49,8 +49,10 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 
 **Sockets in the core's tree:** TA-29's named HTTP clients are absent, but `mio` and `socket2` are present through
 `tokio` and `zbus`, for the Linux Secret Service protector in T03. Architecture §2 says the core opens no sockets, and
-TA-29 does not name these crates. Resolve before M1 exit: move the protector out of the core process, or amend the rule
-for local D-Bus only, with TA-21 evidence.
+TA-29 does not name these crates. `zbus` also contains TCP transport code, so a local-only rule would need an address
+restriction. Resolve before M1 exit: move the protector out of the core process, or amend the rule with TA-21 evidence.
+TA-29's tree check covers normal dependencies. Build-only crates such as `cc` and `openssl-src` are covered by the
+`cargo deny` bans.
 
 **Owed before M1 exit (`plan-v1.3`):** append-only amendment lineage and source-byte immutability, each tested
 against the real vault-backed store. The guard's fixtures test declared structure only, not extraction or statistics.
