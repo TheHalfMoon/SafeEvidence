@@ -120,6 +120,13 @@
           "bytes": 1096,
           "dest_path": null,
           "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/lib.rs",
+          "git_blob_oid": "220fee44b26dc70536967d56d49d02d67d0b272b",
+          "bytes": 2174,
+          "dest_path": "product/crates/safeevidence-contracts/src/lib.rs",
+          "modification": "adapted"
         }
       ]
     },
