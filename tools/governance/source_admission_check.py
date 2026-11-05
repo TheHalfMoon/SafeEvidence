@@ -17,6 +17,7 @@ import sys
 from pathlib import Path, PurePosixPath
 
 MANIFEST = "docs/evidence/source_admissions.json"
+NOTICES = "THIRD_PARTY_NOTICES.md"
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 STATES = {"CANDIDATE", "RIGHTS_UNKNOWN", "VERIFIED_ALLOWED", "REFERENCE_ONLY", "DENIED"}
 BASES = {"FOUNDER_OWNED", "PUBLIC_LICENSE", "SEPARATE_PERMISSION_VERIFIED"}
@@ -200,11 +201,25 @@ def validate(root: Path, relative: str = MANIFEST) -> list[str]:
     return errors
 
 
+def missing_notices(root: Path, relative: str = MANIFEST) -> list[str]:
+    """TA-02: every admitted row must be listed in the public notices file."""
+    document = json.loads((root / relative).read_text(encoding="utf-8"))
+    notices = (root / NOTICES).read_text(encoding="utf-8")
+    return [
+        row["admission_id"]
+        for row in document["admissions"]
+        if row["state"] == "VERIFIED_ALLOWED" and row["admission_id"] not in notices
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=".")
     args = parser.parse_args()
-    errors = validate(Path(args.root).resolve())
+    root = Path(args.root).resolve()
+    errors = validate(root)
+    if not errors:
+        errors = [f"{item} missing from {NOTICES}" for item in missing_notices(root)]
     for error in errors:
         print(f"FAIL: {error}")
     if errors:

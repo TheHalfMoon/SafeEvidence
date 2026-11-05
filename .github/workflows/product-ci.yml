@@ -50,6 +50,10 @@ jobs:
       - name: Check TA-29 dependency denial
         shell: bash
         run: python tools/ci/ta29_dependency_denial.py
+      - name: Generate and check the TA-02 SBOM
+        shell: bash
+        working-directory: product
+        run: cargo run --offline --locked -p safeevidence-release --bin sbom -- "$RUNNER_TEMP/sbom.cdx.json"
       - name: Fetch advisory database
         shell: bash
         working-directory: product

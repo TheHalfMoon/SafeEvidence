@@ -201,6 +201,13 @@ class AdmissionTests(unittest.TestCase):
         )
         self.assertTrue(check.validate(self.root))
 
+    def test_admitted_row_must_appear_in_notices(self):
+        self.errors(good_row())
+        (self.root / check.NOTICES).write_text("no rows here", encoding="utf-8")
+        self.assertEqual(check.missing_notices(self.root), ["ADM-0001"])
+        (self.root / check.NOTICES).write_text("ADM-0001 listed", encoding="utf-8")
+        self.assertEqual(check.missing_notices(self.root), [])
+
     def test_unknown_keys_deny(self):
         self.assertTrue(self.errors(self.mutated(extra="x")))
 

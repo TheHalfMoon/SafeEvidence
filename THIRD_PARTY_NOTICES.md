@@ -71,13 +71,13 @@ distribution must wait. No source is silently relicensed into Apache-2.0.
 | Admission | Component | Source | License | Destination |
 |---|---|---|---|---|
 | ADM-0001 | T01 contracts | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/crates/safeevidence-contracts` |
-| ADM-0002 | T11 `deny.toml` (adapted) | same revision | Apache-2.0 | `product/deny.toml` |
+| ADM-0002 | T11 `deny.toml` and SBOM generator (adapted) | same revision | Apache-2.0 | `product/deny.toml`, `product/crates/safeevidence-release` |
 | ADM-0003 | T03 private vault | `TheHalfMoon/ottari` @ `73706029849bcbe51243624e37f03a1969dc74ca` | Apache-2.0 | `product/crates/safeevidence-vault` |
 | ADM-0004 | T17 span fixture | `maziyarpanahi/openmed` @ `8440bdac59621981372d318f43c8bfb2d6625b86` | Apache-2.0 | `product/crates/safeevidence-contracts/tests/fixtures/t17` |
 
 Runtime Rust dependencies keep their own licenses. `product/Cargo.lock` is the exact
-closure; `cargo deny check` enforces the allowlist in `product/deny.toml` in CI. A full
-SBOM (TA-02) is not generated yet.
+closure; `cargo deny check` enforces the allowlist in `product/deny.toml` in CI. A
+CycloneDX SBOM is generated and checked in CI (TA-02).
 
 Native code built into the vault through its Rust dependencies, each under its own license:
 SQLCipher (BSD-style, via `libsqlite3-sys`) and OpenSSL (Apache-2.0, via `openssl-src`).
