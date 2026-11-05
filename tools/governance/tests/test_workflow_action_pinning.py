@@ -24,8 +24,12 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/p00-foundation-docs.yml": "ffc5b4246ee09dad96caed7cf759e8565fe0e80b2e6ffe8642cfa6ad2d1b8db6",
     ".github/workflows/p01-preentry-governance.yml": "efe37c703ed5c24ec230e355ef2579070507d626b00f6f17f93a418ebe6dbfab",
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
-    ".github/workflows/product-ci.yml": "335a52fe1b087bb4dea51cb7febc93a15b5e3968b017bf55f22dd57e78c193a4",
+    ".github/workflows/product-ci.yml": "bec53845bbca9fc7d952d70b08d58155e46bd51fa3d7192aff3c4bfbb0a928db",
 }
+
+# The TA-03 gate runs from this script, so it is pinned like a workflow.
+TA03_SCRIPT = "tools/ci/ta03_isolated.sh"
+TA03_SCRIPT_SHA256 = "fa83a8a0b1abc085d5cb8e3ca0be5dbd2ff401d5cdf3c1e707aa792fb230c22b"
 
 CHECKOUT_LINE = re.compile(r"^\s*uses:\s*actions/checkout@([^\s#]+)", re.MULTILINE)
 # Reject additions to the execution surface, not just a moving checkout tag.
@@ -83,6 +87,10 @@ class WorkflowCheckoutPinTests(unittest.TestCase):
                     workflow_content_digest(source),
                     "Any workflow change requires separately reviewed digest re-pinning",
                 )
+
+    def test_ta03_gate_script_matches_pinned_revision(self):
+        source = (ROOT / TA03_SCRIPT).read_text(encoding="utf-8")
+        self.assertEqual(TA03_SCRIPT_SHA256, workflow_content_digest(source))
 
     def test_semantic_yaml_escape_bypass_fails_frozen_workflow_digest(self):
         workflow = WORKFLOWS[0]

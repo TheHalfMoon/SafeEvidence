@@ -47,6 +47,12 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 
 ## Known defects
 
+**TA-03:** Linux (empty network namespace) and macOS (sandbox profile) run all checks under OS-level denial.
+Windows blocks named programs only, because default-deny outbound lost the hosted runner. Its build and build
+scripts run before the block, and unlisted programs are not blocked. TA-03 and A4 require isolation on all three
+OSes. The founder accepted the Windows form for now (`docs/plan/PLAN_AMENDMENT_V1_2.md`), to be revisited before
+any release. TA-03 passes only when its controls pass in CI on all three OSes on the exact commit.
+
 **Sequencing breach:** T03 merged before TA-03 and TA-04 passed, ahead of the frozen WP-01 and WP-02
 exits it depends on. Publication cannot be undone. WP-01, WP-02, M0 and M1 exit stay open until both pass.
 
