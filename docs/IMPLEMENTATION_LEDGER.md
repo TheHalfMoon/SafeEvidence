@@ -14,7 +14,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | Milestone | M0, in progress |
 | Active packet | WP-00 and WP-01 |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml`); G01a baseline holds `NO_ADMISSIONS` |
-| Product code | T01 contracts in `product/`; WP-02 additions not started |
+| Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 not claimed |
 | Next executable task | WP-02 Study/Report/Proof types; T11 SBOM generator (TA-02); TA-29 script |
 
 ## Milestones
