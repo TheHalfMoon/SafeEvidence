@@ -269,6 +269,15 @@ pub struct SynthesisInput {
     pub result: ResultId,
     pub study: StudyId,
     pub kind: ContributionKind,
+    /// Never used for identity: matching titles do not merge studies.
+    pub title: String,
+    pub report_kind: Known<ReportVersionKind>,
+    pub population: Known<AnalysisPopulation>,
+    pub timepoint: Known<String>,
+    /// Arms this contribution draws on. A shared arm means shared participants.
+    pub arms: Vec<StudyArmId>,
+    /// For a review or pooled IPD: the studies it contains.
+    pub contains: Vec<StudyId>,
     /// The participants this contribution draws on.
     pub participants: Known<ParticipantOverlapGroupId>,
     pub denominator: Known<u64>,
@@ -388,7 +397,11 @@ pub fn decide_pooling(
                 (&first.covariance, &second.covariance),
                 (Known::Known(a), Known::Known(b)) if a == b && is_named_reference(a)
             );
-            let dependent = shared_study || overlapping;
+            let shared_arm = first
+                .arms
+                .iter()
+                .any(|a| second.arms.iter().any(|b| a.0.same_entity(&b.0)));
+            let dependent = shared_study || overlapping || shared_arm;
             if same_result || (dependent && !covered) {
                 refused.insert(first.result.clone());
                 refused.insert(second.result.clone());

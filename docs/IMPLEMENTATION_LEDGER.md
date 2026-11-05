@@ -24,7 +24,7 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 
 | Milestone | Status | Blocked by |
 |---|---|---|
-| M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2` | TA-02, TA-29; TA-04 (pending CI, narrowed by `plan-v1.3`); rows for T12, T13, T30, T36 |
+| M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2` | TA-02, TA-29; TA-04 (awaiting review and CI, narrowed by `plan-v1.3`); rows for T12, T13, T30, T36 |
 | M1 VS-1 (synthetic) | `NOT_STARTED` | M0 |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
@@ -46,6 +46,9 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 | `cargo fmt`, `cargo clippy` locally | **Not run.** Local 1.97.1 toolchain lacks `cargo-fmt.exe` and `cargo-clippy.exe`; hosted CI covers both |
 
 ## Known defects
+
+**Owed before M1 exit (`plan-v1.3`):** append-only amendment lineage and source-byte immutability, each tested
+against the real vault-backed store. The guard's fixtures test declared structure only, not extraction or statistics.
 
 **TA-03:** Linux (empty network namespace) and macOS (sandbox profile) run all checks under OS-level denial.
 Windows blocks named programs only, because default-deny outbound lost the hosted runner. Its build and build

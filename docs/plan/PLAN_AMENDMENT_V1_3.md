@@ -17,9 +17,15 @@ The donor's overwrite stub always failed, so nothing is lost by having no overwr
 
 ## Obligations this creates
 
-- Append-only amendment lineage must be tested against the real vault-backed authority store before M1 exit.
-- A record-semantics doctor check is owed by WP-18 if a doctor surface ships.
+Tracked in `docs/IMPLEMENTATION_LEDGER.md`:
 
-## Limits
+- **WP-03 or WP-12, before M1 exit:** a test against the real vault-backed store shows that an amendment appends
+  a record and leaves the prior assertion's bytes unchanged. No such store exists yet. `amendment_record_round_trips_with_both_lineage_ids` covers shape only.
+- **WP-03 or WP-12, before M1 exit:** a test shows stored source bytes cannot be replaced under an existing ID. Today's
+  test covers digest checks only, and a record with new bytes and a recomputed digest still validates.
+- **WP-18:** a record-semantics doctor check is required if a doctor surface ships.
 
-This narrows only those two tests. Every other TA-04 clause is unchanged, and nothing here passes TA-04 by itself.
+## Status of this amendment
+
+An engineering amendment, without a separate founder decision. It narrows exactly two tests and changes one by
+rewriting it, as stated above. Every other TA-04 clause is unchanged, and nothing here passes TA-04 by itself.

@@ -4,8 +4,9 @@
 
 use safeevidence_contracts::AUTHORITY_SCHEMA_VERSION;
 use safeevidence_contracts::objects::{
-    AuthorityScopeId, IdentityAssertion, MedicalTime, MissingnessKind, ObjectHeader, OpaqueId,
-    RealmId, TimePrecision, find_unresolved_identity_candidates,
+    AmendmentKind, AmendmentRecord, AuthorityScopeId, IdentityAssertion, MedicalTime,
+    MissingnessKind, ObjectHeader, OpaqueId, RealmId, TimePrecision,
+    find_unresolved_identity_candidates,
 };
 
 #[test]
@@ -76,4 +77,28 @@ fn identity_unresolved_candidates() {
     assert_eq!(set.candidates.len(), 1);
     assert_eq!(set.candidates[0].subject_a.as_str(), "subj-a");
     assert_eq!(set.candidates[0].subject_b.as_str(), "subj-b");
+}
+
+/// Shape coverage only. Append-only behavior is an obligation in `plan-v1.3`.
+#[test]
+fn amendment_record_round_trips_with_both_lineage_ids() {
+    let record = AmendmentRecord {
+        header: ObjectHeader {
+            id: OpaqueId::new("am-1"),
+            schema_version: AUTHORITY_SCHEMA_VERSION,
+            realm_id: RealmId::new("realm-a"),
+            authority_scope_id: AuthorityScopeId::new("scope-a"),
+        },
+        prior_assertion_id: OpaqueId::new("a-1"),
+        superseding_assertion_id: OpaqueId::new("a-2"),
+        kind: AmendmentKind::Supersession,
+        rationale: "synthetic".into(),
+        authorized_by: OpaqueId::new("actor"),
+        recorded_time: MedicalTime::new("1970-01-01T00:00:00Z", TimePrecision::Instant, false),
+    };
+    let text = serde_json::to_string(&record).unwrap();
+    assert_eq!(
+        serde_json::from_str::<AmendmentRecord>(&text).unwrap(),
+        record
+    );
 }

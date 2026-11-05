@@ -6,7 +6,7 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
 - Rights decision: https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204
 - Copied unchanged: `src/objects/*.rs`.
 - Adapted: `src/evidence/mod.rs` (one comment renamed; CRLF line endings normalized to LF);
-  `tests/*.rs` (crate name only).
+  `tests/object_*.rs` (crate name only).
 - `src/lib.rs` is SafeEvidence-written apart from `AUTHORITY_SCHEMA_VERSION` and its doc
   comment, copied from the donor's `lib.rs` (listed in the row, outside the frozen T01 pins).
 - Copied unchanged, listed in the row but outside the frozen T01 pins: `src/text/*.rs`, needed by the pinned
