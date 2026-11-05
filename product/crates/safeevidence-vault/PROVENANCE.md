@@ -24,5 +24,7 @@ Admission `ADM-0003` (T03) in `docs/evidence/source_admissions.json`.
   `forbid(unsafe_code)`, and is listed in the row but lies outside the 37-file commitment. One synthetic
   test marker was reworded.
 - Not carried: native keystore tests and probes, which are not run here.
+- One donor test is corrected: `staged_byte_identity_mismatch_fails_before_sqlcipher_acceptance` wrote a fixed `0xff`
+  over a random salt byte, so it failed about 1 run in 256 when the byte already held that value. It now inverts the byte.
 - **TA-05 is not claimed.** Disk-full, restore-to-clean, key-loss and WAL/temp residue campaigns against
   `P00_VAULT_DURABILITY_CONTRACT.md` are not done.
