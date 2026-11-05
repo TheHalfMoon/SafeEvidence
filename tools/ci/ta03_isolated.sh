@@ -37,7 +37,7 @@ case "${RUNNER_OS:-}" in
     # Default-deny outbound, excepting only the hosted runner's own processes.
     powershell.exe -NoProfile -Command '
       $ErrorActionPreference = "Stop"
-      $paths = Get-Process -Name "Runner.*","provjobd*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Path } | Where-Object { $_ } | Sort-Object -Unique
+      $paths = Get-Process -Name "Runner.*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Path } | Where-Object { $_ } | Sort-Object -Unique
       if (-not $paths) { throw "no runner process found" }
       foreach ($path in $paths) {
         Write-Output "TA-03 allow outbound: $path"
