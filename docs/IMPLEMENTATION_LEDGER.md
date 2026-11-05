@@ -10,7 +10,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `e284f60c9854f1f1f59d11b094d6d8ab52979c1b` |
+| `main` at last update | `61fd74c6f1a7b63f116bd1b91dd17a56af5093c4` |
 | Milestone | M0, in progress |
 | Active packet | WP-00 and WP-01 |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml`); G01a baseline holds `NO_ADMISSIONS` |
