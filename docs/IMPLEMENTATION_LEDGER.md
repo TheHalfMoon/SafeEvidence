@@ -10,7 +10,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `8043286bf0044e7814c22bfaa917151732f0a3d2` |
+| `main` at last update | `506f172f636f320d41379ba689627b0832d7a83c` |
 | Milestone | M0, in progress |
 | Active packet | WP-00 and WP-01 |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml`), ADM-0003 (T03), ADM-0004 (T17 fixture); G01a baseline holds `NO_ADMISSIONS` |
@@ -46,6 +46,11 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 | `cargo fmt`, `cargo clippy` locally | **Not run.** Local 1.97.1 toolchain lacks `cargo-fmt.exe` and `cargo-clippy.exe`; hosted CI covers both |
 
 ## Known defects
+
+**Sockets in the core's tree:** TA-29's named HTTP clients are absent, but `mio` and `socket2` are present through
+`tokio` and `zbus`, for the Linux Secret Service protector in T03. Architecture §2 says the core opens no sockets, and
+TA-29 does not name these crates. Resolve before M1 exit: move the protector out of the core process, or amend the rule
+for local D-Bus only, with TA-21 evidence.
 
 **Owed before M1 exit (`plan-v1.3`):** append-only amendment lineage and source-byte immutability, each tested
 against the real vault-backed store. The guard's fixtures test declared structure only, not extraction or statistics.

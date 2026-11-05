@@ -32,7 +32,13 @@ ignore = true
 multiple-versions = "warn"
 wildcards = "deny"
 highlight = "all"
-deny = []
+deny = [
+    { crate = "reqwest" },
+    { crate = "ureq" },
+    { crate = "hyper" },
+    { crate = "hf-hub" },
+    { crate = "liter-llm" },
+]
 
 [sources]
 unknown-registry = "deny"
