@@ -23,7 +23,7 @@ for url in "'"$PROBE_HOST"'" "'"$PROBE_IP"'"; do
 done
 cargo fmt --all -- --check
 cargo test --offline --locked --workspace --all-targets
-cargo test --offline --locked -p safeevidence-contracts --test ta03_network_denied -- --nocapture
+cargo test --offline --locked --workspace --test ta03_network_denied -- --nocapture
 cargo clippy --offline --locked --workspace --all-targets -- -D warnings
 cargo deny --offline check'
 
