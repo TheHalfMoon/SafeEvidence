@@ -31,7 +31,7 @@ case "${RUNNER_OS:-}" in
   Windows)
     restore() {
       powershell.exe -NoProfile -Command \
-        "Set-NetFirewallProfile -All -DefaultOutboundAction Allow; Get-NetFirewallRule -Group 'SafeEvidenceTA03' -ErrorAction SilentlyContinue | Remove-NetFirewallRule" || true
+        "Set-NetFirewallProfile -All -DefaultOutboundAction Allow; Get-NetFirewallRule -DisplayName 'SafeEvidenceTA03' -ErrorAction SilentlyContinue | Remove-NetFirewallRule" || true
     }
     trap restore EXIT
     # Default-deny outbound, excepting only the hosted runner's own processes.
@@ -40,7 +40,8 @@ case "${RUNNER_OS:-}" in
       $paths = Get-Process -Name "Runner.*","provjobd*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Path } | Where-Object { $_ } | Sort-Object -Unique
       if (-not $paths) { throw "no runner process found" }
       foreach ($path in $paths) {
-        New-NetFirewallRule -DisplayName "TA03 runner" -Group "SafeEvidenceTA03" -Direction Outbound -Action Allow -Program $path | Out-Null
+        Write-Output "TA-03 allow outbound: $path"
+        New-NetFirewallRule -DisplayName "SafeEvidenceTA03" -Direction Outbound -Action Allow -Program $path | Out-Null
       }
       Set-NetFirewallProfile -All -DefaultOutboundAction Block
     '
