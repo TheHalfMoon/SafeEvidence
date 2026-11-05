@@ -50,6 +50,7 @@ fn every_contract_wire_name_parses() {
         "POST_VERIFICATION_FAILED",
         "PROOF_RACE_INVALIDATED",
         "CURRENTNESS_UNKNOWN",
+        "UNSUPPORTED_LANGUAGE",
         "NONE",
     ] {
         assert!(parses::<ReasonCode>(wire), "{wire}");
