@@ -1,24 +1,35 @@
 #!/usr/bin/env bash
 # TA-03: format, test, lint and license checks with OS-level network denial after fetch.
-# Run from product/ on a hosted runner. A negative control must prove the denial, and a
-# positive control first proves the probe can reach the network, so neither passes vacuously.
+# Run from product/ on a hosted runner. Positive controls first prove the probes can reach the
+# network. Inside isolation, probes must fail with a connection-level exit code, and the test
+# `ta03_network_denied` must fail to open a socket from a test binary.
 set -euo pipefail
 
-PROBE_URL="https://github.com"
+PROBE_HOST="https://github.com"
+PROBE_IP="https://1.1.1.1"
+command -v curl >/dev/null
 
 inner='set -euo pipefail
-if curl -sS -m 10 -o /dev/null "'"$PROBE_URL"'" 2>/dev/null; then
-  echo "TA-03 FAIL: network reachable inside isolation" >&2
-  exit 1
-fi
-echo "TA-03 negative control: network denied"
+export SAFEEVIDENCE_TA03_ISOLATED=1
+for url in "'"$PROBE_HOST"'" "'"$PROBE_IP"'"; do
+  code=0
+  curl -sS -m 10 -o /dev/null "$url" || code=$?
+  echo "TA-03 negative control: $url exit $code"
+  # 6 name resolution, 7 connect refused or blocked, 28 timeout. Anything else proves nothing.
+  case "$code" in
+    6|7|28) ;;
+    *) echo "TA-03 FAIL: unexpected probe result for $url" >&2; exit 1 ;;
+  esac
+done
 cargo fmt --all -- --check
+cargo test --offline --locked --workspace --all-targets -- --nocapture 2>&1 | grep -E "TA-03 test-binary control|^test result|^error" || true
 cargo test --offline --locked --workspace --all-targets
 cargo clippy --offline --locked --workspace --all-targets -- -D warnings
 cargo deny --offline check'
 
-curl -sS -m 30 -o /dev/null "$PROBE_URL"
-echo "TA-03 positive control: network reachable before isolation"
+curl -sS -m 30 -o /dev/null "$PROBE_HOST"
+curl -sS -m 30 -o /dev/null "$PROBE_IP"
+echo "TA-03 positive control: both probes reachable before isolation"
 
 case "${RUNNER_OS:-}" in
   Linux)
@@ -63,7 +74,23 @@ for line in sys.stdin:
       }
     '
     bash -c "$inner"
-    rm -f ta03_programs.txt
+    # Anything rebuilt after the block would have run unblocked, so refuse that.
+    cargo test --offline --locked --workspace --all-targets --no-run --message-format=json \
+      | python -c "import json,sys
+for line in sys.stdin:
+    try:
+        exe = json.loads(line).get('executable')
+    except ValueError:
+        continue
+    if exe:
+        print(exe)" > ta03_after.txt
+    python -c "import sys
+blocked = set(open('ta03_programs.txt').read().split(chr(10)))
+ran = [x for x in open('ta03_after.txt').read().split(chr(10)) if x]
+missing = [x for x in ran if x not in blocked]
+print('TA-03 test binaries ran blocked:', len(ran))
+sys.exit('TA-03 FAIL: unblocked binaries: %s' % missing if missing else 0)"
+    rm -f ta03_programs.txt ta03_after.txt
     ;;
   *)
     echo "TA-03 FAIL: unsupported runner OS '${RUNNER_OS:-}'" >&2
