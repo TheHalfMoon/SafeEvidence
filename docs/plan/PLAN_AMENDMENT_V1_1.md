@@ -70,5 +70,7 @@ WP-06 span work under existing rows and decisions. §C ordering and B7 apply onl
 
 ## F. Review requirements
 
-`docs/GAP_REVIEW.md` names Codex and Claude/Opus reviews. Both are required on the PR that merges
-this file, unless the founder records a decision otherwise. An AI agent review does not satisfy EXT-06.
+`docs/GAP_REVIEW.md` names Codex and Claude/Opus reviews. The founder instructed on 2026-11-05: "do not
+use codex". No Codex review of this amendment exists, and none will be run. It needs an independent
+review of its final text, recorded on the PR that merges this file. An AI agent review does not satisfy
+EXT-06.
