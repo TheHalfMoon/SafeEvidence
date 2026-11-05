@@ -33,7 +33,8 @@ continues to require phase owner decisions; Issue #4 requires qualified
 clinical intended-use and evaluation authority; Issue #5 requires exact
 source/contributor rights, pack and release-trust decisions. These gates
 are BLOCKED for dependent clinical/product/source work. No patient data,
-models, donor sources, signed packs, production release, or P02 are admitted.
+models, signed packs, production release, or P02 are admitted. Donor sources are
+admitted only by a row in `docs/evidence/source_admissions.json`.
 
 ## EXT-02 synthetic scope extension (2026-11-05)
 

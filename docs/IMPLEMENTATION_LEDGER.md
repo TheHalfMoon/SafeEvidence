@@ -12,7 +12,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 |---|---|
 | `main` at last update | `e284f60c9854f1f1f59d11b094d6d8ab52979c1b` |
 | Milestone | M0, in progress |
-| Active packet | WP-00 and WP-01, limited to tooling until rows exist |
+| Active packet | WP-00 and WP-01 |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml`); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts in `product/`; WP-02 additions not started |
 | Next executable task | WP-02 Study/Report/Proof types; T11 SBOM generator (TA-02); TA-29 script |
@@ -21,7 +21,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Milestone | Status | Blocked by |
 |---|---|---|
-| M0 Admission | `IMPLEMENTED_UNTESTED` for TA-01 until CI passes on the merged commit | EXT-01 ([D2 recorded](https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204); no rows signed), TA-02, TA-03, TA-29 |
+| M0 Admission | `IMPLEMENTED_UNTESTED` for TA-01 until CI passes on the merged commit | Rows beyond ADM-0001 and ADM-0002 ([D2](https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204)), TA-02, TA-03, TA-29 |
 | M1 VS-1 (synthetic) | `NOT_STARTED` | M0 |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
@@ -43,6 +43,11 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | `cargo fmt`, `cargo clippy` locally | **Not run.** Local 1.97.1 toolchain lacks `cargo-fmt.exe` and `cargo-clippy.exe`; hosted CI covers both |
 
 ## Known defects
+
+Before WP-02 closes: T01 carries `ClinicalAssertion` and a `confidence` field, and
+`evidence/mod.rs` has a constructor that hardcodes `scale_corpus_generator_present: true`.
+All are inert today (no consumer or UI). They must be gated against the P00 contracts
+(no V1 clinical confidence percentage) before anything uses them.
 
 See `docs/reviews/EGM_PLAN_CHALLENGE_2026-11-05.md`. Six P0 plan and tooling defects
 are verified; none is corrected yet.

@@ -171,4 +171,5 @@ No clinical qualification, live medical device or finished product is implied.
 
 The copy-first implementation plan, source transplant matrix, REA research
 dossier and freeze manifest are indexed in `docs/PLAN_FREEZE.md`. Planning
-only: no donor code is imported and no clinical capability is claimed.
+only: it imports no donor code and claims no clinical capability. Later imports are
+listed in `docs/evidence/source_admissions.json`.
