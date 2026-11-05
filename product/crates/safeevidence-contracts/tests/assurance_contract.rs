@@ -97,6 +97,7 @@ fn proof_transitions_are_exactly_the_allowed_set() {
         (VerifiedUncommitted, Rejected),
         (Committed, CurrentlyInvalidated),
         (Committed, CurrentnessUnknown),
+        (CurrentnessUnknown, CurrentlyInvalidated),
     ];
     for from in STATES {
         for to in STATES {
@@ -123,8 +124,9 @@ fn nothing_reaches_committed_except_from_verified() {
 #[test]
 fn stale_proof_cannot_regain_assured_status() {
     for to in STATES {
-        assert!(
-            !ProofState::CurrentnessUnknown.may_transition_to(to),
+        assert_eq!(
+            ProofState::CurrentnessUnknown.may_transition_to(to),
+            to == ProofState::CurrentlyInvalidated,
             "{to:?}"
         );
     }

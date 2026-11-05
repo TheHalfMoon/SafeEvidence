@@ -169,8 +169,9 @@ pub enum OverlapState {
     Unknown,
 }
 
-/// Declared participant overlap. All results named under one `group`, by any
-/// of its links, are treated as sharing participants.
+/// Declared participant overlap. Links join their two results, their group,
+/// and any input drawing on that group into one overlapping set. Overlap chains
+/// across groups are refused too; relaxing that needs a statistician's ruling.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OverlapLink {
@@ -180,12 +181,23 @@ pub struct OverlapLink {
     pub state: OverlapState,
 }
 
+/// What a contribution is. Reviews and pooled IPD syntheses are never new
+/// independent studies, with or without a declared overlap link.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ContributionKind {
+    PrimaryStudy,
+    SystematicReview,
+    PooledIpd,
+}
+
 /// One candidate contribution to a pooled estimate.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SynthesisInput {
     pub result: ResultId,
     pub study: StudyId,
+    pub kind: ContributionKind,
     /// The participants this contribution draws on.
     pub participants: Known<ParticipantOverlapGroupId>,
     pub denominator: Known<u64>,
@@ -200,21 +212,60 @@ pub enum PoolingRefusal {
     PoolingRefusedMissingDenominator { results: Vec<ResultId> },
 }
 
-fn shares_declared_group(
-    first: &ResultId,
-    second: &ResultId,
-    members: &BTreeMap<String, Vec<&ResultId>>,
-) -> bool {
-    members.values().any(|group| {
-        group.iter().any(|member| member.0.same_entity(&first.0))
-            && group.iter().any(|member| member.0.same_entity(&second.0))
-    })
+/// Node in the overlap graph; a typed tuple so strings cannot collide.
+type OverlapNode = (bool, String, String);
+
+fn result_node(result: &ResultId) -> OverlapNode {
+    (false, result.0.scope.clone(), result.0.id.clone())
+}
+
+fn group_node(group: &ParticipantOverlapGroupId) -> OverlapNode {
+    (true, group.0.scope.clone(), group.0.id.clone())
+}
+
+fn find(parents: &mut BTreeMap<OverlapNode, OverlapNode>, node: &OverlapNode) -> OverlapNode {
+    let mut current = node.clone();
+    while let Some(parent) = parents.get(&current) {
+        if *parent == current {
+            break;
+        }
+        current = parent.clone();
+    }
+    parents.insert(node.clone(), current.clone());
+    current
+}
+
+fn join(parents: &mut BTreeMap<OverlapNode, OverlapNode>, a: &OverlapNode, b: &OverlapNode) {
+    let (root_a, root_b) = (find(parents, a), find(parents, b));
+    parents.insert(root_a, root_b);
+}
+
+fn overlap_sets(
+    inputs: &[SynthesisInput],
+    overlaps: &[OverlapLink],
+) -> BTreeMap<OverlapNode, OverlapNode> {
+    let mut parents = BTreeMap::new();
+    for link in overlaps {
+        let group = group_node(&link.group);
+        join(&mut parents, &group, &result_node(&link.first));
+        join(&mut parents, &group, &result_node(&link.second));
+    }
+    for input in inputs {
+        if let Known::Known(group) = &input.participants {
+            join(
+                &mut parents,
+                &group_node(group),
+                &result_node(&input.result),
+            );
+        }
+    }
+    parents
 }
 
 /// Pooled inputs need one independent contribution per participant group, or
-/// one shared covariance reference for those that share participants. Otherwise
-/// refuse; narrative synthesis remains available to the caller. This compares
-/// covariance references only: whether a reference truly covers the structure
+/// one shared covariance reference at one exact version for those that share
+/// participants. Otherwise refuse; narrative synthesis remains available to the
+/// caller. This compares references only: whether one truly covers the structure
 /// belongs to the statistical method that consumes it.
 ///
 /// # Errors
@@ -236,32 +287,23 @@ pub fn decide_pooling(
         return Err(PoolingRefusal::PoolingRefusedMissingDenominator { results: missing });
     }
 
-    let mut members: BTreeMap<String, Vec<&ResultId>> = BTreeMap::new();
-    for link in overlaps {
-        let key = format!("{}\0{}", link.group.0.scope, link.group.0.id);
-        let group = members.entry(key).or_default();
-        group.push(&link.first);
-        group.push(&link.second);
-    }
-
+    let mut parents = overlap_sets(inputs, overlaps);
     let mut refused = BTreeSet::new();
     for (position, first) in inputs.iter().enumerate() {
-        if matches!(first.participants, Known::Unknown { .. }) {
+        let secondary = first.kind != ContributionKind::PrimaryStudy;
+        if matches!(first.participants, Known::Unknown { .. }) || (secondary && inputs.len() > 1) {
             refused.insert(first.result.clone());
         }
         for second in &inputs[position + 1..] {
             let same_result = first.result.0.same_entity(&second.result.0);
             let shared_study = first.study.0.same_entity(&second.study.0);
-            let shared_group = matches!(
-                (&first.participants, &second.participants),
-                (Known::Known(a), Known::Known(b)) if a.0.same_entity(&b.0)
-            );
-            let declared = shares_declared_group(&first.result, &second.result, &members);
+            let (node_a, node_b) = (result_node(&first.result), result_node(&second.result));
+            let overlapping = find(&mut parents, &node_a) == find(&mut parents, &node_b);
             let covered = matches!(
                 (&first.covariance, &second.covariance),
-                (Known::Known(a), Known::Known(b)) if a.0.same_entity(&b.0)
+                (Known::Known(a), Known::Known(b)) if a == b
             );
-            if same_result || ((shared_study || shared_group || declared) && !covered) {
+            if same_result || ((shared_study || overlapping) && !covered) {
                 refused.insert(first.result.clone());
                 refused.insert(second.result.clone());
             }

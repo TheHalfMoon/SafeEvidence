@@ -14,3 +14,6 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
   `src/assurance.rs` is SafeEvidence-written; it encodes the P00 contract vocabulary directly.
 - Not yet done: the rights and publication fields required by T01's adaptation;
   `AnswerProofManifest`, `SynthesisInputDecision`, `ReviewIncludedStudyLink`, `ReportVersionLink`.
+- `decide_pooling` checks independence declarations only. It has no population or timepoint
+  input, and is not statistical validation. Refusing overlap chains across groups awaits a
+  statistician's ruling.

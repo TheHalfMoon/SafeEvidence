@@ -2,9 +2,9 @@
 //! Synthetic identifiers only.
 
 use safeevidence_contracts::study::{
-    CovarianceRef, Known, OutcomeDefinition, OutcomeId, OutcomeReconciliation, OverlapLink,
-    OverlapState, ParticipantOverlapGroupId, PoolingRefusal, ResultId, ScopedId, StudyId,
-    SynthesisInput, decide_pooling,
+    ContributionKind, CovarianceRef, Known, OutcomeDefinition, OutcomeId, OutcomeReconciliation,
+    OverlapLink, OverlapState, ParticipantOverlapGroupId, PoolingRefusal, ResultId, ScopedId,
+    StudyId, SynthesisInput, decide_pooling,
 };
 
 fn sid(id: &str) -> ScopedId {
@@ -29,6 +29,7 @@ fn input(id: &str, study: &str, group: &str) -> SynthesisInput {
     SynthesisInput {
         result: result(id),
         study: StudyId(sid(study)),
+        kind: ContributionKind::PrimaryStudy,
         participants: Known::Known(ParticipantOverlapGroupId(sid(group))),
         denominator: Known::Known(100),
         covariance: unknown(),
@@ -67,7 +68,7 @@ fn reports_of_one_rct_are_not_independent_studies() {
         ("primary", "correction"),
     ] {
         assert_unit_refusal(
-            &[input(pair.0, "rct", "rct_p"), input(pair.1, "rct", "rct_p")],
+            &[input(pair.0, "rct", "p_one"), input(pair.1, "rct", "p_two")],
             &[],
         );
     }
@@ -92,8 +93,13 @@ fn shared_control_multi_arm_needs_known_covariance() {
 }
 
 #[test]
-fn mixed_itt_and_per_protocol_from_one_trial_refused() {
-    assert_unit_refusal(&[input("itt", "rct", "p"), input("pp", "rct", "p")], &[]);
+fn two_analyses_of_one_trial_refused() {
+    // Covers mixed ITT/PP and repeat timepoints. The guard sees only that both
+    // draw on one trial; it has no population or timepoint field to compare.
+    assert_unit_refusal(
+        &[input("first", "rct", "p"), input("second", "rct", "p")],
+        &[],
+    );
 }
 
 #[test]
@@ -108,37 +114,112 @@ fn subgroup_plus_parent_cohort_refused() {
 }
 
 #[test]
-fn repeat_timepoints_refused() {
-    assert_unit_refusal(&[input("m6", "rct", "p"), input("m12", "rct", "p")], &[]);
+fn pooled_ipd_or_review_is_never_a_new_study_even_without_a_link() {
+    for kind in [
+        ContributionKind::PooledIpd,
+        ContributionKind::SystematicReview,
+    ] {
+        let mut secondary = input("secondary", "s1", "g1");
+        secondary.kind = kind;
+        assert_unit_refusal(&[secondary.clone(), input("trial", "s2", "g2")], &[]);
+        secondary = with_covariance(secondary);
+        let covered_trial = with_covariance(input("trial", "s2", "g2"));
+        assert_unit_refusal(&[secondary, covered_trial], &[]);
+    }
 }
 
 #[test]
-fn pooled_ipd_plus_component_trials_refused() {
+fn declared_overlap_refused_at_every_state() {
+    for state in [
+        OverlapState::Confirmed,
+        OverlapState::Possible,
+        OverlapState::Unknown,
+    ] {
+        assert_unit_refusal(
+            &[input("a", "s1", "g1"), input("b", "s2", "g2")],
+            &[overlap("a", "b", state)],
+        );
+    }
+}
+
+#[test]
+fn input_participant_group_joins_declared_overlap_group() {
+    let mut member = input("a", "s1", "g1");
+    member.participants = Known::Known(ParticipantOverlapGroupId(sid("overlap")));
     assert_unit_refusal(
-        &[
-            input("ipd", "pooled", "ipd_p"),
-            input("comp", "trial_a", "pa"),
-        ],
-        &[overlap("ipd", "comp", OverlapState::Confirmed)],
+        &[member, input("x", "s2", "g2")],
+        &[overlap("b", "x", OverlapState::Possible)],
     );
 }
 
 #[test]
-fn review_plus_included_trial_refused_even_when_overlap_only_possible() {
+fn overlap_chain_across_groups_refused() {
+    let link = |group: &str, first: &str, second: &str| OverlapLink {
+        group: ParticipantOverlapGroupId(sid(group)),
+        first: result(first),
+        second: result(second),
+        state: OverlapState::Possible,
+    };
     assert_unit_refusal(
-        &[
-            input("review", "review", "rp"),
-            input("trial", "trial_a", "pa"),
-        ],
-        &[overlap("review", "trial", OverlapState::Possible)],
+        &[input("a", "s1", "g1"), input("c", "s2", "g2")],
+        &[link("g_one", "a", "x"), link("g_two", "x", "c")],
     );
+}
+
+#[test]
+fn identity_ignores_version_but_not_scope_or_id() {
+    let at_version = |id: &str, version: u32| ScopedId {
+        scope: "synthetic".into(),
+        id: id.into(),
+        version,
+    };
+    let mut later = input("a", "s2", "g2");
+    later.result = ResultId(at_version("a", 2));
+    assert_unit_refusal(&[input("a", "s1", "g1"), later], &[]);
+
+    let mut later_study = input("b", "s1", "g2");
+    later_study.study = StudyId(at_version("s1", 2));
+    assert_unit_refusal(&[input("a", "s1", "g1"), later_study], &[]);
+
+    let mut later_link = overlap("a", "b", OverlapState::Possible);
+    later_link.first = ResultId(at_version("a", 2));
+    later_link.second = ResultId(at_version("b", 3));
     assert_unit_refusal(
-        &[
-            input("review", "review", "rp"),
-            input("trial", "trial_a", "pa"),
-        ],
-        &[overlap("review", "trial", OverlapState::Unknown)],
+        &[input("a", "s1", "g1"), input("b", "s2", "g2")],
+        &[later_link],
     );
+
+    let mut other_scope = input("a", "s2", "g2");
+    other_scope.result.0.scope = "other".into();
+    assert!(decide_pooling(&[input("a", "s1", "g1"), other_scope], &[]).is_ok());
+}
+
+#[test]
+fn strings_with_separators_do_not_collide_group_identities() {
+    let group = |scope: &str, id: &str| {
+        Known::Known(ParticipantOverlapGroupId(ScopedId {
+            scope: scope.into(),
+            id: id.into(),
+            version: 1,
+        }))
+    };
+    let mut first = input("a", "s1", "g1");
+    first.participants = group("p\0q", "r");
+    let mut second = input("b", "s2", "g2");
+    second.participants = group("p", "q\0r");
+    assert!(decide_pooling(&[first, second], &[]).is_ok());
+}
+
+#[test]
+fn covariance_must_match_at_one_exact_version() {
+    let mut first = with_covariance(input("a", "s", "g"));
+    let mut second = with_covariance(input("b", "s", "g"));
+    if let Known::Known(reference) = &mut second.covariance {
+        reference.0.version = 2;
+    }
+    assert_unit_refusal(&[first.clone(), second.clone()], &[]);
+    first.covariance = second.covariance.clone();
+    assert!(decide_pooling(&[first, second], &[]).is_ok());
 }
 
 #[test]
@@ -246,6 +327,16 @@ fn switched_outcome_keeps_discrepancy() {
         reported: definition("mortality", "12m"),
     };
     assert!(unregistered.has_discrepancy());
+    for changed in [
+        definition("composite", "12m"),
+        definition("mortality", "6m"),
+    ] {
+        let single_change = OutcomeReconciliation {
+            registered: Known::Known(definition("mortality", "12m")),
+            reported: changed,
+        };
+        assert!(single_change.has_discrepancy());
+    }
     let mut other_unit = definition("mortality", "12m");
     other_unit.unit = Known::Known("deaths per 1000".into());
     let unit_changed = OutcomeReconciliation {
@@ -263,10 +354,15 @@ fn switched_outcome_keeps_discrepancy() {
 }
 
 #[test]
-fn unknown_covariance_or_participants_refused() {
+fn unknown_participants_refused() {
     let mut mystery = input("a", "trial_a", "pa");
     mystery.participants = unknown();
     assert_unit_refusal(&[mystery, input("b", "trial_b", "pb")], &[]);
+}
+
+#[test]
+fn unknown_covariance_alone_does_not_refuse_independent_trials() {
+    assert!(decide_pooling(&[input("a", "s1", "g1"), input("b", "s2", "g2")], &[]).is_ok());
 }
 
 #[test]

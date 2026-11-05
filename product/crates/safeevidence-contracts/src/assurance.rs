@@ -86,6 +86,7 @@ impl ProofState {
                     Self::Committed,
                     Self::CurrentlyInvalidated | Self::CurrentnessUnknown
                 )
+                | (Self::CurrentnessUnknown, Self::CurrentlyInvalidated)
         )
     }
 
