@@ -29,23 +29,41 @@ case "${RUNNER_OS:-}" in
     sandbox-exec -p '(version 1)(allow default)(deny network-outbound (remote ip))' bash -c "$inner"
     ;;
   Windows)
+    # WEAKER than Linux and macOS. Default-deny outbound kills the hosted runner, so this
+    # blocks named programs only. The build and its build scripts run before the block,
+    # and any program not listed here is not blocked.
     restore() {
       powershell.exe -NoProfile -Command \
-        "Set-NetFirewallProfile -All -DefaultOutboundAction Allow; Get-NetFirewallRule -DisplayName 'SafeEvidenceTA03' -ErrorAction SilentlyContinue | Remove-NetFirewallRule" || true
+        "Get-NetFirewallRule -DisplayName 'SafeEvidenceTA03' -ErrorAction SilentlyContinue | Remove-NetFirewallRule" || true
     }
     trap restore EXIT
-    # Default-deny outbound, excepting only the hosted runner's own processes.
+    cargo clippy --offline --locked --workspace --all-targets -- -D warnings
+    cargo test --offline --locked --workspace --all-targets --no-run --message-format=json \
+      | python -c "import json,sys
+for line in sys.stdin:
+    try:
+        exe = json.loads(line).get('executable')
+    except ValueError:
+        continue
+    if exe:
+        print(exe)" > ta03_programs.txt
+    test -s ta03_programs.txt
+    for tool in curl cargo rustc clippy-driver cargo-clippy cargo-fmt rustfmt cargo-deny; do
+      found="$(rustup which "$tool" 2>/dev/null || command -v "$tool")"
+      cygpath -w "$found" >> ta03_programs.txt
+      if [ "$tool" = cargo ]; then cygpath -w "$(command -v cargo)" >> ta03_programs.txt; fi
+    done
+    export TA03_PROGRAMS="$(cygpath -w "$PWD/ta03_programs.txt")"
     powershell.exe -NoProfile -Command '
       $ErrorActionPreference = "Stop"
-      $paths = Get-Process -Name "Runner.*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Path } | Where-Object { $_ } | Sort-Object -Unique
-      if (-not $paths) { throw "no runner process found" }
+      $paths = Get-Content $env:TA03_PROGRAMS | Where-Object { $_ } | Sort-Object -Unique
       foreach ($path in $paths) {
-        Write-Output "TA-03 allow outbound: $path"
-        New-NetFirewallRule -DisplayName "SafeEvidenceTA03" -Direction Outbound -Action Allow -Program $path | Out-Null
+        Write-Output "TA-03 block outbound: $path"
+        New-NetFirewallRule -DisplayName "SafeEvidenceTA03" -Direction Outbound -Action Block -Program $path | Out-Null
       }
-      Set-NetFirewallProfile -All -DefaultOutboundAction Block
     '
     bash -c "$inner"
+    rm -f ta03_programs.txt
     ;;
   *)
     echo "TA-03 FAIL: unsupported runner OS '${RUNNER_OS:-}'" >&2
