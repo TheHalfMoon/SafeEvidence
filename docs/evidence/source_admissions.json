@@ -104,15 +104,15 @@
           "source_path": "crates/medscale-core/tests/record_semantics_019.rs",
           "git_blob_oid": "62bd2641ccc2645e579677b1e29f5907763f14b7",
           "bytes": 7394,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/record_semantics_019.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-core/tests/source_immutability.rs",
           "git_blob_oid": "d140b0255c6536d0d309b38a6f2a1136bbaafa0e",
           "bytes": 680,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/source_immutability.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-core/tests/text_span_coords.rs",

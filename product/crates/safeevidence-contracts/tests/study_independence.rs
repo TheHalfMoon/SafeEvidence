@@ -1,10 +1,11 @@
-//! P02 qualification fixtures named by `P00_STUDY_INDEPENDENCE_CONTRACT.md`.
-//! Synthetic identifiers only.
+//! Fixtures for the guard's independence rules, following the qualification list in
+//! `P00_STUDY_INDEPENDENCE_CONTRACT.md`. This tests declared structure only, not extraction or
+//! statistics. Synthetic identifiers only.
 
 use safeevidence_contracts::study::{
-    ContributionKind, CovarianceRef, Known, OutcomeDefinition, OutcomeId, OutcomeReconciliation,
-    OverlapLink, OverlapState, ParticipantOverlapGroupId, PoolingRefusal, ResultId, ScopedId,
-    StudyId, SynthesisInput, decide_pooling,
+    AnalysisPopulation, ContributionKind, CovarianceRef, Known, OutcomeDefinition, OutcomeId,
+    OutcomeReconciliation, OverlapLink, OverlapState, ParticipantOverlapGroupId, PoolingRefusal,
+    ReportVersionKind, ResultId, ScopedId, StudyArmId, StudyId, SynthesisInput, decide_pooling,
 };
 
 fn sid(id: &str) -> ScopedId {
@@ -30,6 +31,12 @@ fn input(id: &str, study: &str, group: &str) -> SynthesisInput {
         result: result(id),
         study: StudyId(sid(study)),
         kind: ContributionKind::PrimaryStudy,
+        title: format!("Title of {study}"),
+        report_kind: Known::Known(ReportVersionKind::Published),
+        population: Known::Known(AnalysisPopulation::Itt),
+        timepoint: Known::Known("12m".into()),
+        arms: vec![],
+        contains: vec![],
         participants: Known::Known(ParticipantOverlapGroupId(sid(group))),
         denominator: Known::Known(100),
         covariance: unknown(),
@@ -58,36 +65,50 @@ fn assert_unit_refusal(inputs: &[SynthesisInput], overlaps: &[OverlapLink]) {
 }
 
 #[test]
-fn reports_of_one_rct_are_not_independent_studies() {
-    for pair in [
-        ("protocol", "primary"),
-        ("registry", "primary"),
-        ("abstract", "primary"),
-        ("preprint", "primary"),
-        ("primary", "follow_up"),
-        ("primary", "correction"),
+fn every_report_type_of_one_rct_is_refused_even_with_separate_groups() {
+    for kind in [
+        ReportVersionKind::Protocol,
+        ReportVersionKind::Registry,
+        ReportVersionKind::Abstract,
+        ReportVersionKind::Preprint,
+        ReportVersionKind::FollowUp,
+        ReportVersionKind::Correction,
     ] {
-        assert_unit_refusal(
-            &[input(pair.0, "rct", "p_one"), input(pair.1, "rct", "p_two")],
-            &[],
-        );
+        let mut other = input("other", "rct", "p_two");
+        other.report_kind = Known::Known(kind);
+        assert_unit_refusal(&[input("primary", "rct", "p_one"), other], &[]);
     }
 }
 
 #[test]
-fn independent_trials_are_not_falsely_merged() {
-    let accepted = decide_pooling(
-        &[input("a", "trial_a", "pa"), input("b", "trial_b", "pb")],
-        &[],
-    )
-    .expect("independent trials pool");
+fn different_trials_with_matching_titles_are_not_falsely_merged() {
+    let mut first = input("a", "trial_a", "pa");
+    let mut second = input("b", "trial_b", "pb");
+    first.title = "Shared trial title".into();
+    second.title = "Shared trial title".into();
+    let accepted = decide_pooling(&[first, second], &[]).expect("independent trials pool");
     assert_eq!(accepted.accepted, vec![result("a"), result("b")]);
     assert!(!accepted.requires_covariance_method);
 }
 
 #[test]
+fn one_trial_under_different_titles_is_not_falsely_split() {
+    let mut first = input("a", "rct", "p_one");
+    let mut second = input("b", "rct", "p_two");
+    first.title = "Title in the journal".into();
+    second.title = "Title in the registry".into();
+    assert_unit_refusal(&[first, second], &[]);
+}
+
+#[test]
 fn shared_control_multi_arm_needs_known_covariance() {
-    let arms = [input("t1_vs_c", "rct", "p"), input("t2_vs_c", "rct", "p")];
+    let control = StudyArmId(sid("control"));
+    let arm = |id: &str, own: &str| {
+        let mut value = input(id, "rct", id);
+        value.arms = vec![StudyArmId(sid(own)), control.clone()];
+        value
+    };
+    let arms = [arm("t1_vs_c", "t1"), arm("t2_vs_c", "t2")];
     assert_unit_refusal(&arms, &[]);
     let covered = arms.map(with_covariance);
     assert!(
@@ -98,38 +119,60 @@ fn shared_control_multi_arm_needs_known_covariance() {
 }
 
 #[test]
-fn two_analyses_of_one_trial_refused() {
-    // Covers mixed ITT/PP and repeat timepoints. The guard sees only that both
-    // draw on one trial; it has no population or timepoint field to compare.
-    assert_unit_refusal(
-        &[input("first", "rct", "p"), input("second", "rct", "p")],
-        &[],
-    );
+fn shared_arm_is_refused_even_when_studies_and_groups_differ() {
+    let mut first = input("a", "s1", "g1");
+    let mut second = input("b", "s2", "g2");
+    first.arms = vec![StudyArmId(sid("control"))];
+    second.arms = vec![StudyArmId(sid("control"))];
+    assert_unit_refusal(&[first, second], &[]);
+    let mut first = input("a", "s1", "g1");
+    let mut second = input("b", "s2", "g2");
+    first.arms = vec![StudyArmId(sid("control_a"))];
+    second.arms = vec![StudyArmId(sid("control_b"))];
+    assert!(decide_pooling(&[first, second], &[]).is_ok());
 }
 
 #[test]
-fn subgroup_plus_parent_cohort_refused() {
+fn mixed_itt_and_per_protocol_from_one_trial_refused() {
+    let mut per_protocol = input("pp", "rct", "p");
+    per_protocol.population = Known::Known(AnalysisPopulation::PerProtocol);
+    assert_unit_refusal(&[input("itt", "rct", "p"), per_protocol], &[]);
+}
+
+#[test]
+fn repeat_timepoints_from_one_trial_refused() {
+    let mut later = input("m12", "rct", "p");
+    later.timepoint = Known::Known("24m".into());
+    assert_unit_refusal(&[input("m6", "rct", "p"), later], &[]);
+}
+
+#[test]
+fn subgroup_plus_parent_cohort_refused_with_or_without_a_link() {
+    let mut subgroup = input("sub", "cohort", "older");
+    subgroup.population = Known::Known(AnalysisPopulation::Subgroup("age over 65".into()));
+    let parent = input("parent", "cohort", "all");
+    assert_unit_refusal(&[parent.clone(), subgroup.clone()], &[]);
     assert_unit_refusal(
-        &[
-            input("parent", "cohort", "all"),
-            input("sub", "cohort", "older"),
-        ],
+        &[parent, subgroup],
         &[overlap("parent", "sub", OverlapState::Confirmed)],
     );
 }
 
 #[test]
-fn pooled_ipd_or_review_is_never_a_new_study_even_without_a_link() {
+fn secondary_with_its_own_component_is_refused() {
     for kind in [
         ContributionKind::PooledIpd,
         ContributionKind::SystematicReview,
     ] {
-        let mut secondary = input("secondary", "s1", "g1");
+        let mut secondary = input("secondary", "synthesis", "g1");
         secondary.kind = kind;
-        assert_unit_refusal(&[secondary.clone(), input("trial", "s2", "g2")], &[]);
-        secondary = with_covariance(secondary);
-        let covered_trial = with_covariance(input("trial", "s2", "g2"));
-        assert_unit_refusal(&[secondary, covered_trial], &[]);
+        secondary.contains = vec![StudyId(sid("trial"))];
+        assert_unit_refusal(&[secondary.clone(), input("component", "trial", "g2")], &[]);
+        let with = |v: SynthesisInput| with_covariance(v);
+        assert_unit_refusal(
+            &[with(secondary), with(input("component", "trial", "g2"))],
+            &[],
+        );
     }
 }
 

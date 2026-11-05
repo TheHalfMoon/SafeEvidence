@@ -250,8 +250,12 @@ mod tests {
             .write(true)
             .open(&path)
             .unwrap();
+        // Invert, not overwrite: the first bytes are a random salt, so a fixed value
+        // would sometimes change nothing.
+        let mut first = [0_u8; 1];
+        file.read_exact(&mut first).unwrap();
         file.seek(SeekFrom::Start(0)).unwrap();
-        file.write_all(&[0xff]).unwrap();
+        file.write_all(&[!first[0]]).unwrap();
         file.sync_all().unwrap();
         drop(file);
         assert_eq!(

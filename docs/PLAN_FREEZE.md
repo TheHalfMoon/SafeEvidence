@@ -13,7 +13,7 @@ the immutable planning artifacts, not the subsequent self-referential freeze
 record commit. The annotated tag is placed on the freeze-record merge commit
 after its required checks pass.
 
-Amendments, by pointer: `docs/plan/PLAN_AMENDMENT_V1_1.md` (`plan-v1.1`), `docs/plan/PLAN_AMENDMENT_V1_2.md` (`plan-v1.2`).
+Amendments, by pointer: `docs/plan/PLAN_AMENDMENT_V1_1.md` (`plan-v1.1`), `docs/plan/PLAN_AMENDMENT_V1_2.md` (`plan-v1.2`), `docs/plan/PLAN_AMENDMENT_V1_3.md` (`plan-v1.3`).
 
 ## 1. What a freeze means here
 
