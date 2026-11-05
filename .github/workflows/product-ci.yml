@@ -13,13 +13,15 @@ jobs:
   product:
     name: product (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-15]
     env:
       CARGO_TERM_COLOR: never
+      # The vendored OpenSSL build needs a native Perl on Windows, not Git Bash's.
+      PERL: ${{ matrix.os == 'windows-latest' && 'C:\Strawberry\perl\bin\perl.exe' || 'perl' }}
     steps:
       - name: Checkout exact reviewed revision
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
