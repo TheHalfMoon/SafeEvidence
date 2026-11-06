@@ -92,6 +92,8 @@ pub enum StoreError {
     SchemaMismatch {
         found: String,
     },
+    /// `open_existing` found no schema, so this store's contents are gone.
+    NotEstablished,
     /// SQLite reported the database busy. Nothing was written; retry.
     Busy,
     /// A statement ended the transaction early. Nothing from this call was written.
@@ -324,6 +326,31 @@ impl ProofStore {
         context: KeyDerivationContext,
         vrk: &OwnedKeyMaterial,
     ) -> Result<Self, StoreError> {
+        Self::open_with(path, lease, context, vrk, true)
+    }
+
+    /// Opens a store the caller knows was established, and never installs a schema. After a kill the
+    /// schema can live only in the WAL, so an empty database here means that WAL was lost, and a new
+    /// empty store would silently forget what the old one held.
+    ///
+    /// # Errors
+    /// As `open`, and `NotEstablished` if the database has no schema.
+    pub fn open_existing<P: AsRef<Path>>(
+        path: P,
+        lease: KeyedHandleLease,
+        context: KeyDerivationContext,
+        vrk: &OwnedKeyMaterial,
+    ) -> Result<Self, StoreError> {
+        Self::open_with(path, lease, context, vrk, false)
+    }
+
+    fn open_with<P: AsRef<Path>>(
+        path: P,
+        lease: KeyedHandleLease,
+        context: KeyDerivationContext,
+        vrk: &OwnedKeyMaterial,
+        may_install: bool,
+    ) -> Result<Self, StoreError> {
         let mut handle =
             open_sqlcipher_database(path, lease, context, vrk).map_err(StoreError::Open)?;
         let existing = schema_objects_digest(&mut handle)?;
@@ -338,6 +365,9 @@ impl ProofStore {
         flatten_setup(handle.configure_durable_store())?;
         if !flatten_setup(handle.durable_settings_hold())? {
             return Err(StoreError::NotDurable);
+        }
+        if existing.is_none() && !may_install {
+            return Err(StoreError::NotEstablished);
         }
         if existing.is_none() {
             // Another opener may install first. Its schema is fine if the pin matches.

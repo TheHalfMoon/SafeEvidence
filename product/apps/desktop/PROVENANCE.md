@@ -14,12 +14,17 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
 
 ## Limits
 
-- **Key custody is not implemented.** Each launch uses a new random in-memory key and a store deleted at exit, or when the next launch starts
-  after a kill, so committed answers do not survive a restart. The T03 OS protectors are not wired in. This holds invented data only.
-- A lock file gives one running instance per data directory. A second instance refuses every question it would answer with `BLOCKED`. After a failed
-  open or a poisoned lock, the store stays until the next launch clears it.
-- `Cargo.lock` holds `tauri-runtime` and `tauri-runtime-wry` at 2.12.0, because `tauri` 2.12.0's mock runtime does not compile against 2.12.2 on macOS.
-  `cargo update` would undo this, and only macOS CI would notice.
+- **Key custody is on-device and has no recovery path.** The store's root key is held by the OS protector: DPAPI on Windows, Keychain on macOS, and Secret Service through the helper on Linux. Answers survive a restart. If the key is lost or wrong, the store is
+  refused and its contents are kept, with no way to recover it yet. A refused open, with a wrong key or on a damaged main file, can still merge a live WAL into the main file, which changes the files. Backup, restore and rotation are not wired in. This holds invented data only.
+- A store that was established and has lost or emptied its main file, or its schema, is refused, and so is a WAL with no main file, so none can be silently recreated. Removing the store directory by hand is the only way to start again.
+- **Loss of the WAL can go unnoticed.** Once the main file holds a schema, a lost or damaged WAL looks like a clean store, so commits since the last checkpoint are forgotten with no warning, and an invalidated answer could come back as an answer. Telling them apart needs a protected anchor, which is not built. A kill alone is safe: this needs the WAL itself to be damaged.
+- Each fixture digest has its own store directory, so a changed fixture starts a new store and the old one stays on disk, unused and never cleaned up.
+- A crash during first install can leave a partial protector record or a `dpapi` directory with an inherited ACL. Those are refused until someone removes them by hand. A review measured this at 19 of 400 kills spread across the first open, of about 70 ms, on real DPAPI. No data is at stake in that state. A copied or restored `dpapi` directory is refused too, and no manual ACL repair has been established.
+- Only Windows runs its real protector in the desktop tests. macOS has not been run through this path, and Linux reaches it only through the helper, whose real-provider tests are in its own crate. Nothing installs the helper beside the app, so on Linux the app refuses every question until
+  `safeevidence-linux-keyring-helper` is placed next to its executable.
+- The store has no migrations, so a schema change would refuse an existing store. `vault-identity.bin` is not secret and not protected: changing it only stops the key from being found.
+- The P00 states such as `KEY_UNAVAILABLE` are not shown. Every failure to open the store reaches the view as the same `BLOCKED` with `TOOL_FAILURE`: a lost or wrong key, a damaged identity or store, a missing helper, and a second instance look alike.
+- A lock file gives one running instance per data directory. A second instance refuses every question it would answer with `BLOCKED`.
 - `TA-20` and `TA-21` are not claimed. Tests run the production handler and capability on Tauri's mock runtime, which establishes no native
   WebView privacy, OS isolation or network behaviour. No end-to-end WebView test exists yet.
 - `TA-22` is not claimed. The view is keyboard-operable with `dir="auto"` text, but has no axe or RTL snapshot run. The donor's contrast test was

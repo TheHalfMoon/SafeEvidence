@@ -3,6 +3,7 @@
 use tauri::Manager;
 
 mod ask_command;
+mod custody;
 mod navigation_policy;
 mod startup_failure;
 
