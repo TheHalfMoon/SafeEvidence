@@ -10,12 +10,12 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `086f4e1e21190a1c3ffed4e87141005392439fa7` |
+| `main` at last update | `375d7bbd2601510bdfe4144c6af9280d247048ea` |
 | Milestone | M0 open for rows; M1 VS-1a step 1 in review |
 | Active packet | WP-00 and WP-01 rows; VS-1a headless path |
-| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture); G01a baseline holds `NO_ADMISSIONS` |
+| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no files copied); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, stopping at `VERIFIED_UNCOMMITTED` |
-| Next executable task | T13 parity, then T03 proof commit, then Tauri Ask view (`plan-v1.1` §C) |
+| Next executable task | Wire assurance into Ask; then T03 proof commit, Tauri Ask view (`plan-v1.1` §C) |
 
 Required checks on `main` (founder decision, 2026-11-05): `foundation-documents`, `preentry structure`, `synthetic-only`
 and `product`, the last three on Ubuntu, Windows and macOS.
@@ -46,6 +46,10 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 | `cargo fmt`, `cargo clippy` locally | **Not run.** Local 1.97.1 toolchain lacks `cargo-fmt.exe` and `cargo-clippy.exe`; hosted CI covers both |
 
 ## Known defects
+
+**TA-13:** T13 is ported as mechanics, with 1,329 parity vectors from the donor's code. The row's fixture-subset wording is
+not met: the donor's cases need a tool and slot layer and a role V1 does not serve. Amend or build that layer before M1 exit.
+`safeevidence-ask` does not use this crate yet.
 
 **Sockets in the core's tree:** TA-29's named HTTP clients are absent, but `mio` and `socket2` are present through
 `tokio` and `zbus`, for the Linux Secret Service protector in T03. Architecture §2 says the core opens no sockets, and
