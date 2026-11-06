@@ -67,11 +67,11 @@ impl ClassifiedResidualSurface {
     #[must_use]
     fn from_existence(existence: OsFileProbeResult) -> Self {
         let existence_honesty = match existence {
-            OsFileProbeResult::Detected | OsFileProbeResult::NotFound => {
-                ProbeHonestyClass::ConfigurationDetected
-            }
-            OsFileProbeResult::NotReadable => ProbeHonestyClass::NotMeasurableOnHost,
-            OsFileProbeResult::NotApplicable => ProbeHonestyClass::NotMeasurableOnHost,
+            OsFileProbeResult::Detected => ProbeHonestyClass::ConfigurationDetected,
+            // A path check that finds nothing does not show the surface is absent.
+            OsFileProbeResult::NotFound
+            | OsFileProbeResult::NotReadable
+            | OsFileProbeResult::NotApplicable => ProbeHonestyClass::NotMeasurableOnHost,
         };
         Self {
             existence,
@@ -128,6 +128,8 @@ pub struct ResidueScan {
 
 /// Scans every file under `root` for exact byte markers. An unreadable file or directory is an
 /// error, not a clean result. Empty markers are refused, because they would match everything.
+/// Keep markers well under a database page: overflow pages split longer text, so a long marker can
+/// miss plaintext that is there. Files removed during the scan can be missed or cause an error.
 ///
 /// # Errors
 /// Returns the first I/O error, or `InvalidInput` for an empty marker.
@@ -167,7 +169,8 @@ fn probe_path(path: &Path) -> OsFileProbeResult {
     match std::fs::metadata(path) {
         Ok(_) => OsFileProbeResult::Detected,
         Err(e) if e.kind() == ErrorKind::NotFound => OsFileProbeResult::NotFound,
-        // Windows often returns PermissionDenied for existing pagefile/hiberfil.
+        // Windows often returns PermissionDenied for an existing pagefile or hiberfil.
+        #[cfg(windows)]
         Err(e) if e.kind() == ErrorKind::PermissionDenied => OsFileProbeResult::Detected,
         Err(_) => OsFileProbeResult::NotReadable,
     }
@@ -352,7 +355,7 @@ mod tests {
             ),
             (
                 OsFileProbeResult::NotFound,
-                ProbeHonestyClass::ConfigurationDetected,
+                ProbeHonestyClass::NotMeasurableOnHost,
             ),
             (
                 OsFileProbeResult::NotReadable,
