@@ -1,0 +1,98 @@
+{
+  "description": "Invented engineering fixture. Compounds, conditions and results do not exist. Not medical information.",
+  "validity_epoch": 3,
+  "rights_grant_version": "synthetic-owned-1",
+  "documents": [
+    {
+      "doc_id": "doc-veltrix-a",
+      "study_id": "study-veltrix-a",
+      "title": "Veltrixamine in adults with synthetic glimmer syndrome",
+      "text": "Adults with synthetic glimmer syndrome received veltrixamine 40 mg daily. The glimmer score improved by 12 points compared with placebo at 12 weeks.",
+      "population": "adults",
+      "condition": "glimmer syndrome",
+      "intervention": "veltrixamine",
+      "finding": "The glimmer score improved by 12 points compared with placebo at 12 weeks.",
+      "direction": "benefit",
+      "publication_state": "CURRENT",
+      "rights": "synthetic_owned"
+    },
+    {
+      "doc_id": "doc-veltrix-a-followup",
+      "study_id": "study-veltrix-a",
+      "title": "Follow-up report of veltrixamine in adults with synthetic glimmer syndrome",
+      "text": "This follow-up reports the same adults with synthetic glimmer syndrome on veltrixamine 40 mg daily. The glimmer score stayed improved by 11 points compared with placebo at 24 weeks.",
+      "population": "adults",
+      "condition": "glimmer syndrome",
+      "intervention": "veltrixamine",
+      "finding": "The glimmer score stayed improved by 11 points compared with placebo at 24 weeks.",
+      "direction": "benefit",
+      "publication_state": "CURRENT",
+      "rights": "synthetic_owned"
+    },
+    {
+      "doc_id": "doc-veltrix-peds",
+      "study_id": "study-veltrix-peds",
+      "title": "Veltrixamine in children with synthetic glimmer syndrome",
+      "text": "Children with synthetic glimmer syndrome received veltrixamine 10 mg daily. The glimmer score did not improve compared with placebo at 12 weeks.",
+      "population": "children",
+      "condition": "glimmer syndrome",
+      "intervention": "veltrixamine",
+      "finding": "The glimmer score did not improve compared with placebo at 12 weeks.",
+      "direction": "no_benefit",
+      "publication_state": "CURRENT",
+      "rights": "synthetic_owned"
+    },
+    {
+      "doc_id": "doc-orbalin-a",
+      "study_id": "study-orbalin-a",
+      "title": "Orbalin in adults with synthetic ember fatigue",
+      "text": "Adults with synthetic ember fatigue received orbalin 5 mg daily. The ember score improved by 8 points compared with placebo at 8 weeks.",
+      "population": "adults",
+      "condition": "ember fatigue",
+      "intervention": "orbalin",
+      "finding": "The ember score improved by 8 points compared with placebo at 8 weeks.",
+      "direction": "benefit",
+      "publication_state": "CURRENT",
+      "rights": "synthetic_owned"
+    },
+    {
+      "doc_id": "doc-orbalin-b",
+      "study_id": "study-orbalin-b",
+      "title": "Orbalin in adults with synthetic ember fatigue, second trial",
+      "text": "Adults with synthetic ember fatigue received orbalin 5 mg daily in a second trial. The ember score did not improve compared with placebo at 8 weeks.",
+      "population": "adults",
+      "condition": "ember fatigue",
+      "intervention": "orbalin",
+      "finding": "The ember score did not improve compared with placebo at 8 weeks.",
+      "direction": "no_benefit",
+      "publication_state": "CURRENT",
+      "rights": "synthetic_owned"
+    },
+    {
+      "doc_id": "doc-quenzil-retracted",
+      "study_id": "study-quenzil",
+      "title": "Quenzil in adults with synthetic hollow cough",
+      "text": "Adults with synthetic hollow cough received quenzil 20 mg daily. The cough score improved by 6 points compared with placebo at 4 weeks.",
+      "population": "adults",
+      "condition": "hollow cough",
+      "intervention": "quenzil",
+      "finding": "The cough score improved by 6 points compared with placebo at 4 weeks.",
+      "direction": "benefit",
+      "publication_state": "RETRACTED",
+      "rights": "synthetic_owned"
+    },
+    {
+      "doc_id": "doc-tessarine-unknown-rights",
+      "study_id": "study-tessarine",
+      "title": "Tessarine in adults with synthetic marble rash",
+      "text": "Adults with synthetic marble rash received tessarine 15 mg daily. The rash score improved by 4 points compared with placebo at 6 weeks.",
+      "population": "adults",
+      "condition": "marble rash",
+      "intervention": "tessarine",
+      "finding": "The rash score improved by 4 points compared with placebo at 6 weeks.",
+      "direction": "benefit",
+      "publication_state": "CURRENT",
+      "rights": "unknown"
+    }
+  ]
+}

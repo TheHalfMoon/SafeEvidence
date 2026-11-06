@@ -10,12 +10,12 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `02e551d2912f4921fda88fc317278df4695ebe93` |
-| Milestone | M0, in progress |
-| Active packet | WP-00 and WP-01 |
+| `main` at last update | `086f4e1e21190a1c3ffed4e87141005392439fa7` |
+| Milestone | M0 open for rows; M1 VS-1a step 1 in review |
+| Active packet | WP-00 and WP-01 rows; VS-1a headless path |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture); G01a baseline holds `NO_ADMISSIONS` |
-| Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3` ; T03 vault slice, TA-05 not claimed |
-| Next executable task | Rows for T12, T13, T30, T36; first headless Ask path |
+| Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, stopping at `VERIFIED_UNCOMMITTED` |
+| Next executable task | T13 parity, then T03 proof commit, then Tauri Ask view (`plan-v1.1` §C) |
 
 Required checks on `main` (founder decision, 2026-11-05): `foundation-documents`, `preentry structure`, `synthetic-only`
 and `product`, the last three on Ubuntu, Windows and macOS.
@@ -24,8 +24,8 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 
 | Milestone | Status | Blocked by |
 |---|---|---|
-| M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED` | TA-02 (awaiting review and CI); rows for T12, T13, T30, T36 |
-| M1 VS-1 (synthetic) | `NOT_STARTED` | M0 |
+| M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED`; TA-02 `TESTED_PASSED` | Rows for T12, T13, T30, T36 |
+| M1 VS-1 (synthetic) | `IMPLEMENTED_UNTESTED` for step 1 of §C until CI passes | M0 rows; T13, vault commit, desktop; owed tests in Known defects |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
 | M4 Desktop V1 | `NOT_STARTED` | M3 |
