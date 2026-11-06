@@ -19,8 +19,13 @@ Admission `ADM-0005` (T13) in `docs/evidence/source_admissions.json`.
 - Only a blank rule ID is rejected as malformed. The donor's bundle validation is not ported, so unlike the donor, any
   precedence number is accepted, including out-of-range ones.
 
+## Fixture subset
+
+`tests/fixtures/t13_cases_*.json` hold the question text of the donor's 17 fixture cases, the rules its pipeline fired and its final state, from
+`bench/oracles/commandmed_spec006/generate_case_vectors.py`. The question texts are copied from the donor's fixtures, so those three files are `adapted` in `ADM-0005`. The 4 lexical emergency cases keep
+their text only.
+
 ## Not covered
 
-The donor's 17 fixture cases are not run. They need its tool registry and slot layer, use a patient-caregiver role V1 does not
-serve, and 4 are lexical emergency cases P00 excludes. This is mechanics parity only, so **TA-13 is not met**: its fixture subset does not run, and this crate alone cannot
-give exactly one `TerminalOutcome`, since it can return `NoRuleFired` or an action. Ask carries the lexical-emergency test today. `safeevidence-ask` calls it to resolve evidence-based guards only.
+Under `plan-v1.4`, the subset is resolution only: the port resolves the rules the donor's pipeline chose, and does not detect them. This crate alone cannot give exactly one `TerminalOutcome`, since it can return `NoRuleFired`
+or an action. `safeevidence-ask` calls it to resolve evidence-based guards only. TA-13's DAL vectors are owed at WP-11.

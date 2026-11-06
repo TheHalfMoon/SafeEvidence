@@ -627,22 +627,22 @@
           "source_path": "tests/spec006/fixtures/us1-tool-routing.json",
           "git_blob_oid": "2c92905bb4e7b56a6870ef68b636b6672cadc086",
           "bytes": 7090,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-assurance/tests/fixtures/t13_cases_us1_tool_routing.json",
+          "modification": "adapted"
         },
         {
           "source_path": "tests/spec006/fixtures/us2-context-safety.json",
           "git_blob_oid": "0f1f76e37e634885bcfdb4d75c94c6be79095ef7",
           "bytes": 4522,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-assurance/tests/fixtures/t13_cases_us2_context_safety.json",
+          "modification": "adapted"
         },
         {
           "source_path": "tests/spec006/fixtures/us3-injection-spoof.json",
           "git_blob_oid": "0ed9dc45eb5d47986835e157bf99be7e6f6e0a8b",
           "bytes": 4208,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-assurance/tests/fixtures/t13_cases_us3_injection_spoof.json",
+          "modification": "adapted"
         },
         {
           "source_path": "tests/spec006/test_policy.py",

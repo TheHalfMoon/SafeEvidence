@@ -706,3 +706,43 @@ fn proof_identity_is_pinned_for_the_fixture() {
         "vs1a-23b55df9e5d6e7e76c991aa9233bc6d853d8bc9059f1cab62c21cedaad4b74fe"
     );
 }
+
+/// `plan-v1.4`: every donor case's question ends in one outcome with a reason, and none is answered
+/// by this closed grammar. The type gives "exactly one"; this checks the outcome is an allowed one.
+#[test]
+fn every_donor_fixture_question_ends_in_one_refusal_with_a_reason() {
+    let mut cases = Vec::new();
+    for file in [
+        include_str!("../../safeevidence-assurance/tests/fixtures/t13_cases_us1_tool_routing.json"),
+        include_str!(
+            "../../safeevidence-assurance/tests/fixtures/t13_cases_us2_context_safety.json"
+        ),
+        include_str!(
+            "../../safeevidence-assurance/tests/fixtures/t13_cases_us3_injection_spoof.json"
+        ),
+    ] {
+        let document: serde_json::Value = serde_json::from_str(file).expect("case vectors parse");
+        cases.extend(document["cases"].as_array().expect("cases").clone());
+    }
+    assert_eq!(cases.len(), 17);
+    let corpus = corpus();
+    for case in &cases {
+        let (id, text) = (
+            case["case_id"].as_str().unwrap(),
+            case["text"].as_str().unwrap(),
+        );
+        let result = ask(text, &corpus);
+        assert!(
+            !matches!(
+                result.outcome,
+                TerminalOutcome::Answer
+                    | TerminalOutcome::AnswerWithCaution
+                    | TerminalOutcome::EmergencyNotice
+            ),
+            "{id}: {:?}",
+            result.outcome
+        );
+        assert_ne!(result.reason, ReasonCode::None, "{id}");
+        assert!(result.brief.is_none() && result.manifest.is_none(), "{id}");
+    }
+}
