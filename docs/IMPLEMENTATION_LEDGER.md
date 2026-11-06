@@ -10,15 +10,15 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `063f8d2515bdbff560026e41d0f553afbeb87d2e` |
+| `main` at last update | `653541ae368c0cf294960de5a84905fe1ded69a0` |
 | Milestone | M0 open for T30's row; M1 VS-1 in progress, per the table below |
 | Active packet | WP-00 and WP-01 rows; WP-18a Ask view |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no files copied), ADM-0006 (T36), ADM-0007 (T12); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
 | Next executable task | M1 exit items: TA-13, sockets defect, key custody, end-to-end WebView test; row for T30 |
 
-Required checks on `main` (founder decision, 2026-11-05): `foundation-documents`, `preentry structure`, `synthetic-only`
-and `product`, the last three on Ubuntu, Windows and macOS.
+Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `foundation-documents`, `preentry structure`,
+`synthetic-only`, `product` and `desktop`, the last four on Ubuntu, Windows and macOS.
 
 ## Milestones
 
@@ -63,7 +63,7 @@ TA-29's tree check covers normal dependencies. Build-only crates such as `cc` an
 
 **Desktop shell:** the Ask view uses a new in-memory key and a throwaway store per launch, so answers do not survive a restart, and T03's OS
 protectors are not wired in. Tests use Tauri's mock runtime, so TA-20, TA-21 and TA-22 are not claimed. The app's trees are outside TA-02's SBOM
-and `product/deny.toml`. The `Desktop Shell` CI job is not a required check. Tauri pulls `reqwest` and `hyper` on Android and iOS: resolve before M5.
+and `product/deny.toml`. Tauri pulls `reqwest` and `hyper` on Android and iOS: resolve before M5.
 
 **`plan-v1.3` immutability:** tested against the keyed vault store in `safeevidence-proofstore`, with triggers and guarded SQL.
 **`plan-v1.3` lineage: partly owed.** The store amends sources, not the prior assertion, and keeps no `AmendmentRecord` fields.
