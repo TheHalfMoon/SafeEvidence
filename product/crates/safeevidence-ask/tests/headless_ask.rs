@@ -2,7 +2,8 @@
 //! They are not retrieval-quality or clinical results.
 
 use safeevidence_ask::{
-    Corpus, CorpusError, Direction, ask, claim_defect, load_corpus, parse_question, verify_brief,
+    Corpus, CorpusError, Direction, ask, claim_defect, load_corpus, parse_question,
+    validate_documents, verify_brief,
 };
 use safeevidence_contracts::assurance::{ProofState, ReasonCode, TerminalOutcome};
 use safeevidence_contracts::objects::DigestSha256;
@@ -388,7 +389,7 @@ fn altered_numbers_units_and_negation_are_flagged() {
             "negation",
         ),
         (
-            "The glimmer score worsened by 12 points compared with placebo at 12 weeks.",
+            "The glimmer score rose by 12 points compared with placebo at 12 weeks.",
             "text",
         ),
     ] {
@@ -503,4 +504,132 @@ fn loader_refuses_a_finding_that_is_a_fragment_or_a_mislabelled_direction() {
         edit("direction", "maybe"),
         Err(CorpusError::Malformed(_))
     ));
+}
+
+fn one_doc_corpus(text: &str, finding: &str, direction: Direction) -> Corpus {
+    let mut value = corpus();
+    let doc = &mut value.documents[0];
+    doc.text = text.to_owned();
+    doc.finding = finding.to_owned();
+    doc.direction = direction;
+    value
+}
+
+#[test]
+fn an_abbreviation_does_not_create_a_false_sentence() {
+    let value = one_doc_corpus(
+        "No trial confirmed the report by Smith et al. that drug improved score by 12 points.",
+        "that drug improved score by 12 points.",
+        Direction::Benefit,
+    );
+    assert!(validate_documents(&value).is_err());
+    assert_eq!(ask(ADULT, &value).outcome, TerminalOutcome::Blocked);
+}
+
+#[test]
+fn a_claim_also_inside_a_negated_sentence_uses_its_own_span_or_is_refused() {
+    let repeated = "The score improved by 12 points.";
+    let value = one_doc_corpus(
+        &format!("Nobody showed that {repeated} {repeated}"),
+        repeated,
+        Direction::Benefit,
+    );
+    let result = ask(ADULT, &value);
+    if let Some(manifest) = result.manifest {
+        let span = &manifest.claims[0].spans[0];
+        assert!(
+            span.start_scalar > 20,
+            "must not cite inside the negated sentence"
+        );
+    }
+    let twice = one_doc_corpus(
+        &format!("{repeated} {repeated}"),
+        repeated,
+        Direction::Benefit,
+    );
+    assert!(
+        validate_documents(&twice).is_err(),
+        "an ambiguous span is refused"
+    );
+}
+
+#[test]
+fn broader_reversal_wording_cannot_be_labelled_benefit() {
+    for finding in [
+        "The score didn't improve at 8 weeks.",
+        "The score failed to improve at 8 weeks.",
+        "The score worsened at 8 weeks.",
+    ] {
+        let value = one_doc_corpus(finding, finding, Direction::Benefit);
+        assert!(matches!(
+            validate_documents(&value),
+            Err(CorpusError::DirectionContradictsFinding(_))
+        ));
+    }
+}
+
+#[test]
+fn ask_refuses_a_directly_built_invalid_corpus() {
+    let finding = "The score did not improve at 8 weeks.";
+    let value = one_doc_corpus(finding, finding, Direction::Benefit);
+    let result = ask(ADULT, &value);
+    assert_eq!(result.outcome, TerminalOutcome::Blocked);
+    assert!(result.brief.is_none());
+}
+
+#[test]
+fn a_retracted_report_filed_under_other_terms_still_removes_its_study() {
+    let value = with_doc("doc-orbalin-a", |d| {
+        d.study_id = "study-veltrix-a".to_owned();
+        d.publication_state = PublicationState::Retracted;
+    });
+    let result = ask(ADULT, &value);
+    assert!(result.brief.is_none());
+    assert_eq!(
+        result.funnel.citable, 1,
+        "only the children's study remains"
+    );
+}
+
+#[test]
+fn population_case_does_not_hide_a_conflict_when_population_is_missing() {
+    let value = with_doc("doc-orbalin-b", |d| d.population = "Adults".to_owned());
+    let result = ask("Does orbalin help with ember fatigue?", &value);
+    assert_eq!(result.outcome, TerminalOutcome::Conflict);
+}
+
+#[test]
+fn rights_block_outranks_retraction() {
+    let value = with_doc("doc-quenzil-retracted", |d| {
+        d.rights = safeevidence_contracts::evidence::EvidenceCorpusRights::Unknown;
+    });
+    let result = ask("Does quenzil help adults with hollow cough?", &value);
+    assert_eq!(result.outcome, TerminalOutcome::Blocked);
+    assert_eq!(result.reason, ReasonCode::RightsUnresolved);
+}
+
+#[test]
+fn citations_must_be_in_bounds_and_on_a_whole_sentence() {
+    let corpus = corpus();
+    let brief = ask(ADULT, &corpus).brief.unwrap();
+    let line = brief.lines().find(|l| l.starts_with("- ")).unwrap();
+    let (claim_part, citation) = line.rsplit_once(" [").unwrap();
+    let doc = citation.split(' ').next().unwrap();
+    for range in ["0..999999", "5..5", "9..3"] {
+        let forged = brief.replace(line, &format!("{claim_part} [{doc} {range}]"));
+        assert!(verify_brief(&forged, &corpus).is_err(), "{range}");
+    }
+}
+
+#[test]
+fn every_negation_word_counts_and_every_unit_counts() {
+    let base = "The score moved by 12 at 8.";
+    for word in ["not", "no", "never", "without", "neither", "nor", "failed"] {
+        let claim = format!("The score {word} moved by 12 at 8.");
+        assert_eq!(claim_defect(&claim, base), Some("negation"), "{word}");
+    }
+    for unit in ["mg", "g", "mcg", "kg", "ml", "weeks", "months", "points"] {
+        let claim = format!("The score moved by 12 {unit} at 8.");
+        assert_eq!(claim_defect(&claim, base), Some("unit"), "{unit}");
+    }
 }

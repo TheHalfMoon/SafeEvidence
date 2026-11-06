@@ -64,7 +64,12 @@ pub enum CorpusError {
     DirectionContradictsFinding(String),
 }
 
-const NEGATIONS: [&str; 6] = ["not", "no", "never", "without", "neither", "nor"];
+/// Words that reverse a finding. A word list, so `direction` remains partly the fixture author's
+/// label: this catches mislabels it can recognize, and is not an understanding of meaning.
+const NEGATIONS: [&str; 15] = [
+    "not", "no", "never", "without", "neither", "nor", "didn", "doesn", "wasn", "failed", "fails",
+    "worsened", "worse", "unable", "nobody",
+];
 const UNITS: [&str; 8] = ["mg", "g", "mcg", "kg", "ml", "weeks", "months", "points"];
 
 fn word_set(text: &str) -> BTreeSet<String> {
@@ -97,6 +102,16 @@ pub fn load_corpus(bytes: &[u8], expected: &DigestSha256) -> Result<Corpus, Corp
     if corpus.rights_grant_version.trim().is_empty() {
         return Err(CorpusError::MissingRightsGrant);
     }
+    validate_documents(&corpus)?;
+    Ok(corpus)
+}
+
+/// Document rules every corpus must meet, however it was built.
+///
+/// # Errors
+/// Returns the first duplicate, a finding that is not one whole source sentence, or a direction
+/// its finding's wording contradicts.
+pub fn validate_documents(corpus: &Corpus) -> Result<(), CorpusError> {
     if corpus.documents.is_empty() {
         return Err(CorpusError::Empty);
     }
@@ -105,7 +120,9 @@ pub fn load_corpus(bytes: &[u8], expected: &DigestSha256) -> Result<Corpus, Corp
         if !seen.insert(document.doc_id.as_str()) {
             return Err(CorpusError::DuplicateDocument(document.doc_id.clone()));
         }
-        if claim_defect(&document.finding, &document.text).is_some() {
+        if claim_defect(&document.finding, &document.text).is_some()
+            || sentence_positions(&document.text, &document.finding).len() != 1
+        {
             return Err(CorpusError::FindingNotASourceSentence(
                 document.doc_id.clone(),
             ));
@@ -116,7 +133,7 @@ pub fn load_corpus(bytes: &[u8], expected: &DigestSha256) -> Result<Corpus, Corp
             ));
         }
     }
-    Ok(corpus)
+    Ok(())
 }
 
 /// How many items survived each stage. Present in every trace, including refusals.
@@ -175,8 +192,8 @@ fn normalized(text: &str) -> String {
 }
 
 /// Requests about one person's care are out of V1 scope. These are phrases about a person, never
-/// symptoms. The list is not complete, but a miss cannot reach a brief: such questions do not fit
-/// the grammar.
+/// symptoms. The list is incomplete: `my wife` passes it, and only exact population matching then
+/// keeps such a question from a brief.
 fn is_patient_specific_request(normalized: &str) -> bool {
     const PHRASES: [&str; 7] = [
         "my patient",
@@ -271,17 +288,38 @@ fn numeric_tokens(text: &str) -> Vec<String> {
     tokens
 }
 
-/// Whole sentences: split only where a full stop ends a word, so `0.5 mg` stays intact.
-fn sentences(source: &str) -> Vec<&str> {
+/// Sentences with their byte offsets. A boundary is a full stop, a space, then a capital letter,
+/// so `0.5 mg` and `et al. that` stay inside their sentence. Splitting is heuristic: `Dr. Smith`
+/// would split, which refuses a true claim rather than admitting a false one.
+fn sentences_with_offsets(source: &str) -> Vec<(usize, &str)> {
     let mut found = Vec::new();
     let mut start = 0;
     for (index, _) in source.match_indices(". ") {
-        found.push(source[start..=index].trim());
-        start = index + 2;
+        let next = source[index + 2..].chars().next();
+        if next.is_some_and(char::is_uppercase) {
+            found.push((start, &source[start..=index]));
+            start = index + 2;
+        }
     }
-    found.push(source[start..].trim());
-    found.retain(|sentence| !sentence.is_empty());
+    found.push((start, &source[start..]));
+    found.retain(|(_, sentence)| !sentence.is_empty());
     found
+}
+
+fn sentences(source: &str) -> Vec<&str> {
+    sentences_with_offsets(source)
+        .into_iter()
+        .map(|(_, sentence)| sentence)
+        .collect()
+}
+
+/// Byte offsets of each sentence that is exactly this claim.
+fn sentence_positions(source: &str, claim: &str) -> Vec<usize> {
+    sentences_with_offsets(source)
+        .into_iter()
+        .filter(|(_, sentence)| *sentence == claim)
+        .map(|(offset, _)| offset)
+        .collect()
 }
 
 /// Why a claim does not match its source, or `None` if it is a whole sentence of that source.
@@ -315,7 +353,7 @@ pub fn claim_defect(claim: &str, source: &str) -> Option<&'static str> {
 }
 
 fn span_of(document: &Document) -> Option<EvidenceSpan> {
-    let start = document.text.find(&document.finding)?;
+    let start = *sentence_positions(&document.text, &document.finding).first()?;
     let start_scalar = document.text[..start].chars().count() as u64;
     Some(EvidenceSpan {
         source_id: document.doc_id.clone(),
@@ -377,14 +415,22 @@ pub fn verify_brief(brief: &str, corpus: &Corpus) -> Result<Vec<String>, String>
             .iter()
             .find(|document| document.doc_id == doc_id)
             .ok_or_else(|| format!("unknown source: {doc_id}"))?;
+        let total = document.text.chars().count();
+        if start >= end || end > total {
+            return Err(format!("span out of bounds: {line}"));
+        }
         let slice: String = document
             .text
             .chars()
             .skip(start)
-            .take(end.saturating_sub(start))
+            .take(end - start)
             .collect();
         if slice != claim {
             return Err(format!("span does not reproduce the claim: {line}"));
+        }
+        let byte_start: usize = document.text.chars().take(start).map(char::len_utf8).sum();
+        if !sentence_positions(&document.text, claim).contains(&byte_start) {
+            return Err(format!("span is not on a whole sentence: {line}"));
         }
         if let Some(defect) = claim_defect(claim, &document.text) {
             return Err(format!("{defect} defect: {line}"));
@@ -449,6 +495,9 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         result.excluded = excluded.to_vec();
         result
     };
+    if validate_documents(corpus).is_err() {
+        return AskResult::refuse(TerminalOutcome::Blocked, ReasonCode::ToolFailure, funnel);
+    }
     if has_unsupported_script(text) {
         return AskResult::refuse(
             TerminalOutcome::Abstain,
@@ -481,7 +530,7 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
     funnel.retrieved = retrieved.len();
 
     // Metadata decides relevance, across the whole corpus: a contradicting document must count
-    // even if lexical retrieval missed it. Retrieval decides order and the funnel.
+    // even if lexical retrieval missed it. Retrieval supplies only the funnel count here.
     let relevant = |document: &&Document| {
         normalized(&document.condition) == question.condition
             && normalized(&document.intervention) == question.intervention
@@ -507,8 +556,26 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         );
     }
 
+    // BLOCKED outranks everything evidence-based. An unsupported rights grant is not weak
+    // evidence: it denies presentation, even of a source that would also be refused for validity.
+    let denied: Vec<&&Document> = matching.iter().filter(|d| !d.rights.admissible()).collect();
+    if !denied.is_empty() {
+        for document in denied {
+            excluded.push((document.doc_id.clone(), "rights not established".to_owned()));
+        }
+        return refuse(
+            TerminalOutcome::Blocked,
+            ReasonCode::RightsUnresolved,
+            &funnel,
+            &excluded,
+        );
+    }
+    funnel.rights_admissible = matching.len();
+
     // A retracted or withdrawn report takes its whole study out: a follow-up cannot rescue it.
-    let withdrawn: BTreeSet<&str> = matching
+    // This scans the whole corpus, since that report may be indexed under other terms.
+    let withdrawn: BTreeSet<&str> = corpus
+        .documents
         .iter()
         .filter(|document| is_withdrawn(document.publication_state))
         .map(|document| document.study_id.as_str())
@@ -531,38 +598,27 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
     }
     funnel.citable = citable.len();
     if citable.is_empty() {
-        let reason = if withdrawn.is_empty() {
-            ReasonCode::CurrentnessUnknown
-        } else {
+        let any_withdrawn = matching
+            .iter()
+            .any(|document| withdrawn.contains(document.study_id.as_str()));
+        let reason = if any_withdrawn {
             ReasonCode::SourceInvalidOrRetracted
+        } else {
+            ReasonCode::CurrentnessUnknown
         };
         return refuse(TerminalOutcome::Abstain, reason, &funnel, &excluded);
     }
 
-    // BLOCKED: an unsupported rights grant is not weak evidence. It denies presentation.
-    let denied: Vec<&&Document> = citable.iter().filter(|d| !d.rights.admissible()).collect();
-    if !denied.is_empty() {
-        for document in denied {
-            excluded.push((document.doc_id.clone(), "rights not established".to_owned()));
-        }
-        return refuse(
-            TerminalOutcome::Blocked,
-            ReasonCode::RightsUnresolved,
-            &funnel,
-            &excluded,
-        );
-    }
-    funnel.rights_admissible = citable.len();
-
     // CONFLICT, then ASK_MORE: asking for a population cannot resolve independent contradiction
     // that exists within one population.
     let Some(population) = &question.population else {
-        let populations: BTreeSet<&str> = citable.iter().map(|d| d.population.as_str()).collect();
+        let populations: BTreeSet<String> =
+            citable.iter().map(|d| normalized(&d.population)).collect();
         let conflict = populations.iter().any(|population| {
             let group: Vec<&Document> = citable
                 .iter()
                 .copied()
-                .filter(|d| d.population == *population)
+                .filter(|d| normalized(&d.population) == *population)
                 .collect();
             studies_conflict(&group)
         });
