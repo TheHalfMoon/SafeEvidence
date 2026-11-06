@@ -25,16 +25,18 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/p00-foundation-docs.yml": "ffc5b4246ee09dad96caed7cf759e8565fe0e80b2e6ffe8642cfa6ad2d1b8db6",
     ".github/workflows/p01-preentry-governance.yml": "efe37c703ed5c24ec230e355ef2579070507d626b00f6f17f93a418ebe6dbfab",
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
-    ".github/workflows/product-ci.yml": "3f23d93c73cb49d743083cb02d4c7fe3d342046fca2015943da30942b5d14b87",
-    ".github/workflows/desktop-ci.yml": "ddf4941a21f55bd6001ccbf1408c41be4a090ab36527b18ce7e841ad4aa6982a",
+    ".github/workflows/product-ci.yml": "c2d90c6ea46527f1ee1eb0dcf8544cfcd2bff1edba02c870dc867ef32f926511",
+    ".github/workflows/desktop-ci.yml": "482fd67dc96722a84fe2ebccdfd4061ca1b10045ce67c6bbdfbd36c34f34d8a3",
 }
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.
+CORE_SOCKET_SCRIPT = "tools/ci/core_no_sockets.py"
+CORE_SOCKET_SCRIPT_SHA256 = "7363a273e45ce5e3f167142327828e167f275ccb91c1891c59622c99ef404e87"
 TA03_SCRIPT = "tools/ci/ta03_isolated.sh"
 TA29_SCRIPT = "tools/ci/ta29_dependency_denial.py"
 TA29_SCRIPT_SHA256 = "b77022615499713081f2fd621a253d9be96bbb824363d947c1e07cb98a4fe768"
 TA29_DESKTOP_SCRIPT = "tools/ci/ta29_desktop_denial.py"
-TA29_DESKTOP_SCRIPT_SHA256 = "658a94ed047263f615293a28b62315240c5f0e8725c51a667d08f182a8afb687"
+TA29_DESKTOP_SCRIPT_SHA256 = "4acd672c1a495d7e4ff1149d58fc3c02636d2c76d64c3c92d4bb546fefcd4d54"
 TA03_SCRIPT_SHA256 = "fa83a8a0b1abc085d5cb8e3ca0be5dbd2ff401d5cdf3c1e707aa792fb230c22b"
 
 CHECKOUT_LINE = re.compile(r"^\s*uses:\s*actions/checkout@([^\s#]+)", re.MULTILINE)
@@ -97,6 +99,10 @@ class WorkflowCheckoutPinTests(unittest.TestCase):
     def test_ta03_gate_script_matches_pinned_revision(self):
         source = (ROOT / TA03_SCRIPT).read_text(encoding="utf-8")
         self.assertEqual(TA03_SCRIPT_SHA256, workflow_content_digest(source))
+
+    def test_core_socket_gate_script_matches_pinned_revision(self):
+        source = (ROOT / CORE_SOCKET_SCRIPT).read_text(encoding="utf-8")
+        self.assertEqual(CORE_SOCKET_SCRIPT_SHA256, workflow_content_digest(source))
 
     def test_ta29_gate_script_matches_pinned_revision(self):
         source = (ROOT / TA29_SCRIPT).read_text(encoding="utf-8")

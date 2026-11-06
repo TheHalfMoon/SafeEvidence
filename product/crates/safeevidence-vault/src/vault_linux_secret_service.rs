@@ -1,15 +1,12 @@
-//! Linux Secret Service adapter for Specification 004B4 B404.
+//! Linux Secret Service adapter for Specification 004B4 B404, through a helper process.
 //!
-//! The adapter uses only the default Secret Service collection and negotiates
-//! the encrypted Diffie-Hellman session. Provider-visible metadata is limited
-//! to one fixed SafeEvidence application identifier, one fixed item label/content
-//! type, and one opaque random protector identifier. Vault identity, key
-//! generation, policy binding, and VRK bytes remain inside the secret value.
+//! The core opens no sockets, so `safeevidence-linux-keyring-helper` holds the Secret Service and D-Bus
+//! code, and this side talks to it over stdin and stdout. This side keeps the record format, the binding
+//! to vault, generation and policy, and the capability claims. Vault identity, key generation, policy
+//! binding, and VRK bytes stay inside the record, which the helper treats as opaque.
 //!
-//! The baseline reports `SAME_USER_SESSION`, no per-SafeEvidence-unlock user
-//! presence, and unknown hardware backing. It never auto-unlocks a locked
-//! collection/item, never uses the plaintext Secret Service session, and does
-//! not implement freshness-anchor or protector-replacement semantics.
+//! The baseline reports `SAME_USER_SESSION`, no per-SafeEvidence-unlock user presence, and unknown
+//! hardware backing. It does not implement freshness-anchor or protector-replacement semantics.
 
 use crate::vault::{
     AccessScope, FreshnessAnchor, HardwareBacking, KeyGeneration, ProtectedFreshnessState,
@@ -18,23 +15,24 @@ use crate::vault::{
 use crate::vault_keys::{KEY_MATERIAL_BYTES, OwnedKeyMaterial};
 use crate::vault_protector::{ProtectorPolicy, validate_requested_policy};
 use getrandom::fill;
-use secret_service::blocking::{Collection, Item, SecretService};
-use secret_service::{EncryptionType, Error as SecretServiceError};
-use std::collections::HashMap;
+use safeevidence_keyring_wire::{
+    Op, PROTECTOR_ID_BYTES, ProtectorId, Reply, Request, SecretBytes, WireError, decode_reply,
+    encode_request, read_frame, write_frame,
+};
+use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::mpsc::{Receiver, TryRecvError, sync_channel};
+use std::time::Duration;
 use zeroize::Zeroizing;
 
-const APPLICATION_ATTRIBUTE: &str = "application";
-const APPLICATION_ID: &str = "com.thehalfmoon.safeevidence";
-const PROTECTOR_ATTRIBUTE: &str = "protector-id";
-const SCHEMA_ATTRIBUTE: &str = "xdg:schema";
-const SCHEMA_ID: &str = "com.thehalfmoon.safeevidence";
-const ITEM_LABEL: &str = "SafeEvidence Vault Protector";
-const CONTENT_TYPE: &str = "application/octet-stream";
 const RECORD_MAGIC: &[u8] = b"HIMSAT/LINUX/SECRET-SERVICE/VRK/v1\0";
 const OWNER_TAG: &[u8] = b"HIMSAT/APP/v1\0";
-const PROTECTOR_ID_BYTES: usize = 16;
 const RECORD_BYTES: usize =
     RECORD_MAGIC.len() + OWNER_TAG.len() + 16 + 8 + 1 + 1 + KEY_MATERIAL_BYTES;
+const HELPER_NAME: &str = "safeevidence-linux-keyring-helper";
+const DEFAULT_REPLY_TIMEOUT: Duration = Duration::from_secs(120);
+/// All the helper may inherit: what `zbus` reads to find the session bus.
+const HELPER_ENVIRONMENT: [&str; 2] = ["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"];
 
 /// Opaque provider-visible identifier used only as a Secret Service attribute.
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
@@ -58,16 +56,6 @@ impl LinuxProtectorId {
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8; PROTECTOR_ID_BYTES] {
         &self.0
-    }
-
-    fn attribute_value(&self) -> String {
-        const HEX: &[u8; 16] = b"0123456789abcdef";
-        let mut output = String::with_capacity(PROTECTOR_ID_BYTES * 2);
-        for byte in self.0 {
-            output.push(char::from(HEX[usize::from(byte >> 4)]));
-            output.push(char::from(HEX[usize::from(byte & 0x0f)]));
-        }
-        output
     }
 }
 
@@ -97,19 +85,238 @@ impl LinuxSecretServiceConfig {
     }
 }
 
+/// How to start the helper: an absolute path only, never a `PATH` lookup.
+#[derive(Clone, Debug)]
+pub struct KeyringHelperCommand {
+    path: PathBuf,
+    arguments: Vec<String>,
+    reply_timeout: Duration,
+}
+
+impl KeyringHelperCommand {
+    /// # Errors
+    /// Returns `Unavailable` unless the path is absolute.
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, ProtectorError> {
+        let path = path.as_ref();
+        if !path.is_absolute() {
+            return Err(ProtectorError::Unavailable);
+        }
+        Ok(Self {
+            path: path.to_path_buf(),
+            arguments: Vec::new(),
+            reply_timeout: DEFAULT_REPLY_TIMEOUT,
+        })
+    }
+
+    /// The helper installed next to the running executable.
+    ///
+    /// # Errors
+    /// Returns `Unavailable` if the running executable's directory cannot be found.
+    pub fn beside_current_exe() -> Result<Self, ProtectorError> {
+        let exe = std::env::current_exe().map_err(|_| ProtectorError::Unavailable)?;
+        let directory = exe.parent().ok_or(ProtectorError::Unavailable)?;
+        Self::new(directory.join(format!("{HELPER_NAME}{}", std::env::consts::EXE_SUFFIX)))
+    }
+
+    /// Sets how long one reply may take before the helper is killed and the call fails.
+    #[must_use]
+    pub const fn with_reply_timeout(mut self, reply_timeout: Duration) -> Self {
+        self.reply_timeout = reply_timeout;
+        self
+    }
+
+    /// Passes an argument to the program. The real helper takes none; tests use this to pick a fake's mode.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_test_argument(mut self, argument: &str) -> Self {
+        self.arguments.push(argument.to_owned());
+        self
+    }
+}
+
+/// The record store behind the protector.
+trait RecordStore: Send {
+    fn ensure_unlocked(&mut self, id: &ProtectorId) -> Result<(), ProtectorError>;
+    fn read(&mut self, id: &ProtectorId) -> Result<Option<SecretBytes>, ProtectorError>;
+    fn create(&mut self, id: &ProtectorId, record: &[u8]) -> Result<(), ProtectorError>;
+    fn delete(&mut self, id: &ProtectorId) -> Result<(), ProtectorError>;
+}
+
+const fn protector_error(error: WireError) -> ProtectorError {
+    match error {
+        WireError::Unavailable => ProtectorError::Unavailable,
+        WireError::Locked => ProtectorError::Locked,
+        WireError::Denied => ProtectorError::Denied,
+        WireError::ItemMissing => ProtectorError::ItemMissing,
+        WireError::OwnerMismatch => ProtectorError::OwnerMismatch,
+        WireError::PolicyMismatch => ProtectorError::PolicyMismatch,
+        WireError::CorruptOrTampered | WireError::Protocol => ProtectorError::CorruptOrTampered,
+    }
+}
+
+struct HelperSession {
+    child: Child,
+    stdin: ChildStdin,
+    replies: Receiver<std::io::Result<Option<SecretBytes>>>,
+}
+
+impl Drop for HelperSession {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// The helper process. It starts on first use, and any failed exchange ends it, so the next call starts
+/// a new one. A failure is never treated as a reply.
+struct HelperProcess {
+    command: KeyringHelperCommand,
+    session: Option<HelperSession>,
+}
+
+impl HelperProcess {
+    fn spawn(&self) -> Result<HelperSession, ProtectorError> {
+        let mut command = Command::new(&self.command.path);
+        command
+            .args(&self.command.arguments)
+            .env_clear()
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        for name in HELPER_ENVIRONMENT {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
+        let mut child = command.spawn().map_err(|_| ProtectorError::Unavailable)?;
+        let (stdin, stdout) = (child.stdin.take(), child.stdout.take());
+        let (Some(stdin), Some(mut stdout)) = (stdin, stdout) else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(ProtectorError::Unavailable);
+        };
+        // One slot, so a helper that floods replies cannot grow the vault's memory.
+        let (sender, replies) = sync_channel(1);
+        // A thread, so a helper that stops answering can time out instead of hanging the vault.
+        std::thread::spawn(move || {
+            loop {
+                let frame = read_frame(&mut stdout);
+                let done = !matches!(frame, Ok(Some(_)));
+                if sender.send(frame).is_err() || done {
+                    return;
+                }
+            }
+        });
+        Ok(HelperSession {
+            child,
+            stdin,
+            replies,
+        })
+    }
+
+    fn call(&mut self, request: &Request) -> Result<Reply, ProtectorError> {
+        if self.session.is_none() {
+            self.session = Some(self.spawn()?);
+        }
+        let result = self.exchange(request);
+        if result.is_err() {
+            self.session = None;
+        }
+        result
+    }
+
+    fn exchange(&mut self, request: &Request) -> Result<Reply, ProtectorError> {
+        let session = self.session.as_mut().ok_or(ProtectorError::Unavailable)?;
+        // One reply per request, so a frame already waiting is not an answer to this one. This only catches
+        // a stray frame that has arrived by now, and it does not bind a reply to its request: a helper is
+        // trusted with the record anyway. A closed stream only means the helper has gone.
+        match session.replies.try_recv() {
+            Err(TryRecvError::Empty) => {}
+            Ok(Ok(Some(_))) => return Err(ProtectorError::CorruptOrTampered),
+            Ok(Ok(None) | Err(_)) | Err(TryRecvError::Disconnected) => {
+                return Err(ProtectorError::Unavailable);
+            }
+        }
+        write_frame(&mut session.stdin, &encode_request(request))
+            .map_err(|_| ProtectorError::Unavailable)?;
+        let frame = session
+            .replies
+            .recv_timeout(self.command.reply_timeout)
+            .map_err(|_| ProtectorError::Unavailable)?
+            .map_err(|_| ProtectorError::Unavailable)?
+            .ok_or(ProtectorError::Unavailable)?;
+        decode_reply(&frame).map_err(protector_error)
+    }
+
+    fn call_done(&mut self, request: &Request) -> Result<(), ProtectorError> {
+        match self.call(request)? {
+            Reply::Done => Ok(()),
+            Reply::Failed(error) => Err(protector_error(error)),
+            Reply::NoRecord | Reply::Record(_) => {
+                self.session = None;
+                Err(ProtectorError::CorruptOrTampered)
+            }
+        }
+    }
+}
+
+impl RecordStore for HelperProcess {
+    fn ensure_unlocked(&mut self, id: &ProtectorId) -> Result<(), ProtectorError> {
+        self.call_done(&Request {
+            protector_id: *id,
+            op: Op::EnsureUnlocked,
+        })
+    }
+
+    fn read(&mut self, id: &ProtectorId) -> Result<Option<SecretBytes>, ProtectorError> {
+        let reply = self.call(&Request {
+            protector_id: *id,
+            op: Op::Read,
+        })?;
+        match reply {
+            Reply::NoRecord => Ok(None),
+            Reply::Record(record) => Ok(Some(record)),
+            Reply::Failed(error) => Err(protector_error(error)),
+            Reply::Done => {
+                self.session = None;
+                Err(ProtectorError::CorruptOrTampered)
+            }
+        }
+    }
+
+    fn create(&mut self, id: &ProtectorId, record: &[u8]) -> Result<(), ProtectorError> {
+        self.call_done(&Request {
+            protector_id: *id,
+            op: Op::Create(Zeroizing::new(record.to_vec())),
+        })
+    }
+
+    fn delete(&mut self, id: &ProtectorId) -> Result<(), ProtectorError> {
+        self.call_done(&Request {
+            protector_id: *id,
+            op: Op::Delete,
+        })
+    }
+}
+
 /// Linux Secret Service implementation of the portable `SecretProtector` contract.
 pub struct LinuxSecretServiceProtector {
     config: LinuxSecretServiceConfig,
     policy: Option<ProtectorPolicy>,
+    store: Box<dyn RecordStore>,
 }
 
 impl LinuxSecretServiceProtector {
-    /// Creates an unconfigured conservative Linux adapter.
+    /// Creates an unconfigured conservative Linux adapter. The helper starts on first use.
     #[must_use]
-    pub const fn new(config: LinuxSecretServiceConfig) -> Self {
+    pub fn new(config: LinuxSecretServiceConfig, helper: KeyringHelperCommand) -> Self {
         Self {
             config,
             policy: None,
+            store: Box::new(HelperProcess {
+                command: helper,
+                session: None,
+            }),
         }
     }
 
@@ -123,45 +330,17 @@ impl LinuxSecretServiceProtector {
         self.policy.ok_or(ProtectorError::UnsupportedPolicy)
     }
 
-    fn find_single_item<'a>(
-        &self,
-        collection: &'a Collection<'a>,
-    ) -> Result<Option<Item<'a>>, ProtectorError> {
-        let protector_id = self.config.protector_id().attribute_value();
-        let mut items = collection
-            .search_items(query_attributes(&protector_id))
-            .map_err(map_secret_service_error)?;
-        match items.len() {
-            0 => Ok(None),
-            1 => Ok(items.pop()),
-            _ => Err(ProtectorError::CorruptOrTampered),
-        }
+    fn id(&self) -> ProtectorId {
+        *self.config.protector_id().as_bytes()
     }
 
-    fn verify_item(&self, item: &Item<'_>) -> Result<(), ProtectorError> {
-        if item.is_locked().map_err(map_secret_service_error)? {
-            return Err(ProtectorError::Locked);
-        }
-        let protector_id = self.config.protector_id().attribute_value();
-        let attributes = item.get_attributes().map_err(map_secret_service_error)?;
-        if attributes.len() != 3
-            || attributes.get(APPLICATION_ATTRIBUTE).map(String::as_str) != Some(APPLICATION_ID)
-            || attributes.get(SCHEMA_ATTRIBUTE).map(String::as_str) != Some(SCHEMA_ID)
-            || attributes.get(PROTECTOR_ATTRIBUTE).map(String::as_str)
-                != Some(protector_id.as_str())
+    fn read_record(&mut self) -> Result<Option<SecretBytes>, ProtectorError> {
+        let id = self.id();
+        let record = self.store.read(&id)?;
+        if record
+            .as_ref()
+            .is_some_and(|record| record.len() != RECORD_BYTES)
         {
-            return Err(ProtectorError::OwnerMismatch);
-        }
-        if item.get_label().map_err(map_secret_service_error)? != ITEM_LABEL {
-            return Err(ProtectorError::PolicyMismatch);
-        }
-        Ok(())
-    }
-
-    fn read_record(&self, item: &Item<'_>) -> Result<Zeroizing<Vec<u8>>, ProtectorError> {
-        self.verify_item(item)?;
-        let record = Zeroizing::new(item.get_secret().map_err(map_secret_service_error)?);
-        if record.len() != RECORD_BYTES {
             return Err(ProtectorError::CorruptOrTampered);
         }
         Ok(record)
@@ -177,14 +356,8 @@ impl SecretProtector for LinuxSecretServiceProtector {
         user_presence_policy: UserPresencePolicy,
     ) -> Result<(), ProtectorError> {
         let policy = validate_linux_policy(requested_scope, user_presence_policy)?;
-        let service =
-            SecretService::connect(session_encryption()).map_err(map_secret_service_error)?;
-        let collection = service
-            .get_default_collection()
-            .map_err(map_collection_error)?;
-        collection
-            .ensure_unlocked()
-            .map_err(map_secret_service_error)?;
+        let id = self.id();
+        self.store.ensure_unlocked(&id)?;
         self.policy = Some(policy);
         Ok(())
     }
@@ -196,17 +369,7 @@ impl SecretProtector for LinuxSecretServiceProtector {
         vrk: &Self::VaultRootKey,
     ) -> Result<(), ProtectorError> {
         let policy = self.policy()?;
-        let service =
-            SecretService::connect(session_encryption()).map_err(map_secret_service_error)?;
-        let collection = service
-            .get_default_collection()
-            .map_err(map_collection_error)?;
-        collection
-            .ensure_unlocked()
-            .map_err(map_secret_service_error)?;
-
-        if let Some(item) = self.find_single_item(&collection)? {
-            let record = self.read_record(&item)?;
+        if let Some(record) = self.read_record()? {
             validate_record_binding(&record, vault_id, Some(key_generation), policy)?;
             return if record_matches_vrk(&record, vrk)? {
                 Ok(())
@@ -216,27 +379,11 @@ impl SecretProtector for LinuxSecretServiceProtector {
         }
 
         let record = Zeroizing::new(encode_record(vault_id, key_generation, policy, vrk));
-        let protector_id = self.config.protector_id().attribute_value();
-        let created = collection
-            .create_item(
-                ITEM_LABEL,
-                query_attributes(&protector_id),
-                &record[..],
-                false,
-                CONTENT_TYPE,
-            )
-            .map_err(map_secret_service_error)?;
-        self.verify_item(&created)?;
-        let stored = self.read_record(&created)?;
+        let id = self.id();
+        self.store.create(&id, &record[..])?;
+        let stored = self.read_record()?.ok_or(ProtectorError::ItemMissing)?;
         validate_record_binding(&stored, vault_id, Some(key_generation), policy)?;
         if !record_matches_vrk(&stored, vrk)? {
-            return Err(ProtectorError::CorruptOrTampered);
-        }
-
-        let found = self
-            .find_single_item(&collection)?
-            .ok_or(ProtectorError::ItemMissing)?;
-        if found != created {
             return Err(ProtectorError::CorruptOrTampered);
         }
         Ok(())
@@ -248,18 +395,7 @@ impl SecretProtector for LinuxSecretServiceProtector {
         key_generation: KeyGeneration,
     ) -> Result<Self::VaultRootKey, ProtectorError> {
         let policy = self.policy()?;
-        let service =
-            SecretService::connect(session_encryption()).map_err(map_secret_service_error)?;
-        let collection = service
-            .get_default_collection()
-            .map_err(map_collection_error)?;
-        collection
-            .ensure_unlocked()
-            .map_err(map_secret_service_error)?;
-        let item = self
-            .find_single_item(&collection)?
-            .ok_or(ProtectorError::ItemMissing)?;
-        let record = self.read_record(&item)?;
+        let record = self.read_record()?.ok_or(ProtectorError::ItemMissing)?;
         decode_record(&record, vault_id, key_generation, policy)
     }
 
@@ -294,24 +430,13 @@ impl SecretProtector for LinuxSecretServiceProtector {
 
     fn remove_protector(&mut self, vault_id: VaultId) -> Result<(), ProtectorError> {
         let policy = self.policy()?;
-        let service =
-            SecretService::connect(session_encryption()).map_err(map_secret_service_error)?;
-        let collection = service
-            .get_default_collection()
-            .map_err(map_collection_error)?;
-        collection
-            .ensure_unlocked()
-            .map_err(map_secret_service_error)?;
-        let Some(item) = self.find_single_item(&collection)? else {
+        let Some(record) = self.read_record()? else {
             self.policy = None;
             return Ok(());
         };
-        let record = self.read_record(&item)?;
         validate_record_binding(&record, vault_id, None, policy)?;
-        item.delete().map_err(map_secret_service_error)?;
-        if self.find_single_item(&collection)?.is_some() {
-            return Err(ProtectorError::CorruptOrTampered);
-        }
+        let id = self.id();
+        self.store.delete(&id)?;
         self.policy = None;
         Ok(())
     }
@@ -329,10 +454,6 @@ impl SecretProtector for LinuxSecretServiceProtector {
     }
 }
 
-fn session_encryption() -> EncryptionType {
-    EncryptionType::Dh
-}
-
 fn validate_linux_policy(
     requested_scope: AccessScope,
     user_presence_policy: UserPresencePolicy,
@@ -347,14 +468,6 @@ fn validate_linux_policy(
         policy,
     )?;
     Ok(policy)
-}
-
-fn query_attributes(protector_id: &str) -> HashMap<&'static str, &str> {
-    let mut attributes = HashMap::with_capacity(3);
-    attributes.insert(APPLICATION_ATTRIBUTE, APPLICATION_ID);
-    attributes.insert(SCHEMA_ATTRIBUTE, SCHEMA_ID);
-    attributes.insert(PROTECTOR_ATTRIBUTE, protector_id);
-    attributes
 }
 
 fn encode_record(
@@ -485,36 +598,11 @@ fn decode_presence(value: u8) -> Result<UserPresencePolicy, ProtectorError> {
     }
 }
 
-fn map_collection_error(error: SecretServiceError) -> ProtectorError {
-    if matches!(error, SecretServiceError::NoResult) {
-        ProtectorError::Unavailable
-    } else {
-        map_secret_service_error(error)
-    }
-}
-
-fn map_secret_service_error(error: SecretServiceError) -> ProtectorError {
-    match error {
-        SecretServiceError::Locked => ProtectorError::Locked,
-        SecretServiceError::NoResult => ProtectorError::ItemMissing,
-        SecretServiceError::Prompt => ProtectorError::Denied,
-        SecretServiceError::PromptDisconnected => ProtectorError::Unavailable,
-        SecretServiceError::Crypto(_) => ProtectorError::CorruptOrTampered,
-        SecretServiceError::Unavailable
-        | SecretServiceError::Zbus(_)
-        | SecretServiceError::ZbusFdo(_)
-        | SecretServiceError::Zvariant(_) => ProtectorError::Unavailable,
-        _ => ProtectorError::Unavailable,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        APPLICATION_ATTRIBUTE, APPLICATION_ID, CONTENT_TYPE, ITEM_LABEL, LinuxProtectorId,
-        LinuxSecretServiceConfig, PROTECTOR_ATTRIBUTE, RECORD_MAGIC, SCHEMA_ATTRIBUTE, SCHEMA_ID,
-        decode_record, encode_record, map_collection_error, map_secret_service_error,
-        query_attributes, record_matches_vrk, session_encryption, validate_linux_policy,
+        KeyringHelperCommand, LinuxProtectorId, LinuxSecretServiceConfig, RECORD_MAGIC,
+        RecordStore, decode_record, encode_record, record_matches_vrk, validate_linux_policy,
         validate_record_binding,
     };
     use crate::vault::{
@@ -523,7 +611,8 @@ mod tests {
     };
     use crate::vault_keys::OwnedKeyMaterial;
     use crate::vault_protector::ProtectorPolicy;
-    use secret_service::{EncryptionType, Error as SecretServiceError};
+    use safeevidence_keyring_wire::{ProtectorId, SecretBytes};
+    use zeroize::Zeroizing;
 
     fn vault(byte: u8) -> VaultId {
         VaultId::from_bytes([byte; VAULT_ID_BYTES])
@@ -533,19 +622,188 @@ mod tests {
         KeyGeneration::new(value).expect("non-zero generation")
     }
 
+    #[derive(Default)]
+    struct Memory(Option<Vec<u8>>);
+
+    impl RecordStore for Memory {
+        fn ensure_unlocked(&mut self, _id: &ProtectorId) -> Result<(), ProtectorError> {
+            Ok(())
+        }
+        fn read(&mut self, _id: &ProtectorId) -> Result<Option<SecretBytes>, ProtectorError> {
+            Ok(self.0.clone().map(Zeroizing::new))
+        }
+        fn create(&mut self, _id: &ProtectorId, record: &[u8]) -> Result<(), ProtectorError> {
+            self.0 = Some(record.to_vec());
+            Ok(())
+        }
+        fn delete(&mut self, _id: &ProtectorId) -> Result<(), ProtectorError> {
+            self.0 = None;
+            Ok(())
+        }
+    }
+
+    fn protector_with(store: Memory) -> super::LinuxSecretServiceProtector {
+        super::LinuxSecretServiceProtector {
+            config: LinuxSecretServiceConfig::new(LinuxProtectorId::from_bytes([1; 16])),
+            policy: None,
+            store: Box::new(store),
+        }
+    }
+
+    fn protector() -> super::LinuxSecretServiceProtector {
+        protector_with(Memory::default())
+    }
+
     #[test]
-    fn provider_metadata_is_fixed_plus_one_opaque_identifier() {
-        let id = LinuxProtectorId::from_bytes([0xa5; 16]);
-        let value = id.attribute_value();
-        let attributes = query_attributes(&value);
-        assert_eq!(attributes.len(), 3);
-        assert_eq!(attributes.get(APPLICATION_ATTRIBUTE), Some(&APPLICATION_ID));
-        assert_eq!(attributes.get(SCHEMA_ATTRIBUTE), Some(&SCHEMA_ID));
-        assert_eq!(attributes.get(PROTECTOR_ATTRIBUTE), Some(&value.as_str()));
-        assert_eq!(ITEM_LABEL, "SafeEvidence Vault Protector");
-        assert_eq!(CONTENT_TYPE, "application/octet-stream");
-        assert_eq!(value, "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5");
-        assert_eq!(format!("{id:?}"), "LinuxProtectorId([OPAQUE; 16 bytes])");
+    fn the_protector_stores_the_vrk_and_returns_exactly_those_bytes() {
+        let mut protector = protector();
+        let vrk = OwnedKeyMaterial::from_bytes([0x7a; 32]);
+        assert_eq!(
+            protector.protect_or_store_vrk(vault(1), generation(1), &vrk),
+            Err(ProtectorError::UnsupportedPolicy),
+            "nothing works before the policy is set"
+        );
+        protector
+            .create_protector(
+                AccessScope::SameUserSession,
+                UserPresencePolicy::NotRequired,
+            )
+            .expect("baseline policy");
+        protector
+            .protect_or_store_vrk(vault(1), generation(1), &vrk)
+            .expect("store");
+        protector
+            .protect_or_store_vrk(vault(1), generation(1), &vrk)
+            .expect("same VRK");
+        let unlocked = protector
+            .unlock_vrk(vault(1), generation(1))
+            .expect("unlock");
+        assert!(unlocked.with_bytes(|bytes| *bytes == [0x7a; 32]));
+    }
+
+    /// Keeps what it is given, and returns this instead once the read-back happens.
+    struct ReadsBack(Option<Vec<u8>>);
+
+    impl RecordStore for ReadsBack {
+        fn ensure_unlocked(&mut self, _id: &ProtectorId) -> Result<(), ProtectorError> {
+            Ok(())
+        }
+        fn read(&mut self, _id: &ProtectorId) -> Result<Option<SecretBytes>, ProtectorError> {
+            Ok(self.0.clone().map(Zeroizing::new))
+        }
+        fn create(&mut self, _id: &ProtectorId, record: &[u8]) -> Result<(), ProtectorError> {
+            let mut changed = record.to_vec();
+            let last = changed.len() - 1;
+            changed[last] ^= 1;
+            self.0 = Some(changed);
+            Ok(())
+        }
+        fn delete(&mut self, _id: &ProtectorId) -> Result<(), ProtectorError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_store_that_reads_back_a_different_key_fails_the_store_call() {
+        let mut protector = super::LinuxSecretServiceProtector {
+            config: LinuxSecretServiceConfig::new(LinuxProtectorId::from_bytes([1; 16])),
+            policy: None,
+            store: Box::new(ReadsBack(None)),
+        };
+        protector
+            .create_protector(
+                AccessScope::SameUserSession,
+                UserPresencePolicy::NotRequired,
+            )
+            .expect("baseline policy");
+        let vrk = OwnedKeyMaterial::from_bytes([0x7a; 32]);
+        assert_eq!(
+            protector.protect_or_store_vrk(vault(1), generation(1), &vrk),
+            Err(ProtectorError::CorruptOrTampered)
+        );
+    }
+
+    #[test]
+    fn removal_clears_the_policy_with_or_without_a_record() {
+        let vrk = OwnedKeyMaterial::from_bytes([0x7a; 32]);
+        for stored in [true, false] {
+            let mut protector = protector();
+            protector
+                .create_protector(
+                    AccessScope::SameUserSession,
+                    UserPresencePolicy::NotRequired,
+                )
+                .expect("baseline policy");
+            if stored {
+                protector
+                    .protect_or_store_vrk(vault(1), generation(1), &vrk)
+                    .expect("store");
+            }
+            protector.remove_protector(vault(1)).expect("remove");
+            assert_eq!(
+                protector.unlock_vrk(vault(1), generation(1)).map(|_| ()),
+                Err(ProtectorError::UnsupportedPolicy),
+                "stored: {stored}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_wire_error_maps_to_its_own_protector_error() {
+        use safeevidence_keyring_wire::WireError;
+        for (wire, expected) in [
+            (WireError::Unavailable, ProtectorError::Unavailable),
+            (WireError::Locked, ProtectorError::Locked),
+            (WireError::Denied, ProtectorError::Denied),
+            (WireError::ItemMissing, ProtectorError::ItemMissing),
+            (WireError::OwnerMismatch, ProtectorError::OwnerMismatch),
+            (WireError::PolicyMismatch, ProtectorError::PolicyMismatch),
+            (
+                WireError::CorruptOrTampered,
+                ProtectorError::CorruptOrTampered,
+            ),
+            (WireError::Protocol, ProtectorError::CorruptOrTampered),
+        ] {
+            assert_eq!(super::protector_error(wire), expected, "{wire:?}");
+        }
+    }
+
+    #[test]
+    fn a_stored_record_with_the_wrong_length_fails_closed() {
+        let mut protector = protector_with(Memory(Some(vec![0; 5])));
+        protector
+            .create_protector(
+                AccessScope::SameUserSession,
+                UserPresencePolicy::NotRequired,
+            )
+            .expect("baseline policy");
+        assert_eq!(
+            protector.unlock_vrk(vault(1), generation(1)).map(|_| ()),
+            Err(ProtectorError::CorruptOrTampered)
+        );
+    }
+
+    #[test]
+    fn the_helper_starts_by_absolute_path_with_a_minimal_environment() {
+        assert_eq!(
+            KeyringHelperCommand::new("relative/helper")
+                .map(|_| ())
+                .unwrap_err(),
+            ProtectorError::Unavailable
+        );
+        let beside = KeyringHelperCommand::beside_current_exe().expect("exe directory");
+        let name = beside
+            .path
+            .file_stem()
+            .expect("file name")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(name, "safeevidence-linux-keyring-helper");
+        assert!(beside.path.is_absolute());
+        assert_eq!(
+            beside.path.parent(),
+            std::env::current_exe().expect("exe").parent()
+        );
     }
 
     #[test]
@@ -576,20 +834,13 @@ mod tests {
             Err(ProtectorError::UnsupportedPolicy)
         );
 
-        let protector = super::LinuxSecretServiceProtector::new(LinuxSecretServiceConfig::new(
-            LinuxProtectorId::from_bytes([1; 16]),
-        ));
+        let protector = protector();
         assert_eq!(
             protector.actual_access_scope(),
             AccessScope::SameUserSession
         );
         assert!(!protector.requires_user_presence());
         assert_eq!(protector.hardware_backed_state(), HardwareBacking::Unknown);
-    }
-
-    #[test]
-    fn secret_service_transport_is_always_diffie_hellman_encrypted() {
-        assert!(matches!(session_encryption(), EncryptionType::Dh));
     }
 
     #[test]
@@ -639,146 +890,6 @@ mod tests {
         assert_eq!(
             validate_record_binding(&clean, vault(0x21), Some(generation(3)), other_policy),
             Err(ProtectorError::PolicyMismatch)
-        );
-    }
-
-    fn native_config() -> LinuxSecretServiceConfig {
-        LinuxSecretServiceConfig::new(LinuxProtectorId::from_bytes([0xb4; 16]))
-    }
-
-    fn native_vault() -> VaultId {
-        vault(0x44)
-    }
-
-    #[test]
-    #[ignore = "requires an unlocked genuine Secret Service provider"]
-    fn native_gnome_keyring_phase_1_store_and_inspect() {
-        let mut protector = super::LinuxSecretServiceProtector::new(native_config());
-        protector
-            .create_protector(
-                AccessScope::SameUserSession,
-                UserPresencePolicy::NotRequired,
-            )
-            .expect("qualified provider must accept the conservative B404 baseline");
-        let vrk = OwnedKeyMaterial::from_bytes([0x7a; 32]);
-        protector
-            .protect_or_store_vrk(native_vault(), generation(7), &vrk)
-            .expect("qualified provider must store the VRK");
-        let unlocked = protector
-            .unlock_vrk(native_vault(), generation(7))
-            .expect("qualified provider must unlock the stored VRK");
-        assert!(unlocked.with_bytes(|bytes| *bytes == [0x7a; 32]));
-
-        let service = secret_service::blocking::SecretService::connect(EncryptionType::Dh)
-            .expect("qualified provider must support the encrypted Secret Service session");
-        let collection = service
-            .get_default_collection()
-            .expect("qualified provider must expose the default collection");
-        collection
-            .ensure_unlocked()
-            .expect("qualification collection must be unlocked");
-        let protector_id = native_config().protector_id().attribute_value();
-        let items = collection
-            .search_items(query_attributes(&protector_id))
-            .expect("provider metadata query must succeed");
-        assert_eq!(items.len(), 1, "exactly one protector item must exist");
-        let attributes = items[0]
-            .get_attributes()
-            .expect("provider attributes must be readable");
-        assert_eq!(attributes.len(), 3);
-        assert_eq!(
-            attributes.get(APPLICATION_ATTRIBUTE).map(String::as_str),
-            Some(APPLICATION_ID)
-        );
-        assert_eq!(
-            attributes.get(SCHEMA_ATTRIBUTE).map(String::as_str),
-            Some(SCHEMA_ID)
-        );
-        assert_eq!(
-            attributes.get(PROTECTOR_ATTRIBUTE).map(String::as_str),
-            Some(protector_id.as_str())
-        );
-        assert_eq!(items[0].get_label().expect("label"), ITEM_LABEL);
-        let observed_content_type = items[0]
-            .get_secret_content_type()
-            .expect("content type must remain readable");
-        assert!(
-            observed_content_type == CONTENT_TYPE || observed_content_type == "text/plain",
-            "qualified provider returned an unexpected content type: {observed_content_type}"
-        );
-        assert!(!items[0].is_locked().expect("lock state"));
-    }
-
-    #[test]
-    #[ignore = "requires the phase-1 item in the same genuine provider session"]
-    fn native_gnome_keyring_phase_2_restart_unlock_delete_and_lock() {
-        let mut protector = super::LinuxSecretServiceProtector::new(native_config());
-        protector
-            .create_protector(
-                AccessScope::SameUserSession,
-                UserPresencePolicy::NotRequired,
-            )
-            .expect("restarted SafeEvidence process must reconnect without weakening policy");
-        let unlocked = protector
-            .unlock_vrk(native_vault(), generation(7))
-            .expect("restarted process must unlock the existing VRK");
-        assert!(unlocked.with_bytes(|bytes| *bytes == [0x7a; 32]));
-        protector
-            .remove_protector(native_vault())
-            .expect("qualified provider must delete the bound protector item");
-
-        let service = secret_service::blocking::SecretService::connect(EncryptionType::Dh)
-            .expect("provider must remain available");
-        let collection = service
-            .get_default_collection()
-            .expect("default collection");
-        let protector_id = native_config().protector_id().attribute_value();
-        assert!(
-            collection
-                .search_items(query_attributes(&protector_id))
-                .expect("post-delete query")
-                .is_empty(),
-            "deleted protector must not remain discoverable"
-        );
-        collection
-            .lock()
-            .expect("qualification provider must support collection lock");
-        let mut locked_probe = super::LinuxSecretServiceProtector::new(native_config());
-        assert_eq!(
-            locked_probe.create_protector(
-                AccessScope::SameUserSession,
-                UserPresencePolicy::NotRequired,
-            ),
-            Err(ProtectorError::Locked),
-            "adapter must not auto-unlock a locked Secret Service collection"
-        );
-    }
-
-    #[test]
-    fn provider_errors_are_mapped_fail_closed() {
-        assert_eq!(
-            map_secret_service_error(SecretServiceError::Locked),
-            ProtectorError::Locked
-        );
-        assert_eq!(
-            map_secret_service_error(SecretServiceError::NoResult),
-            ProtectorError::ItemMissing
-        );
-        assert_eq!(
-            map_collection_error(SecretServiceError::NoResult),
-            ProtectorError::Unavailable
-        );
-        assert_eq!(
-            map_secret_service_error(SecretServiceError::Prompt),
-            ProtectorError::Denied
-        );
-        assert_eq!(
-            map_secret_service_error(SecretServiceError::PromptDisconnected),
-            ProtectorError::Unavailable
-        );
-        assert_eq!(
-            map_secret_service_error(SecretServiceError::Crypto("test")),
-            ProtectorError::CorruptOrTampered
         );
     }
 }

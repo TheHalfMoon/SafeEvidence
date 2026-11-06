@@ -50,6 +50,9 @@ jobs:
       - name: Check TA-29 dependency denial
         shell: bash
         run: python tools/ci/ta29_dependency_denial.py
+      - name: Check the core's tree holds no socket crates
+        shell: bash
+        run: python tools/ci/core_no_sockets.py
       - name: Generate and check the TA-02 SBOM
         shell: bash
         working-directory: product
@@ -58,6 +61,18 @@ jobs:
         shell: bash
         working-directory: product
         run: cargo deny fetch
+      - name: Run the Linux keyring helper against a real Secret Service
+        if: matrix.os == 'ubuntu-latest'
+        timeout-minutes: 20
+        shell: bash
+        working-directory: product
+        run: |
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y dbus gnome-keyring
+          dbus-run-session -- bash -c '
+            printf "synthetic-test-only\n" | gnome-keyring-daemon --unlock --components=secrets
+            cargo test --offline --locked -p safeevidence-linux-keyring-helper --test native_keyring -- --ignored --test-threads=1
+          '
       - name: Run TA-03 checks under OS network isolation
         shell: bash
         working-directory: product

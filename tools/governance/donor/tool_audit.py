@@ -17,6 +17,7 @@ BANNED_IMPORT_ROOTS = {"ftplib", "http", "socket", "ssl", "urllib"}
 BANNED_CALLS = {"__import__", "compile", "eval", "exec"}
 # Each of these must run a named tool, so it may import `subprocess`. Any other tool may not.
 SUBPROCESS_ALLOWED = {
+    "tools/ci/core_no_sockets.py",
     "tools/ci/ta29_dependency_denial.py",
     "tools/ci/ta29_desktop_denial.py",
     "tools/governance/p01_preentry_check.py",

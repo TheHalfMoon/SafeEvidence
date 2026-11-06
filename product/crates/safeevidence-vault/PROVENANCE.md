@@ -33,3 +33,7 @@ Admission `ADM-0003` (T03) in `docs/evidence/source_admissions.json`.
   over a random salt byte, so it failed about 1 run in 256 when the byte already held that value. It now inverts the byte.
 - **TA-05 is not claimed.** Disk-full, restore-to-clean, key-loss and WAL/temp residue campaigns against
   `P00_VAULT_DURABILITY_CONTRACT.md` are not done.
+
+SafeEvidence change to `src/vault_linux_secret_service.rs`: the founder chose a separate helper process (2026-11-06), so that the core stays socket-free. The record format, binding and policy
+checks stay here, and now compile on every OS. The Secret Service calls moved to `safeevidence-linux-keyring-helper`, reached over stdin and stdout through `safeevidence-keyring-wire`. Its tests
+against a real provider moved with them.

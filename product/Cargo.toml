@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/safeevidence-contracts", "crates/safeevidence-vault", "crates/safeevidence-release", "crates/safeevidence-ask", "crates/safeevidence-assurance", "crates/safeevidence-proofstore", "tests/privacy"]
+members = ["crates/safeevidence-contracts", "crates/safeevidence-vault", "crates/safeevidence-release", "crates/safeevidence-ask", "crates/safeevidence-assurance", "crates/safeevidence-proofstore", "crates/safeevidence-keyring-wire", "crates/safeevidence-linux-keyring-helper", "tests/privacy"]
 
 [workspace.package]
 version = "0.0.0"

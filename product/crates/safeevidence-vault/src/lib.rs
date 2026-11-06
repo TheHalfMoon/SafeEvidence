@@ -42,8 +42,7 @@ pub mod vault_io;
 pub mod vault_keys;
 /// B102 in-process revocable keyed-handle lease and typed access errors.
 pub mod vault_lease;
-/// B404 Linux Secret Service adapter using an encrypted session and opaque lookup metadata.
-#[cfg(target_os = "linux")]
+/// B404 Linux Secret Service adapter, through a helper process, using an encrypted session and opaque lookup metadata.
 pub mod vault_linux_secret_service;
 /// B501A canonical authenticated freshness-manifest codec.
 pub mod vault_manifest;
