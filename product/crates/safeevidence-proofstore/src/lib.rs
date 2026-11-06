@@ -74,7 +74,7 @@ const SCHEMA: &[&str] = &[
 ];
 
 /// SHA-256 of the stored names and text of every schema object. A store whose triggers or tables
-/// differ is refused before anything is written to it. There are no migrations yet. Change this
+/// differ is refused before its schema or data changes. There are no migrations yet. Change this
 /// only together with `SCHEMA`.
 const SCHEMA_OBJECTS_SHA256: &str =
     "7e67770f3aeccf9bc4387ba0203b31698303ce9289636c9a4b559bb06a545918";
@@ -282,15 +282,18 @@ fn schema_objects_digest(
 ) -> Result<Option<String>, StoreError> {
     flatten(
         handle.deferred_transaction(|tx| -> Result<Option<String>, StoreError> {
+            let total = tx.query("SELECT count(*) FROM sqlite_master", [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+            if total == [0] {
+                return Ok(None);
+            }
             let objects = tx.query(
                 "SELECT name, sql FROM sqlite_master
                  WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name",
                 [],
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
             )?;
-            if objects.is_empty() {
-                return Ok(None);
-            }
             let mut text = String::new();
             for (name, sql) in objects {
                 text.push_str(&name);
@@ -304,8 +307,8 @@ fn schema_objects_digest(
 }
 
 impl ProofStore {
-    /// Opens the keyed vault database. It verifies an existing schema before writing anything, or
-    /// installs the schema into an empty database, and requires durable settings.
+    /// Opens the keyed vault database. It verifies an existing schema before changing its schema or
+    /// data, or installs the schema into an empty database, and requires durable settings.
     ///
     /// # Errors
     /// Fails on a wrong key, lease or provider failure, settings that did not take, or a stored
@@ -332,9 +335,11 @@ impl ProofStore {
             return Err(StoreError::NotDurable);
         }
         if existing.is_none() {
-            flatten_setup(handle.install_schema(SCHEMA))?;
+            // Another opener may install first. Its schema is fine if the pin matches.
+            let installed = flatten_setup(handle.install_schema(SCHEMA));
             let found = schema_objects_digest(&mut handle)?.unwrap_or_default();
             if found != SCHEMA_OBJECTS_SHA256 {
+                installed?;
                 return Err(StoreError::SchemaMismatch { found });
             }
         }
@@ -1219,5 +1224,43 @@ mod tests {
                 try_reopen(&db, &lease)?.epoch()
             });
         assert!(matches!(result, Ok(0)), "{result:?}");
+    }
+
+    #[test]
+    fn open_refuses_a_fully_dropped_store_instead_of_resetting_it() {
+        assert_refused_on_reopen(&[
+            "DROP TABLE authority",
+            "DROP TABLE answers",
+            "DROP TABLE audit_events",
+            "DROP TABLE invalidations",
+            "DROP TABLE sources",
+            "DROP TABLE amendments",
+            "DROP TABLE rights_grants",
+            "DROP TABLE store_events",
+        ]);
+    }
+
+    #[test]
+    fn concurrent_openers_of_an_empty_database_get_a_store_or_busy() {
+        for _ in 0..12 {
+            let db = TempDb::new();
+            let identity = VaultLeaseIdentity::new(
+                VaultId::from_bytes([0x41; VAULT_ID_BYTES]),
+                KeyGeneration::new(7).expect("generation"),
+            );
+            let lease = VaultLease::new(identity);
+            let (first, second) = std::thread::scope(|scope| {
+                let first = scope.spawn(|| try_reopen(&db, &lease).map(|_| ()));
+                let second = scope.spawn(|| try_reopen(&db, &lease).map(|_| ()));
+                (first.join().expect("join"), second.join().expect("join"))
+            });
+            for result in [first, second] {
+                assert!(
+                    matches!(result, Ok(()) | Err(StoreError::Busy)),
+                    "{result:?}"
+                );
+            }
+            reopen(&db, &lease);
+        }
     }
 }

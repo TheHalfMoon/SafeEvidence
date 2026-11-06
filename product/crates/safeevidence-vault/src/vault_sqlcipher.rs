@@ -409,10 +409,11 @@ impl From<rusqlite::Error> for GuardedSqlError {
     }
 }
 
-/// A transaction limited to row reads and writes, using compile-time statement text. It offers no
-/// route to PRAGMA, ATTACH, schema changes or transaction control, so stores cannot weaken the
-/// connection by mistake. This guards against bugs, not malicious code in this process: a SELECT
-/// can still call any SQL function the provider registers.
+/// A transaction limited to row reads and writes, using compile-time statement text. The keyword
+/// check stops other statement kinds, and an authorizer denies PRAGMA, ATTACH, DETACH and
+/// transaction control while SQLite prepares, so a statement's text cannot get around them. This
+/// guards against bugs, not malicious code in this process: a SELECT can still call any SQL
+/// function the provider registers.
 pub struct GuardedTransaction<'a> {
     transaction: &'a rusqlite::Transaction<'a>,
 }
@@ -422,28 +423,70 @@ fn settings_are_durable(journal: &str, synchronous: i64, recursive_triggers: i64
     journal.eq_ignore_ascii_case("wal") && synchronous == 2 && recursive_triggers == 1
 }
 
-/// True if `sql` holds no `;` but a trailing one. This must be decided before the provider sees the
-/// text: to detect a second statement rusqlite prepares it, and SQLite applies PRAGMAs at prepare.
-fn single_statement(sql: &str) -> bool {
-    let sql = sql.trim_end();
-    !sql.strip_suffix(';').unwrap_or(sql).contains(';')
+fn first_keyword_is(sql: &str, keywords: &[&str]) -> bool {
+    let first = sql.split_whitespace().next().unwrap_or_default();
+    keywords
+        .iter()
+        .any(|keyword| first.eq_ignore_ascii_case(keyword))
 }
 
 fn statement_allowed(sql: &str) -> bool {
-    let first = sql.split_whitespace().next().unwrap_or_default();
-    single_statement(sql)
-        && ["INSERT", "UPDATE", "DELETE"]
-            .iter()
-            .any(|keyword| first.eq_ignore_ascii_case(keyword))
+    first_keyword_is(sql, &["INSERT", "UPDATE", "DELETE"])
 }
 
 fn query_allowed(sql: &str) -> bool {
-    let first = sql.split_whitespace().next().unwrap_or_default();
-    single_statement(sql) && first.eq_ignore_ascii_case("SELECT")
+    first_keyword_is(sql, &["SELECT"])
+}
+
+fn schema_statement_allowed(sql: &str) -> bool {
+    first_keyword_is(sql, &["CREATE", "DROP", "INSERT", "UPDATE", "DELETE"])
+}
+
+fn is_denied_action(action: &rusqlite::hooks::AuthAction<'_>) -> bool {
+    use rusqlite::hooks::AuthAction;
+    matches!(
+        action,
+        AuthAction::Pragma { .. }
+            | AuthAction::Attach { .. }
+            | AuthAction::Detach { .. }
+            | AuthAction::Transaction { .. }
+            | AuthAction::Savepoint { .. }
+    )
+}
+
+fn deny_settings_and_transaction_control(
+    context: rusqlite::hooks::AuthContext<'_>,
+) -> rusqlite::hooks::Authorization {
+    if is_denied_action(&context.action) {
+        rusqlite::hooks::Authorization::Deny
+    } else {
+        rusqlite::hooks::Authorization::Allow
+    }
+}
+
+/// Denies settings and transaction control until dropped. SQLite applies some PRAGMAs at prepare,
+/// and rusqlite prepares a trailing statement to detect it, so this must act during prepare. It
+/// must also end before commit or rollback, so declare it after the transaction it guards.
+struct StatementDenial<'a>(&'a rusqlite::Connection);
+
+impl<'a> StatementDenial<'a> {
+    fn begin(connection: &'a rusqlite::Connection) -> rusqlite::Result<Self> {
+        connection.authorizer(Some(deny_settings_and_transaction_control))?;
+        Ok(Self(connection))
+    }
+}
+
+impl Drop for StatementDenial<'_> {
+    fn drop(&mut self) {
+        let none: Option<
+            for<'r> fn(rusqlite::hooks::AuthContext<'r>) -> rusqlite::hooks::Authorization,
+        > = None;
+        let _ = self.0.authorizer(none);
+    }
 }
 
 impl GuardedTransaction<'_> {
-    /// Runs one INSERT, UPDATE or DELETE. A string holding a second statement is refused.
+    /// Runs one INSERT, UPDATE or DELETE. The provider refuses a second statement in one string.
     ///
     /// # Errors
     /// Refuses other statement kinds, and returns provider failures.
@@ -481,28 +524,6 @@ impl GuardedTransaction<'_> {
     }
 }
 
-fn schema_statement_allowed(sql: &str) -> bool {
-    let mut words = sql.split_whitespace();
-    let first = words.next().unwrap_or_default();
-    let is_trigger = first.eq_ignore_ascii_case("CREATE")
-        && words
-            .next()
-            .is_some_and(|word| word.eq_ignore_ascii_case("TRIGGER"));
-    // A trigger body holds `;`, and SQLite parses it as part of the one statement up to END.
-    let body_ended = is_trigger
-        && sql
-            .trim_end()
-            .strip_suffix(';')
-            .unwrap_or(sql.trim_end())
-            .trim_end()
-            .to_ascii_uppercase()
-            .ends_with("END");
-    (single_statement(sql) || body_ended)
-        && ["CREATE", "DROP", "INSERT", "UPDATE", "DELETE"]
-            .iter()
-            .any(|keyword| first.eq_ignore_ascii_case(keyword))
-}
-
 /// SafeEvidence addition to the donor's handle: the narrow routes a store needs. The connection
 /// stays private, and each call holds the lease permit for its whole duration.
 impl SqlCipherDatabaseHandle {
@@ -519,10 +540,13 @@ impl SqlCipherDatabaseHandle {
                 ._connection
                 .transaction_with_behavior(behavior)
                 .map_err(SqlCipherTransactionError::Provider)?;
+            let denial = StatementDenial::begin(&transaction)
+                .map_err(SqlCipherTransactionError::Provider)?;
             let value = operation(&GuardedTransaction {
                 transaction: &transaction,
             })
             .map_err(SqlCipherTransactionError::Operation)?;
+            drop(denial);
             transaction
                 .commit()
                 .map_err(SqlCipherTransactionError::CommitUnknown)?;
@@ -564,9 +588,8 @@ impl SqlCipherDatabaseHandle {
     }
 
     /// Applies compile-time schema statements in one transaction, one statement per string. Each
-    /// must be CREATE, DROP, INSERT, UPDATE or DELETE, and is checked before it is prepared because
-    /// SQLite applies some PRAGMAs at prepare time. So PRAGMA, ATTACH and transaction control never
-    /// reach SQLite, and a string holding a second statement is refused.
+    /// must start with CREATE, DROP, INSERT, UPDATE or DELETE, and the authorizer denies PRAGMA,
+    /// ATTACH, DETACH and transaction control during prepare, including in a trailing statement.
     ///
     /// # Errors
     /// Returns the lease, provider or commit failure. A refused statement is a provider failure.
@@ -584,11 +607,14 @@ impl SqlCipherDatabaseHandle {
                 ._connection
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(SqlCipherTransactionError::Provider)?;
+            let denial = StatementDenial::begin(&transaction)
+                .map_err(SqlCipherTransactionError::Provider)?;
             for sql in statements {
                 transaction
                     .execute(sql, [])
                     .map_err(SqlCipherTransactionError::Provider)?;
             }
+            drop(denial);
             transaction
                 .commit()
                 .map_err(SqlCipherTransactionError::CommitUnknown)
@@ -1445,78 +1471,87 @@ mod tests {
         remove_database_files(&path);
     }
 
+    fn setting(handle: &mut super::SqlCipherDatabaseHandle, pragma: &'static str) -> i64 {
+        handle
+            .inner
+            .write(|backend| backend._connection.query_row(pragma, [], |row| row.get(0)))
+            .expect("setting reads")
+    }
+
+    fn assert_settings_untouched(handle: &mut super::SqlCipherDatabaseHandle) {
+        assert!(matches!(handle.durable_settings_hold(), Ok(true)));
+        assert_eq!(setting(handle, "PRAGMA query_only;"), 0);
+        assert_eq!(setting(handle, "PRAGMA writable_schema;"), 0);
+        assert_eq!(setting(handle, "PRAGMA ignore_check_constraints;"), 0);
+    }
+
     #[test]
-    fn install_schema_refused_statements_have_no_effect() {
+    fn refused_statements_have_no_effect_at_prepare_or_after() {
         let path = unused_path("schema-guard");
         let lease = VaultLease::new(identity());
         let mut handle = store_handle(&path, &lease);
         handle.configure_durable_store().expect("settings");
-        let refused: [&'static [&'static str]; 8] = [
+        handle
+            .install_schema(&["CREATE TABLE w (id INTEGER)"])
+            .expect("table the trigger shapes need");
+        let refused: &[&'static [&'static str]] = &[
             &["PRAGMA synchronous = OFF"],
             &["PRAGMA recursive_triggers = OFF"],
             &["PRAGMA journal_mode = DELETE"],
             &["PRAGMA writable_schema = ON"],
-            &[
-                "PRAGMA rekey = \"x'0101010101010101010101010101010101010101010101010101010101010101'\"",
-            ],
             &["ATTACH DATABASE 'x' AS y"],
             &["COMMIT"],
+            &["ALTER TABLE w RENAME TO renamed"],
             &["CREATE TABLE t (id INTEGER)", "PRAGMA query_only = ON"],
+            &["CREATE TABLE u (id INTEGER); PRAGMA query_only = ON"],
+            &["CREATE TABLE u (id INTEGER); PRAGMA recursive_triggers = OFF"],
+            &["CREATE TRIGGER v AFTER INSERT ON w BEGIN SELECT 1; END; PRAGMA query_only = ON"],
+            &[
+                "CREATE TRIGGER v AFTER INSERT ON w BEGIN SELECT 1; END; PRAGMA query_only = ON; -- END",
+            ],
+            &[
+                "CREATE TRIGGER v AFTER INSERT ON w BEGIN SELECT 1; END; PRAGMA query_only = ON; SELECT CASE WHEN 1 THEN 1 END",
+            ],
+            &[
+                "CREATE TRIGGER v AFTER INSERT ON w BEGIN SELECT 1; END; PRAGMA recursive_triggers = OFF; -- END",
+            ],
+            &[
+                "CREATE TRIGGER v AFTER INSERT ON w BEGIN SELECT 1; END; PRAGMA writable_schema = ON; -- END",
+            ],
+            &[
+                "CREATE TABLE u (id INTEGER); PRAGMA rekey = \"x'0101010101010101010101010101010101010101010101010101010101010101'\"",
+            ],
         ];
-        for statements in refused {
+        for statements in refused.iter().copied() {
             assert!(handle.install_schema(statements).is_err(), "{statements:?}");
+            assert_settings_untouched(&mut handle);
         }
-        assert!(matches!(handle.durable_settings_hold(), Ok(true)));
-        handle
-            .install_schema(&["CREATE TABLE w (id INTEGER)"])
-            .expect("table for later checks");
+        for sql in [
+            "DELETE FROM w; PRAGMA query_only = ON",
+            "DELETE FROM w; PRAGMA recursive_triggers = OFF",
+            "SELECT 1; PRAGMA query_only = ON",
+        ] {
+            assert!(
+                handle
+                    .immediate_transaction(|tx| tx.execute(sql, []))
+                    .is_err()
+            );
+            assert!(
+                handle
+                    .immediate_transaction(|tx| tx.query(sql, [], |row| row.get::<_, i64>(0)))
+                    .is_err()
+            );
+            assert_settings_untouched(&mut handle);
+        }
         assert!(
             handle
                 .immediate_transaction(|tx| tx.execute("INSERT INTO t VALUES (1)", []))
                 .is_err(),
             "the refused batch ran nothing, not even its allowed first statement"
         );
-        assert!(
-            handle
-                .install_schema(&["CREATE TABLE u (id INTEGER); PRAGMA query_only = ON"])
-                .is_err(),
-            "a second statement in one string is refused"
-        );
-        assert!(
-            handle
-                .install_schema(&[
-                    "CREATE TRIGGER v AFTER INSERT ON w BEGIN SELECT 1; END; PRAGMA query_only = ON"
-                ])
-                .is_err(),
-            "a statement after a trigger body is refused"
-        );
-        for sql in [
-            "DELETE FROM w; PRAGMA query_only = ON",
-            "SELECT 1; PRAGMA query_only = ON",
-        ] {
-            assert!(matches!(
-                handle.immediate_transaction(|tx| tx.execute(sql, [])),
-                Err(super::SqlCipherTransactionError::Operation(
-                    super::GuardedSqlError::StatementNotAllowed
-                ))
-            ));
-            assert!(matches!(
-                handle.immediate_transaction(|tx| tx.query(sql, [], |row| row.get::<_, i64>(0))),
-                Err(super::SqlCipherTransactionError::Operation(
-                    super::GuardedSqlError::StatementNotAllowed
-                ))
-            ));
-        }
         handle
-            .immediate_transaction(|tx| {
-                tx.query("SELECT count(*) FROM sqlite_master", [], |row| {
-                    row.get::<_, i64>(0)
-                })
-            })
-            .expect("query_only stayed off and the key still reads");
-        handle
-            .install_schema(&["CREATE TABLE x (id INTEGER)"])
-            .expect("writes still work");
+            .install_schema(&["CREATE TABLE x (id INTEGER)", "INSERT INTO x VALUES (1)"])
+            .expect("the denial ends with its call, so writes and commits still work");
         drop(handle);
         let reopened = open_sqlcipher_database(
             &path,
@@ -1529,6 +1564,61 @@ mod tests {
             "the refused rekey left the original key working"
         );
         drop(reopened);
+        remove_database_files(&path);
+    }
+
+    #[test]
+    fn pragma_table_functions_cannot_change_anything() {
+        let path = unused_path("pragma-vtab");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .install_schema(&[
+                "CREATE TABLE w (id INTEGER, v INTEGER)",
+                "CREATE INDEX w_v ON w (v)",
+                "INSERT INTO w VALUES (1, 1), (2, 2), (3, 3)",
+            ])
+            .expect("schema");
+        let _ = handle.immediate_transaction(|tx| {
+            tx.query("SELECT * FROM pragma_optimize(65538)", [], |_row| Ok(()))
+        });
+        let _ = handle.immediate_transaction(|tx| {
+            tx.execute("INSERT INTO w SELECT 1, 1 FROM pragma_optimize(65538)", [])
+        });
+        let stats = handle
+            .immediate_transaction(|tx| {
+                tx.query(
+                    "SELECT count(*) FROM sqlite_master WHERE name LIKE 'sqlite_stat%'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+            })
+            .expect("count");
+        assert_eq!(stats, [0]);
+        drop(handle);
+        remove_database_files(&path);
+    }
+
+    #[test]
+    fn a_failed_operation_still_rolls_back_under_the_denial() {
+        let path = unused_path("rollback");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .install_schema(&["CREATE TABLE w (id INTEGER)"])
+            .expect("schema");
+        let failed = handle.immediate_transaction(|tx| -> Result<(), super::GuardedSqlError> {
+            tx.execute("INSERT INTO w VALUES (1)", [])?;
+            Err(super::GuardedSqlError::StatementNotAllowed)
+        });
+        assert!(failed.is_err());
+        let rows = handle
+            .immediate_transaction(|tx| {
+                tx.query("SELECT count(*) FROM w", [], |row| row.get::<_, i64>(0))
+            })
+            .expect("connection stays usable");
+        assert_eq!(rows, [0]);
+        drop(handle);
         remove_database_files(&path);
     }
 
@@ -2231,7 +2321,42 @@ mod tests {
 
 #[cfg(test)]
 mod durable_settings_tests {
-    use super::settings_are_durable;
+    use super::{is_denied_action, settings_are_durable};
+    use rusqlite::hooks::{AuthAction, TransactionOperation};
+
+    // ATTACH and transaction control act when stepped, so denying them at prepare shows no effect
+    // that a database test could observe. This pins the list directly.
+    #[test]
+    fn settings_and_transaction_control_are_denied_and_row_work_is_not() {
+        for action in [
+            AuthAction::Pragma {
+                pragma_name: "x",
+                pragma_value: None,
+            },
+            AuthAction::Attach { filename: "x" },
+            AuthAction::Detach { database_name: "x" },
+            AuthAction::Transaction {
+                operation: TransactionOperation::Begin,
+            },
+            AuthAction::Savepoint {
+                operation: TransactionOperation::Begin,
+                savepoint_name: "x",
+            },
+        ] {
+            assert!(is_denied_action(&action), "{action:?}");
+        }
+        for action in [
+            AuthAction::Read {
+                table_name: "x",
+                column_name: "y",
+            },
+            AuthAction::Insert { table_name: "x" },
+            AuthAction::Delete { table_name: "x" },
+            AuthAction::Select,
+        ] {
+            assert!(!is_denied_action(&action), "{action:?}");
+        }
+    }
 
     #[test]
     fn every_setting_must_hold() {

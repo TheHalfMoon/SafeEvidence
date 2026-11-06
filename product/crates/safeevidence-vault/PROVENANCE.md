@@ -26,7 +26,8 @@ Admission `ADM-0003` (T03) in `docs/evidence/source_admissions.json`.
 - Not carried: native keystore tests and probes, which are not run here.
 - SafeEvidence addition in `src/vault_sqlcipher.rs`: `immediate_transaction` and `deferred_transaction` with `GuardedTransaction`, `install_schema`,
   `configure_durable_store` and `durable_settings_hold`, the routes `safeevidence-proofstore` uses. `open_reviewed_connection` also
-  turns recursive triggers on for every connection. They limit statements to guard against bugs, not malicious
+  turns recursive triggers on for every connection. Guarded calls run under a SQLite authorizer, using rusqlite's `hooks` feature,
+  which adds no dependency. They limit statements to guard against bugs, not malicious
   in-process code.
 - One donor test is corrected: `staged_byte_identity_mismatch_fails_before_sqlcipher_acceptance` wrote a fixed `0xff`
   over a random salt byte, so it failed about 1 run in 256 when the byte already held that value. It now inverts the byte.
