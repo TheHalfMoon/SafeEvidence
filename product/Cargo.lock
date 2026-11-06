@@ -870,6 +870,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "safeevidence-assurance"
+version = "0.0.0"
+dependencies = [
+ "safeevidence-contracts",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "safeevidence-contracts"
 version = "0.0.0"
 dependencies = [
