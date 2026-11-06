@@ -41,7 +41,8 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then cygpath -w "$node_dir"; else echo "$node_dir/bin"; fi >> "$GITHUB_PATH"
       - name: Check Node supports type stripping
         shell: bash
-        run: node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 22 || (major === 22 && minor >= 6) ? 0 : 1)"
+        run: |
+          node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 22 || (major === 22 && minor >= 6) ? 0 : 1)"
       - name: Install pinned toolchain
         shell: bash
         working-directory: product
