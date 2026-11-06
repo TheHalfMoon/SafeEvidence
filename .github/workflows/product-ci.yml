@@ -67,8 +67,8 @@ jobs:
         shell: bash
         working-directory: product
         run: |
-          sudo apt-get update
-          sudo apt-get install -y dbus gnome-keyring
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y dbus gnome-keyring
           dbus-run-session -- bash -c '
             printf "synthetic-test-only\n" | gnome-keyring-daemon --unlock --components=secrets
             cargo test --offline --locked -p safeevidence-linux-keyring-helper --test native_keyring -- --ignored --test-threads=1

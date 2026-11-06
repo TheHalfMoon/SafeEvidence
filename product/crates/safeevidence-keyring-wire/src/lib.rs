@@ -66,7 +66,7 @@ impl WireError {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 pub enum Op {
     EnsureUnlocked,
     Read,
@@ -80,12 +80,35 @@ pub struct Request {
     pub op: Op,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 pub enum Reply {
     Done,
     NoRecord,
     Record(SecretBytes),
     Failed(WireError),
+}
+
+// By hand, so record bytes cannot reach a log or a panic message.
+impl std::fmt::Debug for Op {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::EnsureUnlocked => "EnsureUnlocked",
+            Self::Read => "Read",
+            Self::Create(_) => "Create([REDACTED])",
+            Self::Delete => "Delete",
+        })
+    }
+}
+
+impl std::fmt::Debug for Reply {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Done => formatter.write_str("Done"),
+            Self::NoRecord => formatter.write_str("NoRecord"),
+            Self::Record(_) => formatter.write_str("Record([REDACTED])"),
+            Self::Failed(error) => write!(formatter, "Failed({error:?})"),
+        }
+    }
 }
 
 /// What the helper does with each request.
@@ -357,6 +380,36 @@ mod tests {
         assert!(read_frame(&mut Cursor::new(too_long)).is_err());
         assert!(read_frame(&mut Cursor::new([0_u8, 0])).is_err());
         assert!(read_frame(&mut Cursor::new([0_u8, 0, 0, 5, 1])).is_err());
+    }
+
+    #[test]
+    fn a_frame_one_byte_over_the_limit_is_refused_even_when_all_its_bytes_arrive() {
+        let mut stream = u32::try_from(MAX_FRAME_BYTES + 1)
+            .unwrap()
+            .to_be_bytes()
+            .to_vec();
+        stream.extend(vec![0_u8; MAX_FRAME_BYTES + 1]);
+        let error = read_frame(&mut Cursor::new(stream)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn debug_output_never_contains_record_bytes() {
+        let marker = b"SECRETMARKER";
+        let request = Request {
+            protector_id: ID,
+            op: Op::Create(secret(marker)),
+        };
+        for text in [
+            format!("{request:?}"),
+            format!("{:?}", Reply::Record(secret(marker))),
+        ] {
+            assert!(text.contains("REDACTED"), "{text}");
+            for byte in marker {
+                assert!(!text.contains(&format!("{byte},")), "{text}");
+            }
+            assert!(!text.contains("SECRETMARKER"), "{text}");
+        }
     }
 
     #[derive(Default)]

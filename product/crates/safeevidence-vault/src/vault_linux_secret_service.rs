@@ -21,7 +21,7 @@ use safeevidence_keyring_wire::{
 };
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{Receiver, TryRecvError, sync_channel};
 use std::time::Duration;
 use zeroize::Zeroizing;
 
@@ -31,8 +31,8 @@ const RECORD_BYTES: usize =
     RECORD_MAGIC.len() + OWNER_TAG.len() + 16 + 8 + 1 + 1 + KEY_MATERIAL_BYTES;
 const HELPER_NAME: &str = "safeevidence-linux-keyring-helper";
 const DEFAULT_REPLY_TIMEOUT: Duration = Duration::from_secs(120);
-/// All the helper may inherit: what `zbus` needs to find and authenticate to the session bus.
-const HELPER_ENVIRONMENT: [&str; 3] = ["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "HOME"];
+/// All the helper may inherit: what `zbus` reads to find the session bus.
+const HELPER_ENVIRONMENT: [&str; 2] = ["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"];
 
 /// Opaque provider-visible identifier used only as a Secret Service attribute.
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
@@ -195,7 +195,8 @@ impl HelperProcess {
             let _ = child.wait();
             return Err(ProtectorError::Unavailable);
         };
-        let (sender, replies) = channel();
+        // One slot, so a helper that floods replies cannot grow the vault's memory.
+        let (sender, replies) = sync_channel(1);
         // A thread, so a helper that stops answering can time out instead of hanging the vault.
         std::thread::spawn(move || {
             loop {
@@ -226,6 +227,10 @@ impl HelperProcess {
 
     fn exchange(&mut self, request: &Request) -> Result<Reply, ProtectorError> {
         let session = self.session.as_mut().ok_or(ProtectorError::Unavailable)?;
+        // One reply per request. Anything already waiting is not an answer to this request.
+        if !matches!(session.replies.try_recv(), Err(TryRecvError::Empty)) {
+            return Err(ProtectorError::CorruptOrTampered);
+        }
         write_frame(&mut session.stdin, &encode_request(request))
             .map_err(|_| ProtectorError::Unavailable)?;
         let frame = session
@@ -590,9 +595,9 @@ fn decode_presence(value: u8) -> Result<UserPresencePolicy, ProtectorError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        HELPER_ENVIRONMENT, KeyringHelperCommand, LinuxProtectorId, LinuxSecretServiceConfig,
-        RECORD_MAGIC, RecordStore, decode_record, encode_record, record_matches_vrk,
-        validate_linux_policy, validate_record_binding,
+        KeyringHelperCommand, LinuxProtectorId, LinuxSecretServiceConfig, RECORD_MAGIC,
+        RecordStore, decode_record, encode_record, record_matches_vrk, validate_linux_policy,
+        validate_record_binding,
     };
     use crate::vault::{
         AccessScope, HardwareBacking, KeyGeneration, ProtectorError, SecretProtector,
@@ -670,6 +675,93 @@ mod tests {
         assert!(unlocked.with_bytes(|bytes| *bytes == [0x7a; 32]));
     }
 
+    /// Keeps what it is given, and returns this instead once the read-back happens.
+    struct ReadsBack(Option<Vec<u8>>);
+
+    impl RecordStore for ReadsBack {
+        fn ensure_unlocked(&mut self, _id: &ProtectorId) -> Result<(), ProtectorError> {
+            Ok(())
+        }
+        fn read(&mut self, _id: &ProtectorId) -> Result<Option<SecretBytes>, ProtectorError> {
+            Ok(self.0.clone().map(Zeroizing::new))
+        }
+        fn create(&mut self, _id: &ProtectorId, record: &[u8]) -> Result<(), ProtectorError> {
+            let mut changed = record.to_vec();
+            let last = changed.len() - 1;
+            changed[last] ^= 1;
+            self.0 = Some(changed);
+            Ok(())
+        }
+        fn delete(&mut self, _id: &ProtectorId) -> Result<(), ProtectorError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_store_that_reads_back_a_different_key_fails_the_store_call() {
+        let mut protector = super::LinuxSecretServiceProtector {
+            config: LinuxSecretServiceConfig::new(LinuxProtectorId::from_bytes([1; 16])),
+            policy: None,
+            store: Box::new(ReadsBack(None)),
+        };
+        protector
+            .create_protector(
+                AccessScope::SameUserSession,
+                UserPresencePolicy::NotRequired,
+            )
+            .expect("baseline policy");
+        let vrk = OwnedKeyMaterial::from_bytes([0x7a; 32]);
+        assert_eq!(
+            protector.protect_or_store_vrk(vault(1), generation(1), &vrk),
+            Err(ProtectorError::CorruptOrTampered)
+        );
+    }
+
+    #[test]
+    fn removal_clears_the_policy_with_or_without_a_record() {
+        let vrk = OwnedKeyMaterial::from_bytes([0x7a; 32]);
+        for stored in [true, false] {
+            let mut protector = protector();
+            protector
+                .create_protector(
+                    AccessScope::SameUserSession,
+                    UserPresencePolicy::NotRequired,
+                )
+                .expect("baseline policy");
+            if stored {
+                protector
+                    .protect_or_store_vrk(vault(1), generation(1), &vrk)
+                    .expect("store");
+            }
+            protector.remove_protector(vault(1)).expect("remove");
+            assert_eq!(
+                protector.unlock_vrk(vault(1), generation(1)).map(|_| ()),
+                Err(ProtectorError::UnsupportedPolicy),
+                "stored: {stored}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_wire_error_maps_to_its_own_protector_error() {
+        use safeevidence_keyring_wire::WireError;
+        for (wire, expected) in [
+            (WireError::Unavailable, ProtectorError::Unavailable),
+            (WireError::Locked, ProtectorError::Locked),
+            (WireError::Denied, ProtectorError::Denied),
+            (WireError::ItemMissing, ProtectorError::ItemMissing),
+            (WireError::OwnerMismatch, ProtectorError::OwnerMismatch),
+            (WireError::PolicyMismatch, ProtectorError::PolicyMismatch),
+            (
+                WireError::CorruptOrTampered,
+                ProtectorError::CorruptOrTampered,
+            ),
+            (WireError::Protocol, ProtectorError::CorruptOrTampered),
+        ] {
+            assert_eq!(super::protector_error(wire), expected, "{wire:?}");
+        }
+    }
+
     #[test]
     fn a_stored_record_with_the_wrong_length_fails_closed() {
         let mut protector = protector_with(Memory(Some(vec![0; 5])));
@@ -693,9 +785,18 @@ mod tests {
                 .unwrap_err(),
             ProtectorError::Unavailable
         );
+        let beside = KeyringHelperCommand::beside_current_exe().expect("exe directory");
+        let name = beside
+            .path
+            .file_stem()
+            .expect("file name")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(name, "safeevidence-linux-keyring-helper");
+        assert!(beside.path.is_absolute());
         assert_eq!(
-            HELPER_ENVIRONMENT,
-            ["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "HOME"]
+            beside.path.parent(),
+            std::env::current_exe().expect("exe").parent()
         );
     }
 

@@ -934,6 +934,30 @@
           "modification": "not_copied"
         }
       ]
+    },
+    {
+      "admission_id": "ADM-0009",
+      "packet": "T03",
+      "repo": "TheHalfMoon/ottari",
+      "source_commit": "73706029849bcbe51243624e37f03a1969dc74ca",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "secret-service and its D-Bus closure under product/deny.toml, in the helper process only",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "crates/himsat-core/src/vault_linux_secret_service.rs",
+          "git_blob_oid": "7e31aca618a40fdbcf95247495964c66a6968038",
+          "bytes": 29226,
+          "dest_path": "product/crates/safeevidence-linux-keyring-helper/src/secret_service_backend.rs",
+          "modification": "adapted"
+        }
+      ]
     }
   ]
 }

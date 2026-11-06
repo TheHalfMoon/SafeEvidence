@@ -13,9 +13,9 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | `main` at last update | `50a1caf6f037e617f8db97e8e2a5ab67175c83e4` |
 | Milestone | M0 open for its exit review; M1 VS-1 in progress, per the table below |
 | Active packet | WP-00 and WP-01 rows; WP-18a Ask view |
-| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30); G01a baseline holds `NO_ADMISSIONS` |
+| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30), ADM-0009 (T03's Linux helper); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
-| Next executable task | M1 exit items: key custody, end-to-end WebView test |
+| Next executable task | M1 exit items: key custody with helper packaging, end-to-end WebView test |
 
 Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `foundation-documents`, `preentry structure`,
 `synthetic-only`, `product` and `desktop`, the last four on Ubuntu, Windows and macOS.
@@ -25,7 +25,7 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 | Milestone | Status | Blocked by |
 |---|---|---|
 | M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED`; TA-02 `TESTED_PASSED` | Exit review, including crate closures; open defects below |
-| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4 `IMPLEMENTED_UNTESTED` end to end, TA-20 not claimed | M0 exit review; desktop; open defects below |
+| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4 `IMPLEMENTED_UNTESTED` end to end, TA-20 not claimed | M0 exit review; desktop; helper packaging and key custody; open defects below |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
 | M4 Desktop V1 | `NOT_STARTED` | M3 |
@@ -52,8 +52,9 @@ through `ask`, and the lexical-emergency test. This shows little beyond the vect
 owed at WP-11. Ask also uses `EVIDENCE_INSUFFICIENT` for a question it could not parse, before retrieval runs, because no allowed code fits better.
 
 **Sockets in the core's tree:** the founder chose a separate helper process (2026-11-06). `safeevidence-linux-keyring-helper` now holds the Secret Service and D-Bus code, and the vault reaches it over stdin and stdout.
-`tools/ci/core_no_sockets.py` checks the core crates' normal dependencies on each desktop target. That reads the dependency tree, so it does not detect a socket opened through `std::net`. The desktop shell's tree is
-separate and still has its own socket-capable crates. TA-29's tree check covers normal dependencies. Build-only crates such as `cc` and `openssl-src` are covered by the
+`tools/ci/core_no_sockets.py` checks the core crates' normal dependencies on each desktop target, and `ta29_desktop_denial.py` holds the desktop shell, the process that hosts the core, to the crates that give it sockets. `tokio` remains there for Tauri,
+with no `mio`. These read dependency trees, so they do not detect a socket opened through `std::net`, and TA-21 has not observed the running process. **Still open before M1 exit:** nothing installs the helper beside the app, and the shell does not use the
+protector, which waits on key custody. TA-29's tree check covers normal dependencies. Build-only crates such as `cc` and `openssl-src` are covered by the
 `cargo deny` bans.
 
 **T30 is narrower than WP-00 names:** only the tool-source audit is adapted. The donor's registry and its notice and SBOM generators are not copied, because

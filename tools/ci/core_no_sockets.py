@@ -3,7 +3,8 @@
 
 Checks the core crates' normal dependencies on each desktop target. The Linux keyring helper is left out on
 purpose: it is a separate process, and holding `zbus` is its job. This reads the dependency tree, so it does not
-detect a socket opened through `std::net`, and it says nothing about the desktop shell's own tree.
+detect a socket opened through `std::net`, and the list names known crates only. `ta29_desktop_denial.py` holds
+the desktop shell to the crates that give it sockets.
 """
 from __future__ import annotations
 
@@ -21,7 +22,10 @@ CORE = (
     "safeevidence-vault",
     "safeevidence-proofstore",
 )
-SOCKET_CRATES = {"async-io", "hyper", "mio", "reqwest", "socket2", "tokio", "ureq", "zbus"}
+SOCKET_CRATES = {
+    "async-io", "async-net", "async-std", "curl", "h2", "hyper", "mio", "polling", "quinn", "reqwest",
+    "smol", "socket2", "tokio", "tungstenite", "ureq", "zbus",
+}
 TARGETS = ("x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin")
 
 

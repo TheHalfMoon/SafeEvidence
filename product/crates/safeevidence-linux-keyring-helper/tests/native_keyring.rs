@@ -110,6 +110,95 @@ fn native_keyring_phase_1_store_and_inspect() {
     assert!(!items[0].is_locked().expect("lock state"));
 }
 
+/// Runs between the phases, in name order. It plants items the helper must refuse, then removes them.
+#[test]
+#[ignore = "requires an unlocked genuine Secret Service provider"]
+fn native_keyring_phase_1b_tampered_items_fail_closed() {
+    const OTHER: [u8; 16] = [0xb5; 16];
+    let mut protector = LinuxSecretServiceProtector::new(
+        LinuxSecretServiceConfig::new(LinuxProtectorId::from_bytes(OTHER)),
+        KeyringHelperCommand::new(env!("CARGO_BIN_EXE_safeevidence-linux-keyring-helper"))
+            .expect("absolute helper path"),
+    );
+    protector
+        .create_protector(
+            AccessScope::SameUserSession,
+            UserPresencePolicy::NotRequired,
+        )
+        .expect("baseline policy");
+    let service = SecretService::connect(EncryptionType::Dh).expect("encrypted session");
+    let collection = service
+        .get_default_collection()
+        .expect("default collection");
+    collection
+        .ensure_unlocked()
+        .expect("collection is unlocked");
+    let protector_id = attribute_value(&OTHER);
+
+    let wrong_label = collection
+        .create_item(
+            "Not ours",
+            query_attributes(&protector_id),
+            b"x",
+            false,
+            CONTENT_TYPE,
+        )
+        .expect("plant a wrong label");
+    assert_eq!(
+        protector.unlock_vrk(vault(), generation()).map(|_| ()),
+        Err(ProtectorError::PolicyMismatch)
+    );
+    wrong_label.delete().expect("clean up");
+
+    let mut extra = query_attributes(&protector_id);
+    extra.insert("extra", "attribute");
+    let extra_attribute = collection
+        .create_item(ITEM_LABEL, extra, b"x", false, CONTENT_TYPE)
+        .expect("plant an extra attribute");
+    assert_eq!(
+        protector.unlock_vrk(vault(), generation()).map(|_| ()),
+        Err(ProtectorError::OwnerMismatch)
+    );
+    extra_attribute.delete().expect("clean up");
+
+    let first = collection
+        .create_item(
+            ITEM_LABEL,
+            query_attributes(&protector_id),
+            b"one",
+            false,
+            CONTENT_TYPE,
+        )
+        .expect("plant one of two");
+    let mut distinct = query_attributes(&protector_id);
+    distinct.insert("second", "item");
+    let second = collection
+        .create_item(ITEM_LABEL, distinct, b"two", false, CONTENT_TYPE)
+        .expect("plant two of two");
+    assert_eq!(
+        protector.unlock_vrk(vault(), generation()).map(|_| ()),
+        Err(ProtectorError::CorruptOrTampered),
+        "two matching items must not pick one"
+    );
+    first.delete().expect("clean up");
+    second.delete().expect("clean up");
+
+    let short = collection
+        .create_item(
+            ITEM_LABEL,
+            query_attributes(&protector_id),
+            b"short",
+            false,
+            CONTENT_TYPE,
+        )
+        .expect("plant a short record");
+    assert_eq!(
+        protector.unlock_vrk(vault(), generation()).map(|_| ()),
+        Err(ProtectorError::CorruptOrTampered)
+    );
+    short.delete().expect("clean up");
+}
+
 #[test]
 #[ignore = "requires the phase-1 item in the same genuine provider session"]
 fn native_keyring_phase_2_restart_unlock_delete_and_lock() {
