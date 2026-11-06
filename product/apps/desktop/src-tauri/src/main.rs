@@ -30,6 +30,11 @@ fn main() {
     presentation_builder(tauri::Builder::default())
         .setup(|app| {
             let data_dir = app.path().app_local_data_dir()?;
+            // Without this feature the variable is never read, so a shipped build ignores it.
+            #[cfg(feature = "e2e")]
+            let data_dir = std::env::var_os("SAFEEVIDENCE_E2E_DATA_DIR")
+                .map_or(data_dir, std::path::PathBuf::from);
+            let webview_dir = data_dir.join("webview");
             app.state::<ask_command::AskState>().set_data_dir(data_dir);
             let config = app
                 .config()
@@ -48,6 +53,7 @@ fn main() {
                     }
                 })
                 .incognito(true)
+                .data_directory(webview_dir)
                 .build()?;
             Ok(())
         })

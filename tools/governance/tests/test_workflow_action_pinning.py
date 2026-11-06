@@ -15,7 +15,9 @@ WORKFLOWS = (
     ".github/workflows/g01a-synthetic-reproducibility.yml",
     ".github/workflows/product-ci.yml",
     ".github/workflows/desktop-ci.yml",
+    ".github/workflows/desktop-e2e.yml",
 )
+WINDOWS_ONLY_WORKFLOW = ".github/workflows/desktop-e2e.yml"
 EXPECTED_CHECKOUT_SHA = "d23441a48e516b6c34aea4fa41551a30e30af803"
 # Exact reviewed workflow snapshots. Normalize checkout newlines through
 # read_text() so Windows CRLF checkouts retain the same audited content hash.
@@ -25,8 +27,9 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/p00-foundation-docs.yml": "ffc5b4246ee09dad96caed7cf759e8565fe0e80b2e6ffe8642cfa6ad2d1b8db6",
     ".github/workflows/p01-preentry-governance.yml": "efe37c703ed5c24ec230e355ef2579070507d626b00f6f17f93a418ebe6dbfab",
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
-    ".github/workflows/product-ci.yml": "c2d90c6ea46527f1ee1eb0dcf8544cfcd2bff1edba02c870dc867ef32f926511",
-    ".github/workflows/desktop-ci.yml": "482fd67dc96722a84fe2ebccdfd4061ca1b10045ce67c6bbdfbd36c34f34d8a3",
+    ".github/workflows/product-ci.yml": "bb8eab1f0952d47cb1d82ea68b72858d95da4308fb4306ce4c84d12a293ca432",
+    ".github/workflows/desktop-ci.yml": "a3d802950d6ac0100d4b60c2b76b04c31fee7658ec6146dd5e6fafb3fdcc6b43",
+    ".github/workflows/desktop-e2e.yml": "ed958b13984a78113fd36c4ede1229fbf8ab16dc14321171597fec3b74f7e3d4",
 }
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.
@@ -304,8 +307,15 @@ class WorkflowCheckoutPinTests(unittest.TestCase):
         self.assertEqual(2, len(workflow_action_references(source)))
         self.assertEqual("", workflow_action_references(source)[0])
 
+    def test_the_end_to_end_workflow_runs_only_where_its_protocol_exists(self):
+        # WebView2's debugging protocol exists only on Windows, so this one workflow is the exception below.
+        source = (ROOT / WINDOWS_ONLY_WORKFLOW).read_text(encoding="utf-8")
+        self.assertIn("runs-on: windows-latest", source)
+        self.assertNotIn("matrix.os", source)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"', source)
+
     def test_synthetic_and_preentry_ci_include_macos(self):
-        for workflow in WORKFLOWS[1:]:
+        for workflow in [item for item in WORKFLOWS[1:] if item != WINDOWS_ONLY_WORKFLOW]:
             with self.subTest(workflow=workflow):
                 source = (ROOT / workflow).read_text(encoding="utf-8")
                 self.assertIn(

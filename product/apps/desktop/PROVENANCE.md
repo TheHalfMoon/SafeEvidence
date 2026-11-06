@@ -25,8 +25,8 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
 - The store has no migrations, so a schema change would refuse an existing store. `vault-identity.bin` is not secret and not protected: changing it only stops the key from being found.
 - The P00 states such as `KEY_UNAVAILABLE` are not shown. Every failure to open the store reaches the view as the same `BLOCKED` with `TOOL_FAILURE`: a lost or wrong key, a damaged identity or store, a missing helper, and a second instance look alike.
 - A lock file gives one running instance per data directory. A second instance refuses every question it would answer with `BLOCKED`.
-- `TA-20` and `TA-21` are not claimed. Tests run the production handler and capability on Tauri's mock runtime, which establishes no native
-  WebView privacy, OS isolation or network behaviour. No end-to-end WebView test exists yet.
+- `TA-20` is not claimed. `e2e/ask_e2e.mjs` runs the Ask flow in a real WebView2 window on Windows, with real DPAPI and a real kill and restart, as the Ask subset. Ubuntu has no equivalent yet, and VS-1 needs both. The shell checklist is covered only for CSP and the capability.
+  `TA-21` is not claimed: the test's network log covers this page, not the process, and T05 is not back. Native tests also use Tauri's mock runtime, which establishes no WebView privacy, OS isolation or network behaviour.
 - `TA-22` is not claimed. The view is keyboard-operable with `dir="auto"` text, but has no axe or RTL snapshot run. The donor's contrast test was
   not carried over, and the new palette has no contrast check.
 - A denied navigation still sends its request: a review harness on WebView2, with remote debugging on, saw `location.href` reach a local listener

@@ -31,6 +31,15 @@ test("production CSP allows no remote origin and no inline style or script", () 
   assert.match(csp, /frame-ancestors 'none'/);
 });
 
+test("the end-to-end data directory override exists only behind its own feature", () => {
+  const manifest = read("../src-tauri/Cargo.toml");
+  assert.doesNotMatch(manifest, /^default\s*=/m);
+  const main = read("../src-tauri/src/main.rs");
+  const use = main.indexOf('std::env::var_os("SAFEEVIDENCE_E2E_DATA_DIR")');
+  assert.ok(use > 0);
+  assert.match(main.slice(Math.max(0, use - 80), use), /#\[cfg\(feature = "e2e"\)\]/);
+});
+
 test("the Rust manifest pins Tauri and enables no extra feature", () => {
   const manifest = read("../src-tauri/Cargo.toml");
   assert.match(manifest, /tauri = \{ version = "=2\.12\.0", default-features = false, features = \["wry", "common-controls-v6", "x11"\] \}/);
