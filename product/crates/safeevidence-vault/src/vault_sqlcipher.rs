@@ -393,13 +393,19 @@ pub enum SqlCipherTransactionError<E> {
     Operation(E),
     /// The commit itself failed. Whether it became durable is unknown until reconciled.
     CommitUnknown(rusqlite::Error),
+    /// A conflict clause or `RAISE(ROLLBACK)` ended the transaction, and the operation still
+    /// returned `Ok`. Its writes before that point were rolled back, and later ones were refused.
+    TransactionLost,
 }
 
 /// Failure of a statement run through [`GuardedTransaction`].
 #[derive(Debug)]
 pub enum GuardedSqlError {
-    /// Only single SELECT, INSERT, UPDATE and DELETE statements are allowed.
+    /// Only SELECT, INSERT, UPDATE and DELETE statements are allowed.
     StatementNotAllowed,
+    /// A conflict clause or `RAISE(ROLLBACK)` already ended this transaction, so another statement
+    /// would autocommit outside it.
+    TransactionEnded,
     Provider(rusqlite::Error),
 }
 
@@ -411,9 +417,10 @@ impl From<rusqlite::Error> for GuardedSqlError {
 
 /// A transaction limited to row reads and writes, using compile-time statement text. The keyword
 /// check stops other statement kinds, and an authorizer denies PRAGMA, ATTACH, DETACH and
-/// transaction control while SQLite prepares, so a statement's text cannot get around them. This
-/// guards against bugs, not malicious code in this process: a SELECT can still call any SQL
-/// function the provider registers.
+/// transaction control statements while SQLite prepares. A conflict clause or `RAISE(ROLLBACK)` can
+/// still end the transaction, and no authorizer action covers that, so statements are refused once
+/// it has ended. This guards against bugs, not malicious code in this process: a SELECT can still
+/// call any SQL function the provider registers.
 pub struct GuardedTransaction<'a> {
     transaction: &'a rusqlite::Transaction<'a>,
 }
@@ -498,6 +505,9 @@ impl GuardedTransaction<'_> {
         if !statement_allowed(sql) {
             return Err(GuardedSqlError::StatementNotAllowed);
         }
+        if self.transaction.is_autocommit() {
+            return Err(GuardedSqlError::TransactionEnded);
+        }
         Ok(self.transaction.execute(sql, params)?)
     }
 
@@ -517,6 +527,9 @@ impl GuardedTransaction<'_> {
     {
         if !query_allowed(sql) {
             return Err(GuardedSqlError::StatementNotAllowed);
+        }
+        if self.transaction.is_autocommit() {
+            return Err(GuardedSqlError::TransactionEnded);
         }
         let mut statement = self.transaction.prepare(sql)?;
         let rows = statement.query_map(params, map)?;
@@ -547,6 +560,9 @@ impl SqlCipherDatabaseHandle {
             })
             .map_err(SqlCipherTransactionError::Operation)?;
             drop(denial);
+            if transaction.is_autocommit() {
+                return Err(SqlCipherTransactionError::TransactionLost);
+            }
             transaction
                 .commit()
                 .map_err(SqlCipherTransactionError::CommitUnknown)?;
@@ -559,7 +575,8 @@ impl SqlCipherDatabaseHandle {
         }
     }
 
-    /// Runs `operation` holding the write lock from the start. An `Err` rolls it back; `Ok` commits.
+    /// Runs `operation` holding the write lock from the start. An `Err` leaves nothing written; `Ok`
+    /// commits, unless the transaction already ended, which is `TransactionLost`.
     ///
     /// # Errors
     /// Returns the lease, provider, operation or commit failure.
@@ -1600,7 +1617,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_operation_still_rolls_back_under_the_denial() {
+    fn a_failed_operation_rolls_back_once_the_denial_ends() {
         let path = unused_path("rollback");
         let lease = VaultLease::new(identity());
         let mut handle = store_handle(&path, &lease);
@@ -1618,6 +1635,114 @@ mod tests {
             })
             .expect("connection stays usable");
         assert_eq!(rows, [0]);
+        drop(handle);
+        remove_database_files(&path);
+    }
+
+    fn rows_in_w(handle: &mut super::SqlCipherDatabaseHandle) -> Vec<i64> {
+        handle
+            .immediate_transaction(|tx| {
+                tx.query("SELECT id FROM w ORDER BY id", [], |row| row.get(0))
+            })
+            .expect("connection stays usable")
+    }
+
+    #[test]
+    fn writes_cannot_escape_a_transaction_ended_by_a_conflict_clause() {
+        let path = unused_path("conflict-rollback");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .install_schema(&[
+                "CREATE TABLE w (id INTEGER PRIMARY KEY)",
+                "INSERT INTO w VALUES (1)",
+            ])
+            .expect("schema");
+
+        // The caller swallows the conflict and writes again, then returns an error.
+        let mut after_conflict = None;
+        let mut read_after = None;
+        let failed = handle.immediate_transaction(|tx| -> Result<(), super::GuardedSqlError> {
+            tx.execute("INSERT INTO w VALUES (10)", [])?;
+            assert!(
+                tx.execute("INSERT OR ROLLBACK INTO w VALUES (1)", [])
+                    .is_err()
+            );
+            after_conflict = Some(tx.execute("INSERT INTO w VALUES (2)", []));
+            read_after = Some(tx.query("SELECT id FROM w", [], |row| row.get::<_, i64>(0)));
+            Err(super::GuardedSqlError::StatementNotAllowed)
+        });
+        assert!(failed.is_err());
+        assert!(matches!(
+            after_conflict,
+            Some(Err(super::GuardedSqlError::TransactionEnded))
+        ));
+        assert!(matches!(
+            read_after,
+            Some(Err(super::GuardedSqlError::TransactionEnded))
+        ));
+        assert_eq!(rows_in_w(&mut handle), [1]);
+
+        // The caller swallows the conflict and reports success.
+        let lost = handle.immediate_transaction(|tx| -> Result<(), super::GuardedSqlError> {
+            tx.execute("INSERT INTO w VALUES (20)", [])?;
+            assert!(
+                tx.execute("INSERT OR ROLLBACK INTO w VALUES (1)", [])
+                    .is_err()
+            );
+            Ok(())
+        });
+        assert!(matches!(
+            lost,
+            Err(super::SqlCipherTransactionError::TransactionLost)
+        ));
+        assert_eq!(rows_in_w(&mut handle), [1]);
+
+        // RAISE(ROLLBACK) in a trigger takes the same route.
+        handle
+            .install_schema(
+                &["CREATE TRIGGER w_guard BEFORE INSERT ON w WHEN NEW.id = 99
+                     BEGIN SELECT RAISE(ROLLBACK, 'synthetic'); END"],
+            )
+            .expect("trigger");
+        let mut after_raise = None;
+        let raised = handle.immediate_transaction(|tx| -> Result<(), super::GuardedSqlError> {
+            tx.execute("INSERT INTO w VALUES (30)", [])?;
+            assert!(tx.execute("INSERT INTO w VALUES (99)", []).is_err());
+            after_raise = Some(tx.execute("INSERT INTO w VALUES (31)", []));
+            Err(super::GuardedSqlError::StatementNotAllowed)
+        });
+        assert!(raised.is_err());
+        assert!(matches!(
+            after_raise,
+            Some(Err(super::GuardedSqlError::TransactionEnded))
+        ));
+        assert_eq!(rows_in_w(&mut handle), [1]);
+        drop(handle);
+        remove_database_files(&path);
+    }
+
+    #[test]
+    fn a_panic_inside_an_operation_leaves_the_handle_usable() {
+        let path = unused_path("panic");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .install_schema(&["CREATE TABLE w (id INTEGER PRIMARY KEY)"])
+            .expect("schema");
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = handle.immediate_transaction(|tx| -> Result<(), super::GuardedSqlError> {
+                tx.execute("INSERT INTO w VALUES (1)", [])?;
+                panic!("synthetic");
+            });
+        }));
+        assert!(panicked.is_err());
+        assert!(rows_in_w(&mut handle).is_empty(), "the write rolled back");
+        assert_eq!(
+            setting(&mut handle, "PRAGMA query_only;"),
+            0,
+            "the denial ended"
+        );
         drop(handle);
         remove_database_files(&path);
     }

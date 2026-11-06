@@ -94,6 +94,8 @@ pub enum StoreError {
     },
     /// SQLite reported the database busy. Nothing was written; retry.
     Busy,
+    /// A statement ended the transaction early. Nothing from this call was written.
+    TransactionLost,
     /// The commit outcome is unknown. Retry with the same proof to reconcile.
     CommitUnknown(rusqlite::Error),
     Defects(Vec<ManifestDefect>),
@@ -126,6 +128,7 @@ impl From<GuardedSqlError> for StoreError {
     fn from(error: GuardedSqlError) -> Self {
         match error {
             GuardedSqlError::StatementNotAllowed => Self::StatementNotAllowed,
+            GuardedSqlError::TransactionEnded => Self::TransactionLost,
             GuardedSqlError::Provider(error) => provider_error(error),
         }
     }
@@ -149,6 +152,7 @@ fn flatten<T>(result: Result<T, SqlCipherTransactionError<StoreError>>) -> Resul
         Err(SqlCipherTransactionError::CommitUnknown(error)) => {
             Err(StoreError::CommitUnknown(error))
         }
+        Err(SqlCipherTransactionError::TransactionLost) => Err(StoreError::TransactionLost),
         Err(SqlCipherTransactionError::Operation(error)) => Err(error),
     }
 }
@@ -165,6 +169,7 @@ fn flatten_setup<T>(
         Err(SqlCipherTransactionError::CommitUnknown(error)) => {
             Err(StoreError::CommitUnknown(error))
         }
+        Err(SqlCipherTransactionError::TransactionLost) => Err(StoreError::TransactionLost),
         Err(SqlCipherTransactionError::Operation(never)) => match never {},
     }
 }
