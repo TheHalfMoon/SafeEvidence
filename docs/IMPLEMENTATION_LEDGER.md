@@ -24,7 +24,7 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 
 | Milestone | Status | Blocked by |
 |---|---|---|
-| M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED`; TA-02 `TESTED_PASSED` | Exit review; open defects below |
+| M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED`; TA-02 `TESTED_PASSED` | Exit review, including crate closures; open defects below |
 | M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4 `IMPLEMENTED_UNTESTED` end to end, TA-20 not claimed | M0 rows; TA-13; desktop; open defects below |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
@@ -61,7 +61,11 @@ TA-29's tree check covers normal dependencies. Build-only crates such as `cc` an
 
 **T30 is narrower than WP-00 names:** only the tool-source audit is adapted. The donor's registry and its notice and SBOM generators are not copied, because
 `source_admission_check.py`, the T11 SBOM generator and `cargo deny` already do that work, and a second registry would have to be kept in sync. The audit runs in
-the governance tests. It does not cover shell scripts or the app's npm tree.
+the governance tests. It does not cover shell scripts or the app's npm tree, and it lists named modules only, so `requests` would pass. No TA row relied on the
+donor's registry or generators.
+
+**Crate closures:** `plan-v1.1` B6 also lists crate closures keyed to `product/Cargo.lock`. No `CRATE-*` admission row exists. Today `Cargo.lock` is the exact closure
+and `cargo deny` enforces it. Whether that meets B6 is open for M0's exit review, not settled.
 
 **T12:** the residue scan covers one store directory, live and closed, so `TA-05` is not claimed. Its MIME test returns at WP-13.
 
