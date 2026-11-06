@@ -52,8 +52,8 @@ through `ask`, and the lexical-emergency test. This shows little beyond the vect
 owed at WP-11. Ask also uses `EVIDENCE_INSUFFICIENT` for a question it could not parse, before retrieval runs, because no allowed code fits better.
 
 **Sockets in the core's tree:** the founder chose a separate helper process (2026-11-06). `safeevidence-linux-keyring-helper` now holds the Secret Service and D-Bus code, and the vault reaches it over stdin and stdout.
-`tools/ci/core_no_sockets.py` checks the core crates' normal dependencies on each desktop target, and `ta29_desktop_denial.py` holds the desktop shell, the process that hosts the core, to the crates that give it sockets. `tokio` remains there for Tauri,
-with no `mio`. These read dependency trees, so they do not detect a socket opened through `std::net`, and TA-21 has not observed the running process. **Still open before M1 exit:** nothing installs the helper beside the app, and the shell does not use the
+`tools/ci/core_no_sockets.py` checks the core crates' normal dependencies on each desktop target, and `ta29_desktop_denial.py` holds the desktop shell, the process that hosts the core, to a list of known socket crates. `tokio` remains there for Tauri,
+without its `net` feature, on the three desktop targets. These read dependency trees, so they do not detect a socket opened through `std::net`, and TA-21 has not observed the running process. **Still open before M1 exit:** nothing installs the helper beside the app, and the shell does not use the
 protector, which waits on key custody. TA-29's tree check covers normal dependencies. Build-only crates such as `cc` and `openssl-src` are covered by the
 `cargo deny` bans.
 

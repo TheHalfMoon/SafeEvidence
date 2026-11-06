@@ -36,7 +36,7 @@ TA03_SCRIPT = "tools/ci/ta03_isolated.sh"
 TA29_SCRIPT = "tools/ci/ta29_dependency_denial.py"
 TA29_SCRIPT_SHA256 = "b77022615499713081f2fd621a253d9be96bbb824363d947c1e07cb98a4fe768"
 TA29_DESKTOP_SCRIPT = "tools/ci/ta29_desktop_denial.py"
-TA29_DESKTOP_SCRIPT_SHA256 = "940004753d08fdd2ee590e6bc00e827bca6046fe8dbd739b3efb451095d9a543"
+TA29_DESKTOP_SCRIPT_SHA256 = "4acd672c1a495d7e4ff1149d58fc3c02636d2c76d64c3c92d4bb546fefcd4d54"
 TA03_SCRIPT_SHA256 = "fa83a8a0b1abc085d5cb8e3ca0be5dbd2ff401d5cdf3c1e707aa792fb230c22b"
 
 CHECKOUT_LINE = re.compile(r"^\s*uses:\s*actions/checkout@([^\s#]+)", re.MULTILINE)

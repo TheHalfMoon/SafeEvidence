@@ -13,5 +13,6 @@ an opaque record. The record format and the binding and policy checks stay in `s
   buffers hold the record. The helper's memory is only as private as `SAME_USER_SESSION`.
 - A locked collection is refused rather than unlocked. A provider prompt could hold a request until the vault's reply timeout.
 - `remove_protector` checks the record in one request and deletes in another, so a same-user change between them would delete an unchecked record. The original adapter held the item across both.
-- `Cargo.lock` is the only place the app's Tauri pins live, and this crate's real-provider tests run in CI only: `gnome-keyring` is not installed locally.
+- This crate's real-provider tests run in CI only: `gnome-keyring` is not installed locally.
+- Replies are not bound to requests. The vault refuses a stray reply only if it has already arrived, and a helper that answers early could still be believed. A helper is trusted with the record anyway, so this catches mistakes, not a malicious helper.
 - Packaging is not done: nothing yet installs this binary beside the app, and the desktop shell does not use the protector.

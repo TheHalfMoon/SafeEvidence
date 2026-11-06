@@ -161,27 +161,39 @@ fn native_keyring_phase_1b_tampered_items_fail_closed() {
     );
     extra_attribute.delete().expect("clean up");
 
-    let first = collection
-        .create_item(
-            ITEM_LABEL,
-            query_attributes(&protector_id),
-            b"one",
-            false,
-            CONTENT_TYPE,
-        )
-        .expect("plant one of two");
+    // Two copies of a valid record, so that only the single-item check can refuse them. Taking either
+    // copy would otherwise unlock.
+    protector
+        .protect_or_store_vrk(vault(), generation(), &key())
+        .expect("store a valid record");
+    protector
+        .unlock_vrk(vault(), generation())
+        .expect("one valid record unlocks");
+    let items = collection
+        .search_items(query_attributes(&protector_id))
+        .expect("query");
+    assert_eq!(items.len(), 1);
+    let valid = items[0].get_secret().expect("secret");
     let mut distinct = query_attributes(&protector_id);
     distinct.insert("second", "item");
     let second = collection
-        .create_item(ITEM_LABEL, distinct, b"two", false, CONTENT_TYPE)
-        .expect("plant two of two");
+        .create_item(ITEM_LABEL, distinct, &valid, false, CONTENT_TYPE)
+        .expect("plant a second valid copy");
+    assert_eq!(
+        collection
+            .search_items(query_attributes(&protector_id))
+            .expect("query")
+            .len(),
+        2,
+        "the test needs the provider to match both"
+    );
     assert_eq!(
         protector.unlock_vrk(vault(), generation()).map(|_| ()),
         Err(ProtectorError::CorruptOrTampered),
         "two matching items must not pick one"
     );
-    first.delete().expect("clean up");
     second.delete().expect("clean up");
+    items[0].delete().expect("clean up");
 
     let short = collection
         .create_item(

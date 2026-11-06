@@ -89,9 +89,11 @@ fn fake_helper(mode: &str) {
                 }
             }
         }
-        "flood" => {
-            let mut stdout = std::io::stdout().lock();
-            while write_frame(&mut stdout, &encode_reply(&Reply::Done)).is_ok() {}
+        "exit-after-answer" => {
+            let (mut stdin, mut stdout) = (std::io::stdin().lock(), std::io::stdout().lock());
+            let _ = read_frame(&mut stdin);
+            let _ = write_frame(&mut stdout, &encode_reply(&Reply::Done));
+            std::process::exit(0);
         }
         marker if marker.starts_with("hang-then-mark=") => {
             let path = &marker["hang-then-mark=".len()..];
@@ -265,10 +267,11 @@ fn a_reply_of_the_wrong_kind_to_a_read_fails_closed() {
     );
 }
 
-fn a_second_reply_cannot_answer_a_later_request() {
+fn a_stray_reply_that_has_already_arrived_is_refused() {
     let mut protector = protector(command("two-replies"));
     set_policy(&mut protector).expect("the first reply answers setup");
-    // Let the stray reply arrive. It must not be taken as the answer to this read.
+    // Let the stray reply arrive. This catches only that case: with no wait the stray can still be
+    // taken as the answer, because replies are not bound to requests.
     std::thread::sleep(Duration::from_millis(500));
     assert_eq!(
         protector.unlock_vrk(vault(1), generation(1)).map(|_| ()),
@@ -277,14 +280,29 @@ fn a_second_reply_cannot_answer_a_later_request() {
     );
 }
 
-fn a_flooding_helper_cannot_answer_for_a_request() {
-    let mut protector = protector(command("flood"));
-    std::thread::sleep(Duration::from_millis(50));
-    // Whatever the first exchange sees, the protector must never settle into a working state.
-    let _ = set_policy(&mut protector);
-    std::thread::sleep(Duration::from_millis(200));
+fn a_helper_that_exits_between_calls_is_unavailable_not_tampered() {
+    let mut protector = protector(command("exit-after-answer"));
+    set_policy(&mut protector).expect("the helper answers, then exits");
+    std::thread::sleep(Duration::from_millis(300));
     assert_eq!(
-        protector.protect_or_store_vrk(vault(1), generation(1), &key(1)),
+        protector.unlock_vrk(vault(1), generation(1)).map(|_| ()),
+        Err(ProtectorError::Unavailable)
+    );
+    // The failed call ended that session, so this one starts a new helper, which answers setup.
+    set_policy(&mut protector).expect("the next call starts a new helper");
+}
+
+fn a_wrong_reply_kind_ends_the_session() {
+    // This fake answers once and then stops. If the session survived, the second call would wait out the
+    // timeout and report Unavailable. A new helper answers at once with the same wrong kind.
+    let mut protector =
+        protector(command("wrong-reply-kind").with_reply_timeout(Duration::from_secs(2)));
+    assert_eq!(
+        set_policy(&mut protector),
+        Err(ProtectorError::CorruptOrTampered)
+    );
+    assert_eq!(
+        set_policy(&mut protector),
         Err(ProtectorError::CorruptOrTampered)
     );
 }
@@ -328,18 +346,22 @@ fn main() {
         std::env::set_var("SE_TEST_MUST_NOT_REACH_HELPER", "1");
         std::env::set_var("HOME", "must-not-arrive");
     }
-    let tests: [(&str, fn()); 9] = [
+    let tests: [(&str, fn()); 10] = [
         (
             "a_reply_of_the_wrong_kind_to_a_read_fails_closed",
             a_reply_of_the_wrong_kind_to_a_read_fails_closed,
         ),
         (
-            "a_second_reply_cannot_answer_a_later_request",
-            a_second_reply_cannot_answer_a_later_request,
+            "a_stray_reply_that_has_already_arrived_is_refused",
+            a_stray_reply_that_has_already_arrived_is_refused,
         ),
         (
-            "a_flooding_helper_cannot_answer_for_a_request",
-            a_flooding_helper_cannot_answer_for_a_request,
+            "a_helper_that_exits_between_calls_is_unavailable_not_tampered",
+            a_helper_that_exits_between_calls_is_unavailable_not_tampered,
+        ),
+        (
+            "a_wrong_reply_kind_ends_the_session",
+            a_wrong_reply_kind_ends_the_session,
         ),
         (
             "records_cross_the_process_boundary_with_their_bindings",

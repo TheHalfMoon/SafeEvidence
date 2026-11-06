@@ -227,9 +227,15 @@ impl HelperProcess {
 
     fn exchange(&mut self, request: &Request) -> Result<Reply, ProtectorError> {
         let session = self.session.as_mut().ok_or(ProtectorError::Unavailable)?;
-        // One reply per request. Anything already waiting is not an answer to this request.
-        if !matches!(session.replies.try_recv(), Err(TryRecvError::Empty)) {
-            return Err(ProtectorError::CorruptOrTampered);
+        // One reply per request, so a frame already waiting is not an answer to this one. This only catches
+        // a stray frame that has arrived by now, and it does not bind a reply to its request: a helper is
+        // trusted with the record anyway. A closed stream only means the helper has gone.
+        match session.replies.try_recv() {
+            Err(TryRecvError::Empty) => {}
+            Ok(Ok(Some(_))) => return Err(ProtectorError::CorruptOrTampered),
+            Ok(Ok(None) | Err(_)) | Err(TryRecvError::Disconnected) => {
+                return Err(ProtectorError::Unavailable);
+            }
         }
         write_frame(&mut session.stdin, &encode_request(request))
             .map_err(|_| ProtectorError::Unavailable)?;
