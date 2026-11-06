@@ -40,6 +40,7 @@ test("a brief never appears without its proof or on a refusal", () => {
     { ...answer, proofId: "" },
     { ...answer, brief: null },
     { ...answer, brief: "" },
+    { ...answer, citations: [] },
     { ...refusal, brief: "text" },
     { ...refusal, proofId: "vs1a-x" },
     { ...refusal, citations: [citation] },

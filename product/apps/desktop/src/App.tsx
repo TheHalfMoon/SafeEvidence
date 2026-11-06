@@ -58,19 +58,25 @@ export function App() {
   const [selected, setSelected] = useState<Citation | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [asked, setAsked] = useState("");
+  // Only the newest request may fill the view, so a late reply cannot overwrite it.
+  const latest = useRef(0);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const request = ++latest.current;
     setBusy(true);
+    setAsked(question);
     setView(null);
     setSelected(null);
     setFailure(null);
     try {
-      setView(parseAskView(await invoke("ask_question", { question })));
+      const response = parseAskView(await invoke("ask_question", { question }));
+      if (request === latest.current) setView(response);
     } catch (error) {
-      setFailure(String(error));
+      if (request === latest.current) setFailure(String(error));
     } finally {
-      setBusy(false);
+      if (request === latest.current) setBusy(false);
     }
   }
 
@@ -80,7 +86,7 @@ export function App() {
       <p className="notice" role="note">Invented engineering fixture. Not medical information.</p>
       <form onSubmit={submit}>
         <label htmlFor="question">Question</label>
-        <textarea id="question" dir="auto" rows={2} maxLength={1024} value={question}
+        <textarea id="question" dir="auto" rows={2} maxLength={1024} value={question} readOnly={busy}
           onChange={(event) => setQuestion(event.target.value)} />
         <button type="submit" disabled={busy}>{busy ? "Checking" : "Ask"}</button>
       </form>
@@ -89,6 +95,7 @@ export function App() {
         {failure && <p className="failure" role="alert">No answer is shown: {failure}</p>}
         {view && (
           <section aria-labelledby="outcome-heading">
+            <p className="asked">Asked: <span dir="auto">{asked}</span></p>
             <h2 id="outcome-heading" className={`outcome ${view.brief ? "answered" : "refused"}`}>{OUTCOMES[view.outcome]}</h2>
             {REASONS[view.reason] && <p>{REASONS[view.reason]}</p>}
             {view.brief && <p dir="auto" className="brief">{view.brief}</p>}

@@ -798,15 +798,15 @@
           "source_path": "apps/desktop-tauri/src/ipc.ts",
           "git_blob_oid": "fb2c48580e026e5150b60adbc6303427c15ee11d",
           "bytes": 932,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/apps/desktop/src/ask-view.ts",
+          "modification": "adapted"
         },
         {
           "source_path": "apps/desktop-tauri/src/ipc.test.ts",
           "git_blob_oid": "57b523e5fd3ecd2306afae7714a4be1804c12058",
           "bytes": 871,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/apps/desktop/src/ask-view.test.ts",
+          "modification": "adapted"
         },
         {
           "source_path": "apps/desktop-tauri/src/routes.ts",

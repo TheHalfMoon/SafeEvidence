@@ -101,7 +101,7 @@ export function parseAskView(value: unknown): AskView {
   if (!FUNNEL_STAGES.every(([stage]) => isCount(funnel[stage]))) throw new Error("Invalid funnel");
   const answered = outcome === "ANSWER" || outcome === "ANSWER_WITH_CAUTION";
   // A brief appears only with its committed proof, and only for an answering outcome.
-  if (answered ? typeof brief !== "string" || brief.length === 0 || typeof proofId !== "string" || proofId.length === 0
+  if (answered ? typeof brief !== "string" || brief.length === 0 || typeof proofId !== "string" || proofId.length === 0 || citations.length === 0
                : brief !== null || proofId !== null || citations.length !== 0) {
     throw new Error("Answer and proof do not agree");
   }

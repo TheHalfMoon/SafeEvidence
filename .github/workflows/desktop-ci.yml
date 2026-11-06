@@ -33,10 +33,15 @@ jobs:
         env:
           EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-      - name: Install Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 24.19.0
+      - name: Select the runner's Node from its tool cache
+        shell: bash
+        run: |
+          node_dir=$(ls -d "$RUNNER_TOOL_CACHE"/node/2[24].*/* | sort -V | tail -n 1)
+          test -n "$node_dir"
+          if [ "$RUNNER_OS" = Windows ]; then cygpath -w "$node_dir"; else echo "$node_dir/bin"; fi >> "$GITHUB_PATH"
+      - name: Check Node supports type stripping
+        shell: bash
+        run: node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 22 || (major === 22 && minor >= 6) ? 0 : 1)"
       - name: Install pinned toolchain
         shell: bash
         working-directory: product
@@ -48,7 +53,7 @@ jobs:
       - name: Install locked npm packages
         shell: bash
         working-directory: product/apps/desktop
-        run: npm ci --ignore-scripts=false --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run frontend tests
         shell: bash
         working-directory: product/apps/desktop

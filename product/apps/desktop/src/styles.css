@@ -24,7 +24,7 @@ button:disabled { opacity: 0.6; cursor: default; }
 code { font-family: ui-monospace, Consolas, monospace; font-size: 0.875em; overflow-wrap: anywhere; }
 mark { background: var(--mark); color: inherit; }
 ul, ol { padding-inline-start: 1.25rem; }
-.notice, .proof { color: var(--muted); font-size: 0.875rem; }
+.notice, .proof, .asked { color: var(--muted); font-size: 0.875rem; }
 .failure { color: var(--caution); }
 .outcome.refused { color: var(--caution); }
 .brief, .source { white-space: pre-wrap; }

@@ -2,8 +2,9 @@
 //!
 //! P00 proof step 6: text reaches an assured surface only after durable acknowledgement. So this
 //! returns the text read back from the store, and only if the stored proof reads `COMMITTED`.
-//! Every failure before that returns a refusal with the trace and no text.
+//! Every request ends in one outcome and reason: a failure is a refusal with no text.
 
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -22,6 +23,7 @@ const FIXTURE: &[u8] =
     include_bytes!("../../../../crates/safeevidence-ask/fixtures/vs1a_corpus.json");
 const MAX_QUESTION_SCALARS: usize = 1024;
 const SESSION_DIR: &str = "synthetic-ask-session";
+const LOCK_FILE: &str = "synthetic-ask-session.lock";
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -81,8 +83,29 @@ pub struct AskView {
     citations: Vec<CitationView>,
 }
 
-/// A store for one launch. The key lives only in memory here and the directory is deleted on close
-/// and on the next launch, so nothing outlives this run. See this app's `PROVENANCE.md`.
+/// Takes this data directory for one running instance and clears what a killed run left. The lock
+/// lasts as long as the returned file. Without it, a second instance could delete a live store.
+fn claim_data_dir(data_dir: &Path) -> Result<File, String> {
+    std::fs::create_dir_all(data_dir)
+        .map_err(|_| "could not create the data directory".to_owned())?;
+    let lock = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(data_dir.join(LOCK_FILE))
+        .map_err(|_| "could not open the session lock".to_owned())?;
+    lock.try_lock()
+        .map_err(|_| "another instance holds this session".to_owned())?;
+    match std::fs::remove_dir_all(data_dir.join(SESSION_DIR)) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err("could not clear the previous session".to_owned()),
+    }
+    Ok(lock)
+}
+
+/// A store for one launch. The key lives only in memory here. The directory is deleted on close, and
+/// a killed run's directory is deleted when the next launch claims it. See this app's `PROVENANCE.md`.
 pub struct AskSession {
     store: ProofStore,
     corpus: Corpus,
@@ -96,14 +119,25 @@ fn random<const N: usize>() -> Result<[u8; N], String> {
     Ok(bytes)
 }
 
+type Withheld = (TerminalOutcome, ReasonCode);
+
+const TOOL_FAILURE: Withheld = (TerminalOutcome::Blocked, ReasonCode::ToolFailure);
+
+fn denied(error: StoreError) -> Withheld {
+    let reason = match error {
+        StoreError::RightsChanged => ReasonCode::RightsUnresolved,
+        StoreError::ProofRace { .. } | StoreError::SourceAmended(_) => {
+            ReasonCode::ProofRaceInvalidated
+        }
+        StoreError::SourceNotAdmitted(_) => ReasonCode::SourceUnavailable,
+        _ => ReasonCode::ToolFailure,
+    };
+    (TerminalOutcome::Blocked, reason)
+}
+
 impl AskSession {
     fn open(data_dir: &Path) -> Result<Self, String> {
         let dir = data_dir.join(SESSION_DIR);
-        match std::fs::remove_dir_all(&dir) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(_) => return Err("could not clear the previous session".to_owned()),
-        }
         std::fs::create_dir_all(&dir).map_err(|_| "could not create the session".to_owned())?;
         let corpus = load_corpus(FIXTURE, &DigestSha256::of(FIXTURE))
             .map_err(|_| "the fixture did not load".to_owned())?;
@@ -148,8 +182,8 @@ impl AskSession {
                 view(&result, Some(brief), Some(proof_id), citations)
             }
             Ok(None) => view(&result, None, None, Vec::new()),
-            Err(reason) => AskView {
-                outcome: TerminalOutcome::Abstain,
+            Err((outcome, reason)) => AskView {
+                outcome,
                 reason,
                 ..view(&result, None, None, Vec::new())
             },
@@ -157,42 +191,46 @@ impl AskSession {
     }
 
     /// `Ok(None)` is a refusal from Ask. `Err` withholds an answer that did not reach `COMMITTED`.
+    /// A denied proof admission is `BLOCKED`, the first guard in the decision contract.
     fn committed(
         &mut self,
         result: &AskResult,
-    ) -> Result<Option<(String, String, Vec<CitationView>)>, ReasonCode> {
+    ) -> Result<Option<(String, String, Vec<CitationView>)>, Withheld> {
         let (Some(manifest), Some(brief)) = (&result.manifest, &result.brief) else {
             return Ok(None);
         };
-        let reason = |error: StoreError| match error {
-            StoreError::ProofRace { .. }
-            | StoreError::RightsChanged
-            | StoreError::SourceAmended(_) => ReasonCode::ProofRaceInvalidated,
-            _ => ReasonCode::ToolFailure,
-        };
         self.store
             .commit(manifest, brief.as_bytes())
-            .map_err(reason)?;
-        let stored = self.store.read(&manifest.proof_id).map_err(reason)?;
-        if stored.state != ProofState::Committed {
-            return Err(ReasonCode::CurrentnessUnknown);
+            .map_err(denied)?;
+        let stored = self.store.read(&manifest.proof_id).map_err(denied)?;
+        match stored.state {
+            ProofState::Committed => {}
+            ProofState::CurrentnessUnknown => {
+                return Err((TerminalOutcome::Abstain, ReasonCode::CurrentnessUnknown));
+            }
+            _ => {
+                return Err((
+                    TerminalOutcome::Blocked,
+                    ReasonCode::SourceInvalidOrRetracted,
+                ));
+            }
         }
-        let text = String::from_utf8(stored.final_text).map_err(|_| ReasonCode::ToolFailure)?;
+        let text = String::from_utf8(stored.final_text).map_err(|_| TOOL_FAILURE)?;
         let mut citations = Vec::new();
         for claim in &stored.manifest.claims {
             for span in &claim.spans {
                 let source = self
                     .store
                     .source(&span.source_id)
-                    .map_err(reason)?
-                    .ok_or(ReasonCode::SourceUnavailable)?;
+                    .map_err(denied)?
+                    .ok_or((TerminalOutcome::Blocked, ReasonCode::SourceUnavailable))?;
                 citations.push(CitationView {
                     claim_id: claim.claim_id.clone(),
                     source_id: span.source_id.clone(),
                     source_version: span.source_version.clone(),
                     start_scalar: span.start_scalar,
                     end_scalar: span.end_scalar,
-                    source_text: String::from_utf8(source).map_err(|_| ReasonCode::ToolFailure)?,
+                    source_text: String::from_utf8(source).map_err(|_| TOOL_FAILURE)?,
                 });
             }
         }
@@ -213,11 +251,6 @@ fn view(
     citations: Vec<CitationView>,
 ) -> AskView {
     AskView {
-        schema_version: 1,
-        fixture_only: true,
-        outcome: result.outcome,
-        reason: result.reason,
-        funnel: FunnelView::from(&result.funnel),
         excluded: result
             .excluded
             .iter()
@@ -229,12 +262,28 @@ fn view(
         brief,
         proof_id,
         citations,
+        ..refusal(result.outcome, result.reason, &result.funnel)
+    }
+}
+
+fn refusal(outcome: TerminalOutcome, reason: ReasonCode, funnel: &Funnel) -> AskView {
+    AskView {
+        schema_version: 1,
+        fixture_only: true,
+        outcome,
+        reason,
+        funnel: FunnelView::from(funnel),
+        excluded: Vec::new(),
+        brief: None,
+        proof_id: None,
+        citations: Vec::new(),
     }
 }
 
 #[derive(Default)]
 struct Inner {
     data_dir: Option<PathBuf>,
+    lock: Option<File>,
     session: Option<AskSession>,
 }
 
@@ -242,8 +291,10 @@ struct Inner {
 pub struct AskState(Mutex<Inner>);
 
 impl AskState {
+    /// Claims the directory now, so a killed run's store is gone even if nothing is asked.
     pub fn set_data_dir(&self, data_dir: PathBuf) {
         if let Ok(mut inner) = self.0.lock() {
+            inner.lock = claim_data_dir(&data_dir).ok();
             inner.data_dir = Some(data_dir);
         }
     }
@@ -255,26 +306,36 @@ impl AskState {
             session.close();
         }
     }
+
+    fn answer(&self, question: &str) -> AskView {
+        let unavailable = || refusal(TOOL_FAILURE.0, TOOL_FAILURE.1, &Funnel::default());
+        // Outside the question grammar, as Ask treats any other question it cannot parse.
+        if question.chars().count() > MAX_QUESTION_SCALARS {
+            return refusal(
+                TerminalOutcome::Abstain,
+                ReasonCode::EvidenceInsufficient,
+                &Funnel::default(),
+            );
+        }
+        let Ok(mut inner) = self.0.lock() else {
+            return unavailable();
+        };
+        if inner.session.is_none() {
+            let (Some(data_dir), Some(_)) = (inner.data_dir.clone(), inner.lock.as_ref()) else {
+                return unavailable();
+            };
+            inner.session = AskSession::open(&data_dir).ok();
+        }
+        match inner.session.as_mut() {
+            Some(session) => session.ask(question),
+            None => unavailable(),
+        }
+    }
 }
 
 #[tauri::command]
-pub fn ask_question(
-    state: tauri::State<'_, AskState>,
-    question: String,
-) -> Result<AskView, String> {
-    if question.chars().count() > MAX_QUESTION_SCALARS {
-        return Err("The question is too long.".to_owned());
-    }
-    let mut inner = state
-        .0
-        .lock()
-        .map_err(|_| "The session failed.".to_owned())?;
-    if inner.session.is_none() {
-        let data_dir = inner.data_dir.clone().ok_or("The session is not ready.")?;
-        inner.session = Some(AskSession::open(&data_dir)?);
-    }
-    let session = inner.session.as_mut().ok_or("The session failed.")?;
-    Ok(session.ask(&question))
+pub fn ask_question(state: tauri::State<'_, AskState>, question: String) -> AskView {
+    state.answer(&question)
 }
 
 #[cfg(test)]
@@ -359,8 +420,13 @@ mod tests {
         }
     }
 
+    fn assert_withheld(view: &AskView, outcome: TerminalOutcome, reason: ReasonCode) {
+        assert_eq!((view.outcome, view.reason), (outcome, reason));
+        assert!(view.brief.is_none() && view.proof_id.is_none() && view.citations.is_empty());
+    }
+
     #[test]
-    fn an_answer_that_cannot_commit_is_withheld() {
+    fn a_denied_proof_admission_is_blocked_with_no_text() {
         let dir = TempDir::new();
         let mut session = AskSession::open(&dir.0).expect("session");
         session
@@ -368,35 +434,60 @@ mod tests {
             .set_rights_grant("a-later-grant")
             .expect("grant");
         let view = session.ask(ANSWERED);
-        assert_eq!(view.outcome, TerminalOutcome::Abstain);
-        assert_eq!(view.reason, ReasonCode::ProofRaceInvalidated);
-        assert!(view.brief.is_none() && view.proof_id.is_none() && view.citations.is_empty());
+        assert_withheld(
+            &view,
+            TerminalOutcome::Blocked,
+            ReasonCode::RightsUnresolved,
+        );
         assert!(view.funnel.verified_claims > 0, "the trace stays");
+
+        let dir = TempDir::new();
+        let mut session = AskSession::open(&dir.0).expect("session");
+        session.store.advance_epoch(99).expect("epoch");
+        let view = session.ask(ANSWERED);
+        assert_withheld(
+            &view,
+            TerminalOutcome::Blocked,
+            ReasonCode::ProofRaceInvalidated,
+        );
     }
 
     #[test]
-    fn a_committed_answer_that_stops_being_assured_is_withheld_on_replay() {
+    fn an_answer_that_stops_being_assured_is_withheld_on_replay() {
         let dir = TempDir::new();
         let mut session = AskSession::open(&dir.0).expect("session");
-        let first = session.ask(ANSWERED);
-        let proof_id = first.proof_id.expect("proof");
+        let proof_id = session.ask(ANSWERED).proof_id.expect("proof");
+        session.store.advance_epoch(99).expect("epoch");
+        let view = session.ask(ANSWERED);
+        assert_withheld(
+            &view,
+            TerminalOutcome::Abstain,
+            ReasonCode::CurrentnessUnknown,
+        );
+
         session
             .store
             .invalidate(&proof_id, "synthetic")
             .expect("invalidate");
         let view = session.ask(ANSWERED);
-        assert_eq!(view.outcome, TerminalOutcome::Abstain);
-        assert_eq!(view.reason, ReasonCode::CurrentnessUnknown);
-        assert!(view.brief.is_none() && view.proof_id.is_none());
+        assert_withheld(
+            &view,
+            TerminalOutcome::Blocked,
+            ReasonCode::SourceInvalidOrRetracted,
+        );
     }
 
     #[test]
-    fn a_new_session_keeps_nothing_and_close_removes_the_directory() {
+    fn claiming_clears_a_killed_runs_store_before_any_question() {
         let dir = TempDir::new();
         let mut session = AskSession::open(&dir.0).expect("session");
         let proof_id = session.ask(ANSWERED).proof_id.expect("proof");
         let session_dir = session.dir.clone();
         drop(session);
+        assert!(session_dir.exists(), "a kill leaves the store behind");
+        let state = AskState::default();
+        state.set_data_dir(dir.0.clone());
+        assert!(!session_dir.exists());
         let mut session = AskSession::open(&dir.0).expect("new session");
         assert!(matches!(
             session.store.read(&proof_id),
@@ -404,6 +495,61 @@ mod tests {
         ));
         session.close();
         assert!(!session_dir.exists());
+    }
+
+    #[test]
+    fn a_second_instance_is_refused_and_leaves_the_live_store_alone() {
+        let dir = TempDir::new();
+        let first = AskState::default();
+        first.set_data_dir(dir.0.clone());
+        let answered = first.answer(ANSWERED);
+        let proof_id = answered.proof_id.clone().expect("proof");
+
+        let second = AskState::default();
+        second.set_data_dir(dir.0.clone());
+        let refused = second.answer(ANSWERED);
+        assert_withheld(&refused, TerminalOutcome::Blocked, ReasonCode::ToolFailure);
+
+        assert_eq!(
+            first.answer(ANSWERED).proof_id.as_deref(),
+            Some(proof_id.as_str())
+        );
+        first.close();
+    }
+
+    #[test]
+    fn every_failure_before_the_core_is_one_outcome_with_a_reason() {
+        let not_ready = AskState::default().answer(ANSWERED);
+        assert_withheld(
+            &not_ready,
+            TerminalOutcome::Blocked,
+            ReasonCode::ToolFailure,
+        );
+        assert_eq!(not_ready.funnel.indexed, 0);
+
+        let too_long = AskState::default().answer(&"x".repeat(MAX_QUESTION_SCALARS + 1));
+        assert_withheld(
+            &too_long,
+            TerminalOutcome::Abstain,
+            ReasonCode::EvidenceInsufficient,
+        );
+
+        let dir = TempDir::new();
+        let occupied = dir.0.join(SESSION_DIR);
+        std::fs::write(&occupied, b"not a directory").expect("file");
+        let state = AskState::default();
+        let lock = claim_data_dir(&dir.0);
+        assert!(
+            lock.is_err(),
+            "a session path that cannot be cleared is not claimed"
+        );
+        drop(lock);
+        state.set_data_dir(dir.0.clone());
+        assert_withheld(
+            &state.answer(ANSWERED),
+            TerminalOutcome::Blocked,
+            ReasonCode::ToolFailure,
+        );
     }
 
     #[test]

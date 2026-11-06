@@ -1,5 +1,6 @@
-//! Invoke boundary tests use the production handler and generated capability context.
-//! MockRuntime does not establish native WebView privacy or OS isolation.
+//! Invoke boundary tests use the production handler and generated capabilities, in the dev context
+//! `cargo test` builds, which also admits `127.0.0.1:1420`. MockRuntime does not establish native
+//! WebView privacy or OS isolation.
 
 use tauri::Manager;
 use tauri::test::{MockRuntime, get_ipc_response, mock_builder};
@@ -71,14 +72,19 @@ fn the_main_local_window_can_ask() {
 }
 
 #[test]
-fn a_too_long_question_is_refused_before_it_reaches_the_core() {
+fn a_too_long_question_gets_a_refusal() {
     let dir = TempDir::new("long");
     let app = test_app(&dir.0);
     let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
         .build()
         .expect("main mock window");
     let body = serde_json::json!({ "question": "x".repeat(1025) });
-    assert!(get_ipc_response(&window, request("ask_question", local_origin(), body)).is_err());
+    let response = get_ipc_response(&window, request("ask_question", local_origin(), body))
+        .expect("admitted command")
+        .deserialize::<serde_json::Value>()
+        .expect("json");
+    assert_eq!(response["outcome"], "ABSTAIN");
+    assert!(response["brief"].is_null());
 }
 
 #[test]
@@ -125,6 +131,11 @@ fn generic_privilege_and_plugin_commands_are_refused() {
         "plugin:shell|execute",
         "plugin:http|fetch",
         "plugin:clipboard-manager|read_text",
+        "plugin:event|listen",
+        "plugin:window|close",
+        "plugin:webview|create_webview",
+        "plugin:app|version",
+        "plugin:path|resolve_directory",
     ] {
         assert!(get_ipc_response(&window, request(command, local_origin(), question())).is_err());
     }
