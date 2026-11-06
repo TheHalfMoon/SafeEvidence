@@ -393,8 +393,9 @@ pub enum SqlCipherTransactionError<E> {
     Operation(E),
     /// The commit itself failed. Whether it became durable is unknown until reconciled.
     CommitUnknown(rusqlite::Error),
-    /// A conflict clause or `RAISE(ROLLBACK)` ended the transaction, and the operation still
-    /// returned `Ok`. Its writes before that point were rolled back, and later ones were refused.
+    /// SQLite ended the transaction early, as a conflict clause, `RAISE(ROLLBACK)` or a full disk
+    /// can, and the operation still returned `Ok`. Its earlier writes were rolled back, and later
+    /// ones were refused.
     TransactionLost,
 }
 
@@ -403,8 +404,7 @@ pub enum SqlCipherTransactionError<E> {
 pub enum GuardedSqlError {
     /// Only SELECT, INSERT, UPDATE and DELETE statements are allowed.
     StatementNotAllowed,
-    /// A conflict clause or `RAISE(ROLLBACK)` already ended this transaction, so another statement
-    /// would autocommit outside it.
+    /// SQLite already ended this transaction, so another statement would autocommit outside it.
     TransactionEnded,
     Provider(rusqlite::Error),
 }
@@ -575,8 +575,10 @@ impl SqlCipherDatabaseHandle {
         }
     }
 
-    /// Runs `operation` holding the write lock from the start. An `Err` leaves nothing written; `Ok`
-    /// commits, unless the transaction already ended, which is `TransactionLost`.
+    /// Runs `operation` holding the write lock from the start. If `operation` returns `Err`, nothing
+    /// is written. If it returns `Ok`, this commits, so an operation must propagate statement errors:
+    /// a swallowed error can leave that statement's write in place. If the transaction already ended,
+    /// the result is `TransactionLost`.
     ///
     /// # Errors
     /// Returns the lease, provider, operation or commit failure.
