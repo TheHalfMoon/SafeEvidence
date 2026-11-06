@@ -6,16 +6,16 @@ Nothing here implies clinical validation, regulatory status or product readiness
 Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASSED`,
 `BLOCKED_EXTERNAL`, `ENGINEERING_COMPLETE`, `CLINICALLY_EVALUATED`, `RELEASE_QUALIFIED`.
 
-## Current state (2026-11-05)
+## Current state (2026-11-06)
 
 | Field | Value |
 |---|---|
-| `main` at last update | `ec04607010abac35e38f5084a9d71bad269f1707` |
-| Milestone | M0 open for rows; M1 VS-1 steps 1 and 3 in review |
+| `main` at last update | `291fdc9c94784001c90a150aba6f1d8c7a309dc0` |
+| Milestone | M0 open for rows; M1 VS-1 step 4 in review |
 | Active packet | WP-00 and WP-01 rows; VS-1a headless path |
-| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no files copied); G01a baseline holds `NO_ADMISSIONS` |
+| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no files copied), ADM-0006 (T36); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
-| Next executable task | Tauri Ask view (`plan-v1.1` §C step 4); rows for T12, T30, T36; socket-crate defect |
+| Next executable task | M1 exit items: TA-13, sockets defect, key custody, end-to-end WebView test; rows for T12, T30 |
 
 Required checks on `main` (founder decision, 2026-11-05): `foundation-documents`, `preentry structure`, `synthetic-only`
 and `product`, the last three on Ubuntu, Windows and macOS.
@@ -25,7 +25,7 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 | Milestone | Status | Blocked by |
 |---|---|---|
 | M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED`; TA-02 `TESTED_PASSED` | Rows for T12, T13, T30, T36 |
-| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial | M0 rows; TA-13; desktop; open defects below |
+| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4 `IMPLEMENTED_UNTESTED` end to end, TA-20 not claimed | M0 rows; TA-13; desktop; open defects below |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
 | M4 Desktop V1 | `NOT_STARTED` | M3 |
@@ -58,6 +58,10 @@ TA-29 does not name these crates. `zbus` also contains TCP transport code, so a 
 restriction. Resolve before M1 exit: move the protector out of the core process, or amend the rule with TA-21 evidence.
 TA-29's tree check covers normal dependencies. Build-only crates such as `cc` and `openssl-src` are covered by the
 `cargo deny` bans.
+
+**Desktop shell:** the Ask view uses a new in-memory key and a throwaway store per launch, so answers do not survive a restart, and T03's OS
+protectors are not wired in. Tests use Tauri's mock runtime, so TA-20, TA-21 and TA-22 are not claimed. The app's trees are outside TA-02's SBOM
+and `product/deny.toml`. The `Desktop Shell` CI job is not a required check. Tauri pulls `reqwest` and `hyper` on Android and iOS: resolve before M5.
 
 **`plan-v1.3` immutability:** tested against the keyed vault store in `safeevidence-proofstore`, with triggers and guarded SQL.
 **`plan-v1.3` lineage: partly owed.** The store amends sources, not the prior assertion, and keeps no `AmendmentRecord` fields.

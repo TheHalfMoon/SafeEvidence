@@ -1,0 +1,38 @@
+[package]
+name = "safeevidence-desktop"
+version = "0.0.0"
+description = "SafeEvidence desktop shell: Ask view over the invented fixture"
+edition = "2024"
+rust-version = "1.98.1"
+license = "Apache-2.0"
+publish = false
+build = "build.rs"
+
+# Its own workspace, so Tauri stays out of the core's lockfile and dependency checks.
+[workspace]
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+[dependencies]
+getrandom = { version = "=0.4.3", default-features = false }
+safeevidence-ask = { path = "../../../crates/safeevidence-ask" }
+safeevidence-contracts = { path = "../../../crates/safeevidence-contracts" }
+safeevidence-proofstore = { path = "../../../crates/safeevidence-proofstore" }
+safeevidence-vault = { path = "../../../crates/safeevidence-vault" }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+tauri = { version = "=2.12.0", default-features = false, features = ["wry", "common-controls-v6", "x11"] }
+
+[build-dependencies]
+tauri-build = { version = "=2.7.0" }
+
+[dev-dependencies]
+tauri = { version = "=2.12.0", default-features = false, features = ["test"] }
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "allow", priority = -1 }
