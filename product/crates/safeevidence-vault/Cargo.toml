@@ -13,14 +13,12 @@ getrandom = { version = "=0.4.3", default-features = false }
 hkdf = { version = "=0.13.0", default-features = false }
 libsqlite3-sys = { version = "=0.38.2", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl", "hooks"] }
+safeevidence-keyring-wire = { version = "=0.0.0", path = "../safeevidence-keyring-wire" }
 sha2 = { version = "=0.11.0", default-features = false }
 zeroize = { version = "=1.9.0" }
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = { version = "=0.10.1", default-features = false }
 security-framework = { version = "=3.7.0", default-features = false, features = ["OSX_10_15"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-secret-service = { version = "=5.2.0", default-features = false, features = ["rt-tokio-crypto-rust"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-acl = { version = "=0.3.0" }
@@ -28,3 +26,7 @@ fs_at = { version = "=0.2.1" }
 windows-permissions = { version = "=0.2.4" }
 windows-dpapi = { version = "=0.2.0" }
 winsafe = { version = "=0.0.29", default-features = false, features = ["advapi"] }
+
+[[test]]
+name = "keyring_helper_process"
+harness = false

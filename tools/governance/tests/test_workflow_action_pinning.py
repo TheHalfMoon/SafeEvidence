@@ -25,11 +25,13 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/p00-foundation-docs.yml": "ffc5b4246ee09dad96caed7cf759e8565fe0e80b2e6ffe8642cfa6ad2d1b8db6",
     ".github/workflows/p01-preentry-governance.yml": "efe37c703ed5c24ec230e355ef2579070507d626b00f6f17f93a418ebe6dbfab",
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
-    ".github/workflows/product-ci.yml": "3f23d93c73cb49d743083cb02d4c7fe3d342046fca2015943da30942b5d14b87",
+    ".github/workflows/product-ci.yml": "d7c30d6f6fb128da171759885fcfcb6fc5f4976c4ca30b25ef7bc7ffe42aa589",
     ".github/workflows/desktop-ci.yml": "ddf4941a21f55bd6001ccbf1408c41be4a090ab36527b18ce7e841ad4aa6982a",
 }
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.
+CORE_SOCKET_SCRIPT = "tools/ci/core_no_sockets.py"
+CORE_SOCKET_SCRIPT_SHA256 = "9bc7db33147ad4a84dbc687bd9a6ead280500d81d833ca4399f64059452d965b"
 TA03_SCRIPT = "tools/ci/ta03_isolated.sh"
 TA29_SCRIPT = "tools/ci/ta29_dependency_denial.py"
 TA29_SCRIPT_SHA256 = "b77022615499713081f2fd621a253d9be96bbb824363d947c1e07cb98a4fe768"
@@ -97,6 +99,10 @@ class WorkflowCheckoutPinTests(unittest.TestCase):
     def test_ta03_gate_script_matches_pinned_revision(self):
         source = (ROOT / TA03_SCRIPT).read_text(encoding="utf-8")
         self.assertEqual(TA03_SCRIPT_SHA256, workflow_content_digest(source))
+
+    def test_core_socket_gate_script_matches_pinned_revision(self):
+        source = (ROOT / CORE_SOCKET_SCRIPT).read_text(encoding="utf-8")
+        self.assertEqual(CORE_SOCKET_SCRIPT_SHA256, workflow_content_digest(source))
 
     def test_ta29_gate_script_matches_pinned_revision(self):
         source = (ROOT / TA29_SCRIPT).read_text(encoding="utf-8")

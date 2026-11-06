@@ -890,6 +890,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "safeevidence-keyring-wire"
+version = "0.0.0"
+dependencies = [
+ "zeroize",
+]
+
+[[package]]
+name = "safeevidence-linux-keyring-helper"
+version = "0.0.0"
+dependencies = [
+ "safeevidence-keyring-wire",
+ "safeevidence-vault",
+ "secret-service",
+ "zeroize",
+]
+
+[[package]]
 name = "safeevidence-privacy-probes"
 version = "0.0.0"
 dependencies = [
@@ -932,7 +949,7 @@ dependencies = [
  "hkdf",
  "libsqlite3-sys",
  "rusqlite",
- "secret-service",
+ "safeevidence-keyring-wire",
  "security-framework",
  "sha2",
  "windows-acl",
