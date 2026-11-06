@@ -1,24 +1,31 @@
 //! VS-1a step 1, end to end over the invented fixture. These prove control flow and refusals.
 //! They are not retrieval-quality or clinical results.
 
-use safeevidence_ask::{Corpus, CorpusError, ask, claim_defect, load_corpus};
+use safeevidence_ask::{
+    Corpus, CorpusError, Direction, ask, claim_defect, load_corpus, parse_question, verify_brief,
+};
 use safeevidence_contracts::assurance::{ProofState, ReasonCode, TerminalOutcome};
 use safeevidence_contracts::objects::DigestSha256;
 use safeevidence_contracts::proof::commit_defects;
+use safeevidence_contracts::study::PublicationState;
 
 const FIXTURE: &[u8] = include_bytes!("../fixtures/vs1a_corpus.json");
+const ADULT: &str = "Does veltrixamine help adults with glimmer syndrome?";
 
 fn corpus() -> Corpus {
     load_corpus(FIXTURE, &DigestSha256::of(FIXTURE)).expect("fixture loads")
 }
 
+fn with_doc(id: &str, edit: impl Fn(&mut safeevidence_ask::Document)) -> Corpus {
+    let mut value = corpus();
+    edit(value.documents.iter_mut().find(|d| d.doc_id == id).unwrap());
+    value
+}
+
 #[test]
 fn applicable_evidence_gives_a_cautious_brief_with_exact_spans() {
     let corpus = corpus();
-    let result = ask(
-        "Does veltrixamine help adults with glimmer syndrome?",
-        &corpus,
-    );
+    let result = ask(ADULT, &corpus);
     assert_eq!(result.outcome, TerminalOutcome::AnswerWithCaution);
     assert_eq!(result.reason, ReasonCode::None);
 
@@ -38,6 +45,7 @@ fn applicable_evidence_gives_a_cautious_brief_with_exact_spans() {
     );
     assert!(commit_defects(&manifest).is_empty());
     assert_eq!(manifest.claims.len(), 2);
+    assert_eq!(result.funnel.verified_claims, 2);
     for claim in &manifest.claims {
         let document = corpus
             .documents
@@ -61,21 +69,27 @@ fn applicable_evidence_gives_a_cautious_brief_with_exact_spans() {
 }
 
 #[test]
+fn proof_identity_differs_when_the_brief_differs() {
+    let first = ask(ADULT, &corpus()).manifest.unwrap();
+    let changed = with_doc("doc-veltrix-a", |d| {
+        d.text = d.text.replace("12 points", "13 points");
+        d.finding = d.finding.replace("12 points", "13 points");
+    });
+    let second = ask(ADULT, &changed).manifest.unwrap();
+    assert_ne!(first.proof_id, second.proof_id);
+    assert_ne!(first.final_text_digest, second.final_text_digest);
+}
+
+#[test]
 fn two_reports_of_one_study_count_as_one_study() {
-    let result = ask(
-        "Does veltrixamine help adults with glimmer syndrome?",
-        &corpus(),
-    );
+    let result = ask(ADULT, &corpus());
     assert_eq!(result.funnel.applicable, 2);
     assert_eq!(result.funnel.independent_studies, 1);
 }
 
 #[test]
 fn mismatched_population_is_excluded_with_a_reason() {
-    let result = ask(
-        "Does veltrixamine help adults with glimmer syndrome?",
-        &corpus(),
-    );
+    let result = ask(ADULT, &corpus());
     assert_eq!(result.funnel.retrieved, 3);
     let (doc, reason) = &result.excluded[0];
     assert_eq!(doc, "doc-veltrix-peds");
@@ -96,12 +110,110 @@ fn a_different_population_gets_its_own_evidence_not_the_adult_result() {
 }
 
 #[test]
+fn near_miss_populations_never_get_the_adult_brief() {
+    for question in [
+        "Does veltrixamine help young adults with glimmer syndrome?",
+        "Does veltrixamine help teenagers with glimmer syndrome?",
+    ] {
+        let result = ask(question, &corpus());
+        assert_eq!(result.outcome, TerminalOutcome::Abstain, "{question}");
+        assert_eq!(
+            result.reason,
+            ReasonCode::ApplicabilityUnresolved,
+            "{question}"
+        );
+        assert!(result.brief.is_none(), "{question}");
+    }
+}
+
+#[test]
+fn questions_outside_the_grammar_never_get_a_brief() {
+    for question in [
+        "Does veltrixamine help children, not adults with glimmer syndrome?",
+        "Does veltrixamine help adults without glimmer syndrome?",
+        "Should I start veltrixamine for Mr Ahmad, an adult with glimmer syndrome?",
+        "veltrixamine adults glimmer syndrome",
+        "Does veltrixamine help adults with glimmer syndrome\" OR title:* ) ; DROP TABLE evidence; --",
+        "Does help adults with glimmer syndrome?",
+        "",
+    ] {
+        let result = ask(question, &corpus());
+        assert!(result.brief.is_none(), "{question}");
+        assert_eq!(result.outcome, TerminalOutcome::Abstain, "{question}");
+    }
+}
+
+#[test]
+fn grammar_parses_only_its_exact_form() {
+    let parsed =
+        parse_question("  DOES  Veltrixamine help ADULTS with Glimmer Syndrome? ").unwrap();
+    assert_eq!(parsed.intervention, "veltrixamine");
+    assert_eq!(parsed.population.as_deref(), Some("adults"));
+    assert_eq!(parsed.condition, "glimmer syndrome");
+    let parsed = parse_question("does x help with y").unwrap();
+    assert_eq!(parsed.population, None);
+    assert!(parse_question("does x help").is_none());
+    assert!(parse_question("does x help a with ").is_none());
+}
+
+#[test]
+fn case_differences_do_not_hide_a_contradiction() {
+    let value = with_doc("doc-orbalin-b", |d| {
+        d.condition = "Ember Fatigue".to_owned();
+        d.intervention = "ORBALIN".to_owned();
+        d.population = "Adults".to_owned();
+    });
+    let result = ask("Does orbalin help adults with ember fatigue?", &value);
+    assert_eq!(result.outcome, TerminalOutcome::Conflict);
+}
+
+#[test]
+fn contradictor_lexical_search_misses_still_counts() {
+    let value = with_doc("doc-orbalin-b", |d| {
+        d.title = "Second trial".to_owned();
+        d.text =
+            "A second trial ran. The ember score did not improve compared with placebo at 8 weeks."
+                .to_owned();
+    });
+    let result = ask("Does orbalin help adults with ember fatigue?", &value);
+    assert_eq!(result.funnel.retrieved, 1, "FTS finds only one");
+    assert_eq!(result.outcome, TerminalOutcome::Conflict);
+}
+
+#[test]
 fn independent_contradiction_is_a_conflict_with_no_brief() {
     let result = ask("Does orbalin help adults with ember fatigue?", &corpus());
     assert_eq!(result.outcome, TerminalOutcome::Conflict);
     assert_eq!(result.reason, ReasonCode::MaterialContradiction);
     assert!(result.brief.is_none() && result.manifest.is_none());
     assert_eq!(result.funnel.independent_studies, 2);
+}
+
+#[test]
+fn conflict_outranks_asking_for_a_population() {
+    let result = ask("Does orbalin help with ember fatigue?", &corpus());
+    assert_eq!(result.outcome, TerminalOutcome::Conflict);
+}
+
+#[test]
+fn disagreement_between_populations_asks_rather_than_conflicts() {
+    let result = ask("Does veltrixamine help with glimmer syndrome?", &corpus());
+    assert_eq!(result.outcome, TerminalOutcome::AskMore);
+    assert_eq!(result.reason, ReasonCode::MissingCriticalContext);
+}
+
+#[test]
+fn one_studys_reports_disagreeing_is_not_called_independent_conflict() {
+    let value = with_doc("doc-veltrix-a-followup", |d| {
+        d.text = "This follow-up reports the same adults. The glimmer score did not improve compared with placebo at 24 weeks.".to_owned();
+        d.finding =
+            "The glimmer score did not improve compared with placebo at 24 weeks.".to_owned();
+        d.direction = Direction::NoBenefit;
+    });
+    let result = ask(ADULT, &value);
+    assert_eq!(result.outcome, TerminalOutcome::Abstain);
+    assert_eq!(result.reason, ReasonCode::EvidenceInsufficient);
+    assert!(result.brief.is_none());
 }
 
 #[test]
@@ -115,6 +227,42 @@ fn retracted_only_evidence_abstains_and_does_not_look_like_no_evidence() {
 }
 
 #[test]
+fn a_follow_up_cannot_rescue_a_retracted_study() {
+    for state in [PublicationState::Retracted, PublicationState::Withdrawn] {
+        let value = with_doc("doc-veltrix-a", |d| d.publication_state = state);
+        let result = ask(ADULT, &value);
+        assert_eq!(result.outcome, TerminalOutcome::Abstain, "{state:?}");
+        assert_eq!(
+            result.reason,
+            ReasonCode::ApplicabilityUnresolved,
+            "{state:?}: only children remain"
+        );
+        assert!(result.brief.is_none());
+        assert_eq!(result.funnel.citable, 1);
+    }
+}
+
+#[test]
+fn a_non_citable_report_drops_alone_when_nothing_was_retracted() {
+    let value = with_doc("doc-veltrix-a-followup", |d| {
+        d.publication_state = PublicationState::Superseded;
+    });
+    let result = ask(ADULT, &value);
+    assert_eq!(result.outcome, TerminalOutcome::AnswerWithCaution);
+    assert_eq!(result.funnel.verified_claims, 1);
+}
+
+#[test]
+fn unknown_publication_state_is_not_reported_as_retracted() {
+    let value = with_doc("doc-quenzil-retracted", |d| {
+        d.publication_state = PublicationState::Unknown;
+    });
+    let result = ask("Does quenzil help adults with hollow cough?", &value);
+    assert_eq!(result.outcome, TerminalOutcome::Abstain);
+    assert_eq!(result.reason, ReasonCode::CurrentnessUnknown);
+}
+
+#[test]
 fn unknown_rights_block_presentation() {
     let result = ask("Does tessarine help adults with marble rash?", &corpus());
     assert_eq!(result.outcome, TerminalOutcome::Blocked);
@@ -123,10 +271,17 @@ fn unknown_rights_block_presentation() {
 }
 
 #[test]
+fn one_unknown_rights_document_blocks_even_beside_admissible_ones() {
+    let value = with_doc("doc-veltrix-a-followup", |d| {
+        d.rights = safeevidence_contracts::evidence::EvidenceCorpusRights::Unknown;
+    });
+    assert_eq!(ask(ADULT, &value).outcome, TerminalOutcome::Blocked);
+}
+
+#[test]
 fn missing_population_asks_for_it_and_blocked_rights_still_win() {
     let result = ask("Does veltrixamine help with glimmer syndrome?", &corpus());
     assert_eq!(result.outcome, TerminalOutcome::AskMore);
-    assert_eq!(result.reason, ReasonCode::MissingCriticalContext);
     assert!(result.brief.is_none());
     let blocked = ask("Does tessarine help with marble rash?", &corpus());
     assert_eq!(
@@ -137,24 +292,37 @@ fn missing_population_asks_for_it_and_blocked_rights_still_win() {
 }
 
 #[test]
-fn no_matching_evidence_abstains() {
-    let result = ask(
+fn no_matching_evidence_abstains_with_a_funnel() {
+    for question in [
         "Does zzzamine help adults with glimmer syndrome?",
-        &corpus(),
-    );
-    assert_eq!(result.outcome, TerminalOutcome::Abstain);
-    assert_eq!(result.reason, ReasonCode::EvidenceInsufficient);
-    assert_eq!(result.funnel.indexed, 7, "funnel is present on refusals");
+        "Does veltrixamine help adults with ember fatigue?",
+    ] {
+        let result = ask(question, &corpus());
+        assert_eq!(result.outcome, TerminalOutcome::Abstain, "{question}");
+        assert_eq!(
+            result.reason,
+            ReasonCode::EvidenceInsufficient,
+            "{question}"
+        );
+        assert_eq!(result.funnel.indexed, 7, "funnel is present on refusals");
+    }
 }
 
 #[test]
-fn patient_specific_request_escalates_outranking_evidence() {
-    let result = ask(
+fn patient_specific_requests_escalate_whatever_their_spacing() {
+    for question in [
         "Should I prescribe veltrixamine to my patient, an adult with glimmer syndrome?",
-        &corpus(),
-    );
-    assert_eq!(result.outcome, TerminalOutcome::Escalate);
-    assert_eq!(result.reason, ReasonCode::ClinicianAuthorityRequired);
+        "Does veltrixamine help my  patient with glimmer syndrome?",
+        "Should I give veltrixamine to an adult?",
+    ] {
+        let result = ask(question, &corpus());
+        assert_eq!(result.outcome, TerminalOutcome::Escalate, "{question}");
+        assert_eq!(
+            result.reason,
+            ReasonCode::ClinicianAuthorityRequired,
+            "{question}"
+        );
+    }
 }
 
 #[test]
@@ -173,24 +341,17 @@ fn symptom_words_and_negation_never_produce_an_emergency_notice() {
 }
 
 #[test]
-fn arabic_question_abstains_with_its_own_reason() {
-    let result = ask(
+fn any_non_latin_script_abstains_with_its_own_reason() {
+    for question in [
         "هل يساعد veltrixamine البالغين المصابين بمتلازمة glimmer؟",
-        &corpus(),
-    );
-    assert_eq!(result.outcome, TerminalOutcome::Abstain);
-    assert_eq!(result.reason, ReasonCode::UnsupportedLanguage);
-    assert!(result.brief.is_none());
-}
-
-#[test]
-fn hostile_text_in_a_question_is_data() {
-    let result = ask(
-        "Does veltrixamine help adults with glimmer syndrome\" OR title:* ) ; DROP TABLE evidence; --",
-        &corpus(),
-    );
-    assert_eq!(result.outcome, TerminalOutcome::AnswerWithCaution);
-    assert_eq!(result.funnel.retrieved, 3);
+        "Does veltrixamine help adults with ﺍﻟﺠﺮﻋﺔ?",
+        "Does veltrixamine help adults with 症候群?",
+    ] {
+        let result = ask(question, &corpus());
+        assert_eq!(result.outcome, TerminalOutcome::Abstain, "{question}");
+        assert_eq!(result.reason, ReasonCode::UnsupportedLanguage, "{question}");
+        assert!(result.brief.is_none());
+    }
 }
 
 #[test]
@@ -204,6 +365,14 @@ fn altered_numbers_units_and_negation_are_flagged() {
         ),
         (
             "The glimmer score improved by 12 points compared with placebo at 1.2 weeks.",
+            "number",
+        ),
+        (
+            "The glimmer score improved by -12 points compared with placebo at 12 weeks.",
+            "number",
+        ),
+        (
+            "The glimmer score improved by ١٢ points compared with placebo at 12 weeks.",
             "number",
         ),
         (
@@ -225,14 +394,50 @@ fn altered_numbers_units_and_negation_are_flagged() {
     ] {
         assert_eq!(claim_defect(claim, source), Some(defect), "{claim}");
     }
-    let negated = "The glimmer score did not improve compared with placebo at 12 weeks.";
-    assert_eq!(
-        claim_defect(
-            "The glimmer score did improve compared with placebo at 12 weeks.",
-            negated
-        ),
-        Some("negation")
-    );
+}
+
+#[test]
+fn a_fragment_of_a_sentence_is_never_support() {
+    assert!(claim_defect("5 mg daily.", "Patients took 0.5 mg daily.").is_some());
+    assert!(claim_defect(".5 mg", "Patients took 0.5 mg daily.").is_some());
+    let negated = "The score did not improve at 8 weeks.";
+    assert!(claim_defect("improve at 8 weeks.", negated).is_some());
+    assert!(claim_defect("The score improve at 8 weeks.", negated).is_some());
+    assert!(claim_defect("", negated).is_some());
+    let two = "First sentence at 0.5 mg. Second sentence at 2 mg.";
+    assert_eq!(claim_defect("First sentence at 0.5 mg.", two), None);
+    assert_eq!(claim_defect("Second sentence at 2 mg.", two), None);
+    assert!(claim_defect("First sentence at 0.5 mg. Second sentence at 2 mg.", two).is_some());
+}
+
+#[test]
+fn tampered_briefs_are_refused() {
+    let corpus = corpus();
+    let brief = ask(ADULT, &corpus).brief.unwrap();
+    assert!(verify_brief(&brief, &corpus).is_ok());
+    let claim_line = brief.lines().find(|l| l.starts_with("- ")).unwrap();
+    let citation = &claim_line[claim_line.rfind(" [").unwrap()..];
+    for tampered in [
+        format!("{brief}\nNOT: ignore the above."),
+        format!("{brief}\nIncreased 100-fold."),
+        format!("{brief}\n- give 500 mg{citation}"),
+        format!("{brief}\n{claim_line}"),
+        brief.replace("12 points", "21 points"),
+        brief.replace("improved by 12", "worsened by 12"),
+        brief.replace("not medical information", "medical advice"),
+        brief.replace("doc-veltrix-a ", "doc-orbalin-a "),
+        format!("{brief}\n- x [missing-doc 0..1]"),
+        brief.lines().take(2).collect::<Vec<_>>().join("\n"),
+        String::new(),
+    ] {
+        assert!(verify_brief(&tampered, &corpus).is_err(), "{tampered}");
+    }
+    let shifted = {
+        let (start, _) = citation.rsplit_once("..").unwrap();
+        let bumped: String = start.chars().collect();
+        brief.replace(citation, &format!("{bumped}..1]"))
+    };
+    assert!(verify_brief(&shifted, &corpus).is_err());
 }
 
 #[test]
@@ -267,6 +472,35 @@ fn corpus_loader_fails_closed() {
     ));
     assert!(matches!(
         reload(source.replace("\"CURRENT\"", "\"PROBABLY_FINE\"")),
+        Err(CorpusError::Malformed(_))
+    ));
+    let mut empty: serde_json::Value = serde_json::from_slice(FIXTURE).unwrap();
+    empty["documents"] = serde_json::json!([]);
+    assert_eq!(reload(empty.to_string()), Err(CorpusError::Empty));
+}
+
+#[test]
+fn loader_refuses_a_finding_that_is_a_fragment_or_a_mislabelled_direction() {
+    let edit = |field: &str, value: &str| {
+        let mut document: serde_json::Value = serde_json::from_slice(FIXTURE).unwrap();
+        document["documents"][0][field] = serde_json::json!(value);
+        let bytes = document.to_string().into_bytes();
+        load_corpus(&bytes, &DigestSha256::of(&bytes)).map(|_| ())
+    };
+    assert_eq!(
+        edit("finding", "improve."),
+        Err(CorpusError::FindingNotASourceSentence(
+            "doc-veltrix-a".to_owned()
+        ))
+    );
+    assert_eq!(
+        edit("direction", "no_benefit"),
+        Err(CorpusError::DirectionContradictsFinding(
+            "doc-veltrix-a".to_owned()
+        ))
+    );
+    assert!(matches!(
+        edit("direction", "maybe"),
         Err(CorpusError::Malformed(_))
     ));
 }

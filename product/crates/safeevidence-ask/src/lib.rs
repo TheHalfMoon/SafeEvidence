@@ -1,10 +1,13 @@
 //! Headless Ask path over a synthetic fixture (VS-1a, step 1 of `plan-v1.1` §C).
 //!
 //! Stops at `VERIFIED_UNCOMMITTED`: nothing here commits to a vault, and nothing is a clinical
-//! answer. The fixture is invented. Query parsing matches the fixture's own vocabulary, so this
-//! proves the pipeline's control flow, not retrieval quality or real-world question handling.
+//! answer. The fixture is invented. Questions must fit one closed grammar, so this proves the
+//! pipeline's control flow and refusals, not retrieval quality or real question handling.
+//!
+//! Guards run in the contract's order wherever evidence decides them. Two checks run first,
+//! because no evidence is read for them: unsupported language, and patient-specific requests.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use rusqlite::{Connection, params};
 use safeevidence_contracts::assurance::{ProofState, ReasonCode, TerminalOutcome};
@@ -17,6 +20,13 @@ use safeevidence_contracts::proof::{
 use safeevidence_contracts::study::{Known, PublicationState, ScopedId, StudyId};
 use serde::Deserialize;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Direction {
+    Benefit,
+    NoBenefit,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Document {
@@ -28,7 +38,7 @@ pub struct Document {
     pub condition: String,
     pub intervention: String,
     pub finding: String,
-    pub direction: String,
+    pub direction: Direction,
     pub publication_state: PublicationState,
     pub rights: EvidenceCorpusRights,
 }
@@ -50,12 +60,31 @@ pub enum CorpusError {
     MissingRightsGrant,
     Empty,
     DuplicateDocument(String),
+    FindingNotASourceSentence(String),
+    DirectionContradictsFinding(String),
+}
+
+const NEGATIONS: [&str; 6] = ["not", "no", "never", "without", "neither", "nor"];
+const UNITS: [&str; 8] = ["mg", "g", "mcg", "kg", "ml", "weeks", "months", "points"];
+
+fn word_set(text: &str) -> BTreeSet<String> {
+    text.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn is_negated(text: &str) -> bool {
+    let words = word_set(text);
+    NEGATIONS.iter().any(|word| words.contains(*word))
 }
 
 /// Digest-checked fixture loader. It gives no pack-trust claim (`plan-v1.1` §C).
 ///
 /// # Errors
-/// Fails closed on a wrong digest, malformed content, or absent epoch or rights grant.
+/// Fails closed on a wrong digest, malformed content, absent epoch or rights grant, a finding
+/// that is not a whole source sentence, or a direction its finding's wording contradicts.
 pub fn load_corpus(bytes: &[u8], expected: &DigestSha256) -> Result<Corpus, CorpusError> {
     if &DigestSha256::of(bytes) != expected {
         return Err(CorpusError::DigestMismatch);
@@ -76,6 +105,16 @@ pub fn load_corpus(bytes: &[u8], expected: &DigestSha256) -> Result<Corpus, Corp
         if !seen.insert(document.doc_id.as_str()) {
             return Err(CorpusError::DuplicateDocument(document.doc_id.clone()));
         }
+        if claim_defect(&document.finding, &document.text).is_some() {
+            return Err(CorpusError::FindingNotASourceSentence(
+                document.doc_id.clone(),
+            ));
+        }
+        if is_negated(&document.finding) != (document.direction == Direction::NoBenefit) {
+            return Err(CorpusError::DirectionContradictsFinding(
+                document.doc_id.clone(),
+            ));
+        }
     }
     Ok(corpus)
 }
@@ -94,9 +133,9 @@ pub struct Funnel {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Question {
-    pub condition: Option<String>,
-    pub intervention: Option<String>,
+    pub intervention: String,
     pub population: Option<String>,
+    pub condition: String,
 }
 
 #[derive(Debug)]
@@ -122,15 +161,24 @@ impl AskResult {
     }
 }
 
-fn contains_arabic(text: &str) -> bool {
-    text.chars()
-        .any(|c| matches!(c, '\u{0600}'..='\u{06FF}' | '\u{0750}'..='\u{077F}' | '\u{08A0}'..='\u{08FF}'))
+/// Only plain ASCII questions take the English path here. Any other letter, in Arabic script
+/// or not, gets an explicit refusal rather than a partial reading.
+fn has_unsupported_script(text: &str) -> bool {
+    text.chars().any(|c| !c.is_ascii() && c.is_alphabetic())
 }
 
-/// Requests for a named individual's care are out of V1 scope. This looks for a request about a
-/// specific patient, never for symptoms: symptom words alone do not escalate.
-fn is_patient_specific_request(lower: &str) -> bool {
-    [
+fn normalized(text: &str) -> String {
+    text.to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Requests about one person's care are out of V1 scope. These are phrases about a person, never
+/// symptoms. The list is not complete, but a miss cannot reach a brief: such questions do not fit
+/// the grammar.
+fn is_patient_specific_request(normalized: &str) -> bool {
+    const PHRASES: [&str; 7] = [
         "my patient",
         "this patient",
         "my child",
@@ -138,33 +186,37 @@ fn is_patient_specific_request(lower: &str) -> bool {
         "my father",
         "should i give",
         "should i prescribe",
-    ]
-    .iter()
-    .any(|phrase| lower.contains(phrase))
+    ];
+    PHRASES.iter().any(|phrase| normalized.contains(phrase))
 }
 
-/// Matches the question against the corpus vocabulary. Whole-word only, and unmatched means None.
+/// The one question form VS-1a accepts:
+/// `does <intervention> help [<population>] with <condition>?`. Anything else is `None`.
+/// Terms are not checked against the corpus here, so an unknown term can be reported as such.
 #[must_use]
-pub fn parse_question(text: &str, corpus: &Corpus) -> Question {
-    let lower = text.to_lowercase();
-    let words: BTreeSet<&str> = lower
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|word| !word.is_empty())
-        .collect();
-    let has_term = |term: &str| term.split(' ').all(|part| words.contains(part));
-    let find = |field: fn(&Document) -> &str| {
-        corpus
-            .documents
-            .iter()
-            .map(field)
-            .find(|term| has_term(&term.to_lowercase()))
-            .map(str::to_owned)
+pub fn parse_question(text: &str) -> Option<Question> {
+    let body = normalized(text);
+    let body = body.strip_suffix('?').unwrap_or(&body);
+    let rest = body.strip_prefix("does ")?;
+    let (intervention, rest) = rest.split_once(" help ")?;
+    let (population, condition) = match rest.strip_prefix("with ") {
+        Some(condition) => (None, condition),
+        None => {
+            let (population, condition) = rest.split_once(" with ")?;
+            (Some(population), condition)
+        }
     };
-    Question {
-        condition: find(|d| &d.condition),
-        intervention: find(|d| &d.intervention),
-        population: find(|d| &d.population),
+    let is_term = |term: &str| {
+        !term.is_empty() && term.chars().all(|c| c.is_ascii_alphanumeric() || c == ' ')
+    };
+    if !is_term(intervention) || !is_term(condition) || population.is_some_and(|p| !is_term(p)) {
+        return None;
     }
+    Some(Question {
+        intervention: intervention.to_owned(),
+        population: population.map(str::to_owned),
+        condition: condition.to_owned(),
+    })
 }
 
 fn build_index(corpus: &Corpus) -> rusqlite::Result<Connection> {
@@ -191,45 +243,72 @@ fn retrieve(connection: &Connection, terms: &[&str]) -> rusqlite::Result<Vec<Str
     rows.collect()
 }
 
-fn numeric_tokens(text: &str) -> Vec<&str> {
-    text.split(|c: char| !(c.is_ascii_digit() || c == '.'))
-        .map(|token| token.trim_matches('.'))
-        .filter(|token| !token.is_empty())
-        .collect()
+/// Numbers with their sign and decimal point, in any script's digits.
+fn numeric_tokens(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut tokens = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i].is_numeric() {
+            let mut start = i;
+            while i < chars.len()
+                && (chars[i].is_numeric()
+                    || (chars[i] == '.' && chars.get(i + 1).is_some_and(|c| c.is_numeric())))
+            {
+                i += 1;
+            }
+            if start > 0 && chars[start - 1] == '.' {
+                start -= 1;
+            }
+            if start > 0 && chars[start - 1] == '-' {
+                start -= 1;
+            }
+            tokens.push(chars[start..i].iter().collect());
+        } else {
+            i += 1;
+        }
+    }
+    tokens
 }
 
-fn word_set(text: &str) -> BTreeSet<String> {
-    text.to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|word| !word.is_empty())
-        .map(str::to_owned)
-        .collect()
+/// Whole sentences: split only where a full stop ends a word, so `0.5 mg` stays intact.
+fn sentences(source: &str) -> Vec<&str> {
+    let mut found = Vec::new();
+    let mut start = 0;
+    for (index, _) in source.match_indices(". ") {
+        found.push(source[start..=index].trim());
+        start = index + 2;
+    }
+    found.push(source[start..].trim());
+    found.retain(|sentence| !sentence.is_empty());
+    found
 }
 
-const NEGATIONS: [&str; 6] = ["not", "no", "never", "without", "neither", "nor"];
-const UNITS: [&str; 7] = ["mg", "g", "mcg", "kg", "ml", "weeks", "points"];
-
-/// Why a claim does not match its source span, or `None` if it does.
+/// Why a claim does not match its source, or `None` if it is a whole sentence of that source.
 ///
-/// A deterministic check: exact text first, then facets named so a failure explains itself. It
-/// says nothing about whether the source is true or applies to anyone.
+/// A deterministic check: a fragment of a sentence is never support, since `improve` can sit
+/// inside `did not improve`. It says nothing about whether the source is true or applies.
 #[must_use]
 pub fn claim_defect(claim: &str, source: &str) -> Option<&'static str> {
-    if source.contains(claim) {
+    let source_sentences = sentences(source);
+    if !claim.is_empty() && source_sentences.contains(&claim) {
         return None;
     }
-    let (claim_words, source_words) = (word_set(claim), word_set(source));
-    if numeric_tokens(claim) != numeric_tokens(source) {
+    let closest = |wanted: &dyn Fn(&str) -> bool| source_sentences.iter().any(|s| wanted(s));
+    if !closest(&|s| numeric_tokens(s) == numeric_tokens(claim)) {
         return Some("number");
     }
-    let differs = |list: &[&str]| {
+    let claim_words = word_set(claim);
+    let agrees = |list: &[&str], sentence: &str| {
+        let words = word_set(sentence);
         list.iter()
-            .any(|word| claim_words.contains(*word) != source_words.contains(*word))
+            .all(|word| claim_words.contains(*word) == words.contains(*word))
     };
-    if differs(&NEGATIONS) {
+    let same_numbers = |s: &str| numeric_tokens(s) == numeric_tokens(claim);
+    if !closest(&|s| same_numbers(s) && agrees(&NEGATIONS, s)) {
         return Some("negation");
     }
-    if differs(&UNITS) {
+    if !closest(&|s| same_numbers(s) && agrees(&UNITS, s)) {
         return Some("unit");
     }
     Some("text")
@@ -247,11 +326,13 @@ fn span_of(document: &Document) -> Option<EvidenceSpan> {
     })
 }
 
+const BRIEF_HEADER: [&str; 2] = [
+    "Synthetic evidence brief. Invented fixture data; not medical information.",
+    "Limits: fixture evidence only, and no appraisal of study quality.",
+];
+
 fn render_brief(claims: &[(&Document, EvidenceSpan)]) -> String {
-    let mut lines = vec![
-        "Synthetic evidence brief. Invented fixture data; not medical information.".to_owned(),
-        "Limits: fixture evidence only, and no appraisal of study quality.".to_owned(),
-    ];
+    let mut lines: Vec<String> = BRIEF_HEADER.iter().map(|line| (*line).to_owned()).collect();
     for (document, span) in claims {
         lines.push(format!(
             "- {} [{} {}..{}]",
@@ -259,6 +340,61 @@ fn render_brief(claims: &[(&Document, EvidenceSpan)]) -> String {
         ));
     }
     lines.join("\n")
+}
+
+/// Checks the final text itself. Every line must be the fixed header or a claim whose cited span
+/// reproduces it exactly from that source, every claim must be a whole sentence of its source,
+/// and no document may be cited twice. Returns the cited document ids.
+///
+/// # Errors
+/// Returns the first line that fails, and why.
+pub fn verify_brief(brief: &str, corpus: &Corpus) -> Result<Vec<String>, String> {
+    let lines: Vec<&str> = brief.split('\n').collect();
+    if lines.len() <= BRIEF_HEADER.len() || lines[..BRIEF_HEADER.len()] != BRIEF_HEADER {
+        return Err("header differs or no claims".to_owned());
+    }
+    let mut cited = Vec::new();
+    for line in &lines[BRIEF_HEADER.len()..] {
+        let parsed = line
+            .strip_prefix("- ")
+            .and_then(|rest| rest.strip_suffix(']'))
+            .and_then(|rest| rest.rsplit_once(" ["))
+            .and_then(|(claim, citation)| {
+                let (doc_id, range) = citation.split_once(' ')?;
+                let (start, end) = range.split_once("..")?;
+                Some((
+                    claim,
+                    doc_id,
+                    start.parse::<usize>().ok()?,
+                    end.parse::<usize>().ok()?,
+                ))
+            });
+        let Some((claim, doc_id, start, end)) = parsed else {
+            return Err(format!("not a claim line: {line}"));
+        };
+        let document = corpus
+            .documents
+            .iter()
+            .find(|document| document.doc_id == doc_id)
+            .ok_or_else(|| format!("unknown source: {doc_id}"))?;
+        let slice: String = document
+            .text
+            .chars()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect();
+        if slice != claim {
+            return Err(format!("span does not reproduce the claim: {line}"));
+        }
+        if let Some(defect) = claim_defect(claim, &document.text) {
+            return Err(format!("{defect} defect: {line}"));
+        }
+        if cited.iter().any(|id: &String| id == doc_id) {
+            return Err(format!("cited twice: {doc_id}"));
+        }
+        cited.push(doc_id.to_owned());
+    }
+    Ok(cited)
 }
 
 fn scoped(id: &str) -> ScopedId {
@@ -269,35 +405,65 @@ fn scoped(id: &str) -> ScopedId {
     }
 }
 
-fn index_failure(funnel: Funnel) -> AskResult {
-    AskResult::refuse(TerminalOutcome::Blocked, ReasonCode::ToolFailure, funnel)
+fn is_withdrawn(state: PublicationState) -> bool {
+    matches!(
+        state,
+        PublicationState::Retracted | PublicationState::Withdrawn
+    )
 }
 
-/// Runs one question through the guards of `P00_DECISION_ASSURANCE_CONTRACT.md` in their order.
-/// Every path returns exactly one outcome, reason and funnel.
+/// Directions per study: one study's reports disagreeing is not independent contradiction.
+fn study_directions<'a>(documents: &[&'a Document]) -> BTreeMap<&'a str, BTreeSet<&'static str>> {
+    let mut studies: BTreeMap<&str, BTreeSet<&'static str>> = BTreeMap::new();
+    for document in documents {
+        studies
+            .entry(document.study_id.as_str())
+            .or_default()
+            .insert(match document.direction {
+                Direction::Benefit => "benefit",
+                Direction::NoBenefit => "no_benefit",
+            });
+    }
+    studies
+}
+
+/// True when different studies' results point in different directions.
+fn studies_conflict(documents: &[&Document]) -> bool {
+    let all: BTreeSet<&str> = study_directions(documents)
+        .into_values()
+        .flatten()
+        .collect();
+    let studies = study_directions(documents);
+    all.len() > 1 && studies.len() > 1
+}
+
+/// Runs one question through the guards, returning exactly one outcome, reason and funnel.
 #[must_use]
 pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
     let mut funnel = Funnel {
         indexed: corpus.documents.len(),
         ..Funnel::default()
     };
-    if contains_arabic(text) {
+    let refuse = |outcome, reason, funnel: &Funnel, excluded: &[(String, String)]| {
+        let mut result = AskResult::refuse(outcome, reason, funnel.clone());
+        result.excluded = excluded.to_vec();
+        result
+    };
+    if has_unsupported_script(text) {
         return AskResult::refuse(
             TerminalOutcome::Abstain,
             ReasonCode::UnsupportedLanguage,
             funnel,
         );
     }
-    if is_patient_specific_request(&text.to_lowercase()) {
+    if is_patient_specific_request(&normalized(text)) {
         return AskResult::refuse(
             TerminalOutcome::Escalate,
             ReasonCode::ClinicianAuthorityRequired,
             funnel,
         );
     }
-    let question = parse_question(text, corpus);
-    let (Some(condition), Some(intervention)) = (&question.condition, &question.intervention)
-    else {
+    let Some(question) = parse_question(text) else {
         return AskResult::refuse(
             TerminalOutcome::Abstain,
             ReasonCode::EvidenceInsufficient,
@@ -306,155 +472,182 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
     };
 
     let Ok(connection) = build_index(corpus) else {
-        return index_failure(funnel);
+        return AskResult::refuse(TerminalOutcome::Blocked, ReasonCode::ToolFailure, funnel);
     };
-    let Ok(retrieved) = retrieve(&connection, &[condition, intervention]) else {
-        return index_failure(funnel);
+    let terms = [question.condition.as_str(), question.intervention.as_str()];
+    let Ok(retrieved) = retrieve(&connection, &terms) else {
+        return AskResult::refuse(TerminalOutcome::Blocked, ReasonCode::ToolFailure, funnel);
     };
     funnel.retrieved = retrieved.len();
-    let documents: Vec<&Document> = retrieved
-        .iter()
-        .filter_map(|id| corpus.documents.iter().find(|d| &d.doc_id == id))
-        .filter(|d| &d.condition == condition && &d.intervention == intervention)
-        .collect();
 
-    let mut excluded = Vec::new();
-    let citable: Vec<&Document> = documents
-        .iter()
-        .copied()
-        .filter(|document| {
-            let keep = document.publication_state.citable();
-            if !keep {
-                excluded.push((document.doc_id.clone(), "not citable".to_owned()));
-            }
-            keep
-        })
-        .collect();
-    funnel.citable = citable.len();
-    let with_excluded = |mut result: AskResult, excluded: &Vec<(String, String)>| {
-        result.excluded.clone_from(excluded);
-        result
+    // Metadata decides relevance, across the whole corpus: a contradicting document must count
+    // even if lexical retrieval missed it. Retrieval decides order and the funnel.
+    let relevant = |document: &&Document| {
+        normalized(&document.condition) == question.condition
+            && normalized(&document.intervention) == question.intervention
     };
-    if citable.is_empty() {
-        let reason = if documents.is_empty() {
-            ReasonCode::EvidenceInsufficient
-        } else {
-            ReasonCode::SourceInvalidOrRetracted
-        };
-        return with_excluded(
-            AskResult::refuse(TerminalOutcome::Abstain, reason, funnel),
+    let mut excluded: Vec<(String, String)> = Vec::new();
+    for id in &retrieved {
+        if let Some(document) = corpus.documents.iter().find(|d| &d.doc_id == id)
+            && !relevant(&document)
+        {
+            excluded.push((
+                document.doc_id.clone(),
+                "different condition or intervention".to_owned(),
+            ));
+        }
+    }
+    let matching: Vec<&Document> = corpus.documents.iter().filter(relevant).collect();
+    if matching.is_empty() {
+        return refuse(
+            TerminalOutcome::Abstain,
+            ReasonCode::EvidenceInsufficient,
+            &funnel,
             &excluded,
         );
     }
 
-    // An unsupported rights grant is not weak evidence: it denies presentation outright.
-    if citable.iter().any(|document| !document.rights.admissible()) {
-        for document in citable.iter().filter(|d| !d.rights.admissible()) {
+    // A retracted or withdrawn report takes its whole study out: a follow-up cannot rescue it.
+    let withdrawn: BTreeSet<&str> = matching
+        .iter()
+        .filter(|document| is_withdrawn(document.publication_state))
+        .map(|document| document.study_id.as_str())
+        .collect();
+    let mut citable = Vec::new();
+    for document in &matching {
+        if withdrawn.contains(document.study_id.as_str()) {
+            excluded.push((
+                document.doc_id.clone(),
+                "study has a retracted or withdrawn report".to_owned(),
+            ));
+        } else if document.publication_state.citable() {
+            citable.push(*document);
+        } else {
+            excluded.push((
+                document.doc_id.clone(),
+                "publication state is not citable".to_owned(),
+            ));
+        }
+    }
+    funnel.citable = citable.len();
+    if citable.is_empty() {
+        let reason = if withdrawn.is_empty() {
+            ReasonCode::CurrentnessUnknown
+        } else {
+            ReasonCode::SourceInvalidOrRetracted
+        };
+        return refuse(TerminalOutcome::Abstain, reason, &funnel, &excluded);
+    }
+
+    // BLOCKED: an unsupported rights grant is not weak evidence. It denies presentation.
+    let denied: Vec<&&Document> = citable.iter().filter(|d| !d.rights.admissible()).collect();
+    if !denied.is_empty() {
+        for document in denied {
             excluded.push((document.doc_id.clone(), "rights not established".to_owned()));
         }
-        return with_excluded(
-            AskResult::refuse(
-                TerminalOutcome::Blocked,
-                ReasonCode::RightsUnresolved,
-                funnel,
-            ),
+        return refuse(
+            TerminalOutcome::Blocked,
+            ReasonCode::RightsUnresolved,
+            &funnel,
             &excluded,
         );
     }
     funnel.rights_admissible = citable.len();
 
-    // Population decides applicability, so it must be known before evidence is weighed.
+    // CONFLICT, then ASK_MORE: asking for a population cannot resolve independent contradiction
+    // that exists within one population.
     let Some(population) = &question.population else {
-        return with_excluded(
-            AskResult::refuse(
-                TerminalOutcome::AskMore,
-                ReasonCode::MissingCriticalContext,
-                funnel,
-            ),
-            &excluded,
-        );
+        let populations: BTreeSet<&str> = citable.iter().map(|d| d.population.as_str()).collect();
+        let conflict = populations.iter().any(|population| {
+            let group: Vec<&Document> = citable
+                .iter()
+                .copied()
+                .filter(|d| d.population == *population)
+                .collect();
+            studies_conflict(&group)
+        });
+        let (outcome, reason) = if conflict {
+            (TerminalOutcome::Conflict, ReasonCode::MaterialContradiction)
+        } else {
+            (TerminalOutcome::AskMore, ReasonCode::MissingCriticalContext)
+        };
+        return refuse(outcome, reason, &funnel, &excluded);
     };
-    let applicable: Vec<&Document> = citable
-        .iter()
-        .copied()
-        .filter(|document| {
-            let keep = &document.population == population;
-            if !keep {
-                excluded.push((
-                    document.doc_id.clone(),
-                    format!(
-                        "population {} does not match {population}",
-                        document.population
-                    ),
-                ));
-            }
-            keep
-        })
-        .collect();
+
+    let mut applicable = Vec::new();
+    for document in &citable {
+        if normalized(&document.population) == *population {
+            applicable.push(*document);
+        } else {
+            excluded.push((
+                document.doc_id.clone(),
+                format!(
+                    "population {} does not match {population}",
+                    document.population
+                ),
+            ));
+        }
+    }
     funnel.applicable = applicable.len();
     if applicable.is_empty() {
-        return with_excluded(
-            AskResult::refuse(
-                TerminalOutcome::Abstain,
-                ReasonCode::ApplicabilityUnresolved,
-                funnel,
-            ),
+        return refuse(
+            TerminalOutcome::Abstain,
+            ReasonCode::ApplicabilityUnresolved,
+            &funnel,
             &excluded,
         );
     }
 
-    let studies: BTreeSet<&str> = applicable.iter().map(|d| d.study_id.as_str()).collect();
+    let studies = study_directions(&applicable);
     funnel.independent_studies = studies.len();
-    let directions: BTreeSet<&str> = applicable.iter().map(|d| d.direction.as_str()).collect();
-    if directions.len() > 1 {
-        return with_excluded(
-            AskResult::refuse(
-                TerminalOutcome::Conflict,
-                ReasonCode::MaterialContradiction,
-                funnel,
-            ),
+    if studies_conflict(&applicable) {
+        return refuse(
+            TerminalOutcome::Conflict,
+            ReasonCode::MaterialContradiction,
+            &funnel,
+            &excluded,
+        );
+    }
+    // One study's reports disagreeing is unresolved evidence, not independent contradiction.
+    if studies.values().any(|directions| directions.len() > 1) {
+        return refuse(
+            TerminalOutcome::Abstain,
+            ReasonCode::EvidenceInsufficient,
+            &funnel,
             &excluded,
         );
     }
 
     let mut claims = Vec::new();
     for document in &applicable {
-        match span_of(document) {
-            Some(span) => claims.push((*document, span)),
-            None => {
-                return with_excluded(
-                    AskResult::refuse(
-                        TerminalOutcome::Abstain,
-                        ReasonCode::PostVerificationFailed,
-                        funnel,
-                    ),
-                    &excluded,
-                );
-            }
-        }
-    }
-    let brief = render_brief(&claims);
-    // Verify the frozen text, not the inputs it was built from.
-    let verified = claims.iter().all(|(document, _)| {
-        brief.contains(&document.finding)
-            && claim_defect(&document.finding, &document.text).is_none()
-    });
-    if !verified {
-        return with_excluded(
-            AskResult::refuse(
+        let Some(span) = span_of(document) else {
+            return refuse(
                 TerminalOutcome::Abstain,
                 ReasonCode::PostVerificationFailed,
-                funnel,
-            ),
+                &funnel,
+                &excluded,
+            );
+        };
+        claims.push((*document, span));
+    }
+    let brief = render_brief(&claims);
+    // The frozen text is read back and checked against the sources, not against its inputs.
+    let Ok(cited) = verify_brief(&brief, corpus) else {
+        return refuse(
+            TerminalOutcome::Abstain,
+            ReasonCode::PostVerificationFailed,
+            &funnel,
             &excluded,
         );
-    }
-    funnel.verified_claims = claims.len();
+    };
+    funnel.verified_claims = cited.len();
 
+    let question_digest = DigestSha256::of(normalized(text).as_bytes());
+    let text_digest = DigestSha256::of(brief.as_bytes());
     let manifest = AnswerProofManifest {
-        proof_id: format!("vs1a-{}", DigestSha256::of(text.as_bytes()).to_hex()),
-        question_snapshot_digest: DigestSha256::of(text.as_bytes()),
-        final_text_digest: DigestSha256::of(brief.as_bytes()),
+        proof_id: format!("vs1a-{}-{}", question_digest.to_hex(), text_digest.to_hex()),
+        question_snapshot_digest: question_digest,
+        final_text_digest: text_digest,
         claims: claims
             .iter()
             .map(|(document, span)| ProofClaim {
@@ -491,12 +684,10 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         state: ProofState::VerifiedUncommitted,
     };
     if !commit_defects(&manifest).is_empty() {
-        return with_excluded(
-            AskResult::refuse(
-                TerminalOutcome::Blocked,
-                ReasonCode::PostVerificationFailed,
-                funnel,
-            ),
+        return refuse(
+            TerminalOutcome::Blocked,
+            ReasonCode::PostVerificationFailed,
+            &funnel,
             &excluded,
         );
     }
