@@ -10,12 +10,12 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `bd0289c76a88fc192148d10561e5ec5fac309d57` |
+| `main` at last update | `ec04607010abac35e38f5084a9d71bad269f1707` |
 | Milestone | M0 open for rows; M1 VS-1a step 1 in review |
 | Active packet | WP-00 and WP-01 rows; VS-1a headless path |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no files copied); G01a baseline holds `NO_ADMISSIONS` |
-| Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, stopping at `VERIFIED_UNCOMMITTED` |
-| Next executable task | T03 proof commit, with owed lineage and immutability tests; Tauri Ask view (`plan-v1.1` §C) |
+| Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
+| Next executable task | Tauri Ask view (`plan-v1.1` §C step 4); rows for T12, T30, T36; socket-crate defect |
 
 Required checks on `main` (founder decision, 2026-11-05): `foundation-documents`, `preentry structure`, `synthetic-only`
 and `product`, the last three on Ubuntu, Windows and macOS.
@@ -59,8 +59,8 @@ restriction. Resolve before M1 exit: move the protector out of the core process,
 TA-29's tree check covers normal dependencies. Build-only crates such as `cc` and `openssl-src` are covered by the
 `cargo deny` bans.
 
-**Owed before M1 exit (`plan-v1.3`):** append-only amendment lineage and source-byte immutability, each tested
-against the real vault-backed store. The guard's fixtures test declared structure only, not extraction or statistics.
+**`plan-v1.3` lineage and immutability:** tested against the keyed vault store in `safeevidence-proofstore`, by triggers and raw-SQL
+attempts, subject to CI. This covers process kills, not power loss. The guard's fixtures test declared structure only, not extraction or statistics.
 
 **TA-03:** Linux (empty network namespace) and macOS (sandbox profile) run all checks under OS-level denial.
 Windows blocks named programs only, because default-deny outbound lost the hosted runner. Its build and build

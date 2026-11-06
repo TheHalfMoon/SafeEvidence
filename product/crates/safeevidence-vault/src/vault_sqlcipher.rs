@@ -382,6 +382,68 @@ impl SqlCipherDatabaseHandle {
     }
 }
 
+/// Failure of one lease-guarded database transaction.
+#[derive(Debug)]
+pub enum SqlCipherTransactionError<E> {
+    /// The vault lease rejected the operation, so nothing ran.
+    Access(KeyedHandleError),
+    /// The provider failed. A failed commit leaves the outcome for the caller to reconcile.
+    Provider(rusqlite::Error),
+    /// The operation returned an error, so the transaction rolled back.
+    Operation(E),
+}
+
+/// SafeEvidence addition to the donor's handle: one narrow route to run SQL. The connection stays
+/// private, and each call holds the lease permit for its whole transaction.
+impl SqlCipherDatabaseHandle {
+    /// Runs `operation` in one immediate transaction. An `Err` rolls it back; `Ok` commits.
+    ///
+    /// # Errors
+    /// Returns the lease, provider or operation failure.
+    pub fn immediate_transaction<T, E, F>(
+        &mut self,
+        operation: F,
+    ) -> Result<T, SqlCipherTransactionError<E>>
+    where
+        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, E>,
+    {
+        let result = self.inner.write(|backend| {
+            let transaction = backend
+                ._connection
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(SqlCipherTransactionError::Provider)?;
+            let value = operation(&transaction).map_err(SqlCipherTransactionError::Operation)?;
+            transaction
+                .commit()
+                .map_err(SqlCipherTransactionError::Provider)?;
+            Ok(value)
+        });
+        match result {
+            Ok(value) => Ok(value),
+            Err(KeyedIoError::Access(error)) => Err(SqlCipherTransactionError::Access(error)),
+            Err(KeyedIoError::Backend(error)) => Err(error),
+        }
+    }
+
+    /// Requires the strongest SQLite durability setting on this connection.
+    ///
+    /// # Errors
+    /// Returns the lease or provider failure.
+    pub fn require_full_synchronous(&mut self) -> Result<(), SqlCipherTransactionError<()>> {
+        let result = self.inner.write(|backend| {
+            backend
+                ._connection
+                .execute_batch("PRAGMA synchronous = FULL;")
+                .map_err(SqlCipherTransactionError::Provider)
+        });
+        match result {
+            Ok(()) => Ok(()),
+            Err(KeyedIoError::Access(error)) => Err(SqlCipherTransactionError::Access(error)),
+            Err(KeyedIoError::Backend(error)) => Err(error),
+        }
+    }
+}
+
 impl SqlCipherDatabaseHandle {
     fn checkpoint_truncate_backup_wal(&mut self) -> Result<(), SqlCipherBackupCheckpointError> {
         match self.inner.write(|backend| {
