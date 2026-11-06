@@ -2,9 +2,11 @@
 //!
 //! Key loss must never become silent data loss. A new key is created only when there is no store yet. If a
 //! store exists and its key cannot be had, opening fails and the store's contents are kept, though a wrong
-//! key can still merge a live WAL into the main file, as `ProofStore::open` runs against it. A store that
-//! was established and has since lost its main file is refused, not recreated. A compromised unlocked OS is
-//! outside the claimed secrecy guarantee.
+//! or damaged store can still merge a live WAL into the main file, as the open runs against it. A store
+//! that was established and has since lost its main file or its schema is refused, not recreated. Damage to
+//! the WAL of a store whose main file holds a schema cannot be told from a clean store without a protected
+//! anchor, so commits since its last checkpoint could be lost unnoticed. A compromised unlocked OS is outside
+//! the claimed secrecy guarantee.
 
 use std::fs::File;
 use std::io::Write as _;
@@ -155,6 +157,12 @@ fn sync_directory(dir: &Path) -> Result<(), ProtectorError> {
 
 fn holds_data(path: &Path) -> bool {
     std::fs::metadata(path).is_ok_and(|metadata| metadata.len() > 0)
+}
+
+/// Whether the store in `dir` is recorded as established.
+#[must_use]
+pub fn is_established(dir: &Path) -> bool {
+    dir.join(ESTABLISHED_FILE).exists()
 }
 
 /// Records that the store in `dir` now exists, so its main file going missing can be told from a first run.
@@ -433,6 +441,7 @@ mod tests {
             open_root_key(&dir.0, &SOURCE).expect("first");
             let wal = dir.0.join(format!("{DATABASE_FILE}-wal"));
             std::fs::write(&wal, b"committed answers").unwrap();
+            let identity = std::fs::read(dir.0.join(IDENTITY_FILE)).unwrap();
             if empty_main {
                 std::fs::write(dir.0.join(DATABASE_FILE), b"").unwrap();
             }
@@ -445,12 +454,31 @@ mod tests {
                 "key lost: {key_lost}, empty main: {empty_main}"
             );
             assert_eq!(std::fs::read(&wal).unwrap(), b"committed answers");
+            assert_eq!(std::fs::read(dir.0.join(IDENTITY_FILE)).unwrap(), identity);
             assert_eq!(
                 dir.0.join(KEY_FILE).exists(),
                 !key_lost,
                 "no new key was made"
             );
         }
+    }
+
+    #[test]
+    fn a_wal_with_a_lost_identity_is_refused_and_no_identity_is_made() {
+        let dir = TempDir::new();
+        std::fs::write(
+            dir.0.join(format!("{DATABASE_FILE}-wal")),
+            b"committed answers",
+        )
+        .unwrap();
+        assert_eq!(
+            open_root_key(&dir.0, &SOURCE).map(|_| ()),
+            Err(ProtectorError::CorruptOrTampered)
+        );
+        assert!(
+            !dir.0.join(IDENTITY_FILE).exists(),
+            "a new identity would orphan a restored store"
+        );
     }
 
     #[test]

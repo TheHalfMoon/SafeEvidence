@@ -16,7 +16,7 @@ use safeevidence_vault::vault_keys::{KeyDerivationContext, KeyPurpose};
 use safeevidence_vault::vault_lease::VaultLease;
 use serde::Serialize;
 
-use crate::custody::{DATABASE_FILE, KeySource, mark_established, open_root_key};
+use crate::custody::{DATABASE_FILE, KeySource, is_established, mark_established, open_root_key};
 
 const FIXTURE: &[u8] =
     include_bytes!("../../../../crates/safeevidence-ask/fixtures/vs1a_corpus.json");
@@ -141,7 +141,12 @@ impl AskSession {
             opened.identity.key_generation(),
             KeyPurpose::StructuredStore,
         );
-        let mut store = ProofStore::open(
+        let open_store = if is_established(&dir) {
+            ProofStore::open_existing
+        } else {
+            ProofStore::open
+        };
+        let mut store = open_store(
             dir.join(DATABASE_FILE),
             lease.keyed_handle_lease(),
             context,

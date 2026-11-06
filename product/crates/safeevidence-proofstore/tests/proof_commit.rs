@@ -638,3 +638,60 @@ fn source_bytes_survive_reopen_and_the_store_runs_on_wal() {
     });
     assert!(wal, "WAL mode leaves a -wal file while open");
 }
+
+fn open_existing(path: &Path) -> Result<ProofStore, StoreError> {
+    let identity = VaultLeaseIdentity::new(
+        VaultId::from_bytes([0x41; VAULT_ID_BYTES]),
+        KeyGeneration::new(7).expect("generation"),
+    );
+    let lease = VaultLease::new(identity);
+    let context = KeyDerivationContext::new(
+        identity.vault_id(),
+        identity.key_generation(),
+        KeyPurpose::StructuredStore,
+    );
+    let result = ProofStore::open_existing(
+        path,
+        lease.keyed_handle_lease(),
+        context,
+        &OwnedKeyMaterial::from_bytes([0x52; KEY_MATERIAL_BYTES]),
+    );
+    std::mem::forget(lease);
+    result
+}
+
+#[test]
+fn open_existing_never_installs_a_schema_and_opens_a_real_store() {
+    let db = TempDb::new();
+    assert!(matches!(
+        open_existing(&db.path()),
+        Err(StoreError::NotEstablished)
+    ));
+    drop(open(&db.path()));
+    open_existing(&db.path()).expect("an established store opens");
+}
+
+/// A real kill, so that the store's schema and answers live only in the WAL.
+#[test]
+fn losing_the_wal_after_a_kill_is_refused_by_open_existing() {
+    let db = TempDb::new();
+    let mut child = spawn_writer(&db.0);
+    let deadline = Instant::now() + Duration::from_secs(180);
+    while acknowledged(&db.0) < 1 {
+        assert!(Instant::now() < deadline, "writer stalled");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    child.kill().expect("kill");
+    let _ = child.wait();
+    let wal = db.path().with_file_name("vault.db-wal");
+    assert!(fs::metadata(&wal).expect("a hot WAL").len() > 0);
+    assert!(
+        fs::metadata(db.path()).expect("main").len() <= 4096,
+        "this test needs the schema to be only in the WAL"
+    );
+    fs::remove_file(&wal).expect("lose the WAL");
+    assert!(matches!(
+        open_existing(&db.path()),
+        Err(StoreError::NotEstablished)
+    ));
+}
