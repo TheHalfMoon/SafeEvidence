@@ -36,12 +36,17 @@ jobs:
       - name: Select the runner's Node from its tool cache
         shell: bash
         run: |
-          node_dir=$(ls -d "$RUNNER_TOOL_CACHE"/node/2[24].*/* | sort -V | tail -n 1)
+          # The trailing slash keeps directories only: each version also holds an `x64.complete` marker file.
+          node_dir=$(ls -d "$RUNNER_TOOL_CACHE"/node/2[24].*/*/ | sort -V | tail -n 1)
+          node_dir=${node_dir%/}
           test -n "$node_dir"
           if [ "$RUNNER_OS" = Windows ]; then cygpath -w "$node_dir"; else echo "$node_dir/bin"; fi >> "$GITHUB_PATH"
-      - name: Check Node supports type stripping
+      - name: Check Node comes from the tool cache and supports type stripping
         shell: bash
         run: |
+          command -v node
+          node --version
+          case "$(command -v node)" in *hostedtoolcache*) ;; *) exit 1 ;; esac
           node -e "const [major, minor] = process.versions.node.split('.').map(Number); process.exit(major > 22 || (major === 22 && minor >= 6) ? 0 : 1)"
       - name: Install pinned toolchain
         shell: bash

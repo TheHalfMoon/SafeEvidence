@@ -16,7 +16,10 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
 
 - **Key custody is not implemented.** Each launch uses a new random in-memory key and a store deleted at exit, or when the next launch starts
   after a kill, so committed answers do not survive a restart. The T03 OS protectors are not wired in. This holds invented data only.
-- A lock file gives one running instance per data directory. A second instance refuses every question with `BLOCKED`.
+- A lock file gives one running instance per data directory. A second instance refuses every question it would answer with `BLOCKED`. After a failed
+  open or a poisoned lock, the store stays until the next launch clears it.
+- `Cargo.lock` holds `tauri-runtime` and `tauri-runtime-wry` at 2.12.0, because `tauri` 2.12.0's mock runtime does not compile against 2.12.2 on macOS.
+  `cargo update` would undo this, and only macOS CI would notice.
 - `TA-20` and `TA-21` are not claimed. Tests run the production handler and capability on Tauri's mock runtime, which establishes no native
   WebView privacy, OS isolation or network behaviour. No end-to-end WebView test exists yet.
 - `TA-22` is not claimed. The view is keyboard-operable with `dir="auto"` text, but has no axe or RTL snapshot run. The donor's contrast test was

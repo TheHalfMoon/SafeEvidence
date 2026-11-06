@@ -9,6 +9,12 @@ mod startup_failure;
 #[cfg(test)]
 mod permission_tests;
 
+/// One expansion only: on macOS each `generate_context!` embeds an Info.plist symbol, so a second
+/// call in the test build would define it twice.
+fn app_context<R: tauri::Runtime>() -> tauri::Context<R> {
+    tauri::generate_context!()
+}
+
 /// Every native command the frontend may call. `build.rs` declares the same
 /// list in the app manifest and `capabilities/default.json` grants it to the
 /// main window only; anything else is refused before it reaches Rust.
@@ -44,7 +50,7 @@ fn main() {
                 .build()?;
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(app_context())
         .unwrap_or_else(|error| startup_failure::report_and_exit(&error.to_string()))
         .run(|app, event| {
             // Managed state is not guaranteed to be dropped on exit.

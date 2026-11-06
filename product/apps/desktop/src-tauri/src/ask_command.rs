@@ -294,6 +294,10 @@ impl AskState {
     /// Claims the directory now, so a killed run's store is gone even if nothing is asked.
     pub fn set_data_dir(&self, data_dir: PathBuf) {
         if let Ok(mut inner) = self.0.lock() {
+            // A second call must not drop the lock a live session depends on.
+            if inner.lock.is_some() {
+                return;
+            }
             inner.lock = claim_data_dir(&data_dir).ok();
             inner.data_dir = Some(data_dir);
         }
@@ -513,6 +517,11 @@ mod tests {
         assert_eq!(
             first.answer(ANSWERED).proof_id.as_deref(),
             Some(proof_id.as_str())
+        );
+        first.set_data_dir(dir.0.clone());
+        assert!(
+            claim_data_dir(&dir.0).is_err(),
+            "a repeated call keeps the lock"
         );
         first.close();
     }

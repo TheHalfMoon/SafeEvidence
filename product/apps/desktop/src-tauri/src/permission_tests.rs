@@ -8,7 +8,7 @@ use tauri::webview::InvokeRequest;
 
 fn test_app(data_dir: &std::path::Path) -> tauri::App<MockRuntime> {
     let app = super::presentation_builder(mock_builder())
-        .build(tauri::generate_context!())
+        .build(super::app_context())
         .expect("build production permission context");
     app.state::<super::ask_command::AskState>()
         .set_data_dir(data_dir.to_path_buf());
