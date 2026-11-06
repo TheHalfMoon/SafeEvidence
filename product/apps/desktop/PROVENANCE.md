@@ -15,11 +15,14 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
 ## Limits
 
 - **Key custody is on-device and has no recovery path.** The store's root key is held by the OS protector: DPAPI on Windows, Keychain on macOS, and Secret Service through the helper on Linux. Answers survive a restart. If the key is lost or wrong, the store is
-  refused and left as it was, with no way to recover it yet. Backup, restore and rotation are not wired in. This holds invented data only.
+  refused and its contents are kept, with no way to recover it yet. A wrong key can still merge a live WAL into the main file, which changes the files but not the data. Backup, restore and rotation are not wired in. This holds invented data only.
+- A store that was established and has lost or emptied its main file is refused, and so is a WAL with no main file, so neither can be silently recreated. Removing the store directory by hand is the only way to start again.
+- Each fixture digest has its own store directory, so a changed fixture starts a new store and the old one stays on disk, unused and never cleaned up.
+- A crash during first install can leave a partial protector record or a `dpapi` directory with an inherited ACL. Those are refused until someone removes them by hand. A copied or restored `dpapi` directory is refused too, and no manual ACL repair has been established.
 - Only Windows runs its real protector in the desktop tests. macOS has not been run through this path, and Linux reaches it only through the helper, whose real-provider tests are in its own crate. Nothing installs the helper beside the app, so on Linux the app refuses every question until
   `safeevidence-linux-keyring-helper` is placed next to its executable.
 - The store has no migrations, so a schema change would refuse an existing store. `vault-identity.bin` is not secret and not protected: changing it only stops the key from being found.
-- The P00 states such as `KEY_UNAVAILABLE` are not shown. Key loss reaches the view as `BLOCKED` with `TOOL_FAILURE`.
+- The P00 states such as `KEY_UNAVAILABLE` are not shown. Every failure to open the store reaches the view as the same `BLOCKED` with `TOOL_FAILURE`: a lost or wrong key, a damaged identity or store, a missing helper, and a second instance look alike.
 - A lock file gives one running instance per data directory. A second instance refuses every question it would answer with `BLOCKED`.
 - `TA-20` and `TA-21` are not claimed. Tests run the production handler and capability on Tauri's mock runtime, which establishes no native
   WebView privacy, OS isolation or network behaviour. No end-to-end WebView test exists yet.

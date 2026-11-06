@@ -1,8 +1,10 @@
 //! Device key custody: the store's root key, held by the OS protector.
 //!
 //! Key loss must never become silent data loss. A new key is created only when there is no store yet. If a
-//! store exists and its key cannot be had, opening fails and nothing is changed. A compromised unlocked OS
-//! is outside the claimed secrecy guarantee.
+//! store exists and its key cannot be had, opening fails and the store's contents are kept, though a wrong
+//! key can still merge a live WAL into the main file, as `ProofStore::open` runs against it. A store that
+//! was established and has since lost its main file is refused, not recreated. A compromised unlocked OS is
+//! outside the claimed secrecy guarantee.
 
 use std::fs::File;
 use std::io::Write as _;
@@ -18,6 +20,7 @@ const IDENTITY_FILE: &str = "vault-identity.bin";
 const IDENTITY_MAGIC: &[u8] = b"SAFEEVIDENCE/VAULT-IDENTITY/v1\0";
 const PROTECTOR_ID_BYTES: usize = 16;
 const IDENTITY_BYTES: usize = IDENTITY_MAGIC.len() + VAULT_ID_BYTES + PROTECTOR_ID_BYTES + 8;
+const ESTABLISHED_FILE: &str = "store-established";
 pub const DATABASE_FILE: &str = "vault.db";
 
 pub type Protector = Box<dyn SecretProtector<VaultRootKey = OwnedKeyMaterial>>;
@@ -134,8 +137,40 @@ impl StoredIdentity {
         let mut file = File::create(&staged).map_err(unavailable)?;
         file.write_all(&self.encode()).map_err(unavailable)?;
         file.sync_all().map_err(unavailable)?;
-        std::fs::rename(&staged, dir.join(IDENTITY_FILE)).map_err(unavailable)
+        std::fs::rename(&staged, dir.join(IDENTITY_FILE)).map_err(unavailable)?;
+        sync_directory(dir)
     }
+}
+
+/// Makes a new or renamed name durable. Windows has no directory handle to sync this way.
+fn sync_directory(dir: &Path) -> Result<(), ProtectorError> {
+    #[cfg(unix)]
+    File::open(dir)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|_| ProtectorError::Unavailable)?;
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
+}
+
+fn holds_data(path: &Path) -> bool {
+    std::fs::metadata(path).is_ok_and(|metadata| metadata.len() > 0)
+}
+
+/// Records that the store in `dir` now exists, so its main file going missing can be told from a first run.
+///
+/// # Errors
+/// Returns `Unavailable` if the marker cannot be made durable.
+pub fn mark_established(dir: &Path) -> Result<(), ProtectorError> {
+    let unavailable = |_| ProtectorError::Unavailable;
+    let path = dir.join(ESTABLISHED_FILE);
+    if path.exists() {
+        return Ok(());
+    }
+    File::create(&path)
+        .and_then(|file| file.sync_all())
+        .map_err(unavailable)?;
+    sync_directory(dir)
 }
 
 /// The store's root key and the lease identity it belongs to.
@@ -164,9 +199,18 @@ fn configured(
 ///
 /// # Errors
 /// Fails if the key cannot be had. In particular, `ItemMissing` with a store present is key loss, and
-/// a missing identity with a store present is refused, so neither can replace the store's key.
+/// a missing identity with a store present is refused, so neither can replace the store's key. A crash
+/// after the identity and before the key record recovers; other damage from a crash during first install,
+/// such as a partial protector record, stays refused until someone removes it by hand.
 pub fn open_root_key(dir: &Path, source: &KeySource) -> Result<OpenedKey, ProtectorError> {
-    let has_store = dir.join(DATABASE_FILE).exists();
+    let main_file = dir.join(DATABASE_FILE);
+    let wal_has_data = holds_data(&dir.join(format!("{DATABASE_FILE}-wal")));
+    // After a kill, committed answers can live only in the WAL, and opening without the main file would
+    // destroy it. An established store with no main file was damaged, not new.
+    if !holds_data(&main_file) && (wal_has_data || dir.join(ESTABLISHED_FILE).exists()) {
+        return Err(ProtectorError::CorruptOrTampered);
+    }
+    let has_store = main_file.exists();
     let stored = match std::fs::read(dir.join(IDENTITY_FILE)) {
         Ok(bytes) => Some(StoredIdentity::decode(&bytes)?),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
@@ -178,7 +222,7 @@ pub fn open_root_key(dir: &Path, source: &KeySource) -> Result<OpenedKey, Protec
     let identity = match stored {
         Some(identity) => identity,
         None => {
-            // Written before the key, so a crash between the two is recoverable below.
+            // Written before the key, so a crash between the two recovers below.
             let identity = StoredIdentity {
                 vault_id: random()?,
                 protector_id: random()?,
@@ -356,6 +400,68 @@ mod tests {
         let first = open_root_key(&dir.0, &SOURCE).expect("first");
         let second = open_root_key(&dir.0, &SOURCE).expect("second");
         assert_eq!(first.identity, second.identity);
+        assert_eq!(first.identity.key_generation().get(), 1);
+    }
+
+    #[test]
+    fn an_established_store_that_lost_its_main_file_is_refused_with_or_without_its_key() {
+        for key_lost in [false, true] {
+            let dir = TempDir::new();
+            open_root_key(&dir.0, &SOURCE).expect("first");
+            mark_established(&dir.0).expect("mark");
+            if key_lost {
+                std::fs::remove_file(dir.0.join(KEY_FILE)).unwrap();
+            }
+            assert_eq!(
+                open_root_key(&dir.0, &SOURCE).map(|_| ()),
+                Err(ProtectorError::CorruptOrTampered),
+                "key lost: {key_lost}"
+            );
+            std::fs::write(dir.0.join(DATABASE_FILE), b"").unwrap();
+            assert_eq!(
+                open_root_key(&dir.0, &SOURCE).map(|_| ()),
+                Err(ProtectorError::CorruptOrTampered),
+                "an empty main file is no store either; key lost: {key_lost}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_wal_without_a_main_file_is_refused_and_kept() {
+        for (key_lost, empty_main) in [(false, false), (true, false), (false, true), (true, true)] {
+            let dir = TempDir::new();
+            open_root_key(&dir.0, &SOURCE).expect("first");
+            let wal = dir.0.join(format!("{DATABASE_FILE}-wal"));
+            std::fs::write(&wal, b"committed answers").unwrap();
+            if empty_main {
+                std::fs::write(dir.0.join(DATABASE_FILE), b"").unwrap();
+            }
+            if key_lost {
+                std::fs::remove_file(dir.0.join(KEY_FILE)).unwrap();
+            }
+            assert_eq!(
+                open_root_key(&dir.0, &SOURCE).map(|_| ()),
+                Err(ProtectorError::CorruptOrTampered),
+                "key lost: {key_lost}, empty main: {empty_main}"
+            );
+            assert_eq!(std::fs::read(&wal).unwrap(), b"committed answers");
+            assert_eq!(
+                dir.0.join(KEY_FILE).exists(),
+                !key_lost,
+                "no new key was made"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unreadable_identity_is_not_taken_for_a_missing_one() {
+        let dir = TempDir::new();
+        std::fs::create_dir(dir.0.join(IDENTITY_FILE)).unwrap();
+        assert_eq!(
+            open_root_key(&dir.0, &SOURCE).map(|_| ()),
+            Err(ProtectorError::Unavailable)
+        );
+        assert!(!dir.0.join(KEY_FILE).exists());
     }
 
     #[test]

@@ -16,12 +16,12 @@ use safeevidence_vault::vault_keys::{KeyDerivationContext, KeyPurpose};
 use safeevidence_vault::vault_lease::VaultLease;
 use serde::Serialize;
 
-use crate::custody::{DATABASE_FILE, KeySource, open_root_key};
+use crate::custody::{DATABASE_FILE, KeySource, mark_established, open_root_key};
 
 const FIXTURE: &[u8] =
     include_bytes!("../../../../crates/safeevidence-ask/fixtures/vs1a_corpus.json");
 const MAX_QUESTION_SCALARS: usize = 1024;
-const STORE_DIR: &str = "synthetic-ask-store";
+const STORE_DIR_PREFIX: &str = "synthetic-ask-store-";
 const LOCK_FILE: &str = "synthetic-ask-store.lock";
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -82,6 +82,13 @@ pub struct AskView {
     citations: Vec<CitationView>,
 }
 
+/// The store for this fixture. A store is bound to its fixture's sources, epoch and grant, so a changed
+/// fixture gets its own store rather than being refused by the old one, and the old store stays.
+fn store_dir(data_dir: &Path) -> PathBuf {
+    let digest = DigestSha256::of(FIXTURE).to_hex();
+    data_dir.join(format!("{STORE_DIR_PREFIX}{}", &digest[..16]))
+}
+
 /// Takes this data directory for one running instance. The lock lasts as long as the returned file.
 /// Without it, two instances could write the same store.
 fn claim_data_dir(data_dir: &Path) -> Result<File, String> {
@@ -123,7 +130,7 @@ fn denied(error: StoreError) -> Withheld {
 
 impl AskSession {
     fn open(data_dir: &Path, keys: &KeySource) -> Result<Self, String> {
-        let dir = data_dir.join(STORE_DIR);
+        let dir = store_dir(data_dir);
         std::fs::create_dir_all(&dir).map_err(|_| "could not create the store".to_owned())?;
         let corpus = load_corpus(FIXTURE, &DigestSha256::of(FIXTURE))
             .map_err(|_| "the fixture did not load".to_owned())?;
@@ -157,6 +164,7 @@ impl AskSession {
                 .put_source(&document.doc_id, document.text.as_bytes())
                 .map_err(|_| "the store did not admit the fixture".to_owned())?;
         }
+        mark_established(&dir).map_err(|error| error.to_string())?;
         Ok(Self {
             store,
             corpus,
@@ -494,9 +502,68 @@ mod tests {
     }
 
     #[test]
+    fn closing_keeps_the_store_for_the_next_launch() {
+        let dir = TempDir::new();
+        let first = AskState::default();
+        first.use_test_keys();
+        first.set_data_dir(dir.0.clone());
+        let answered = first.answer(ANSWERED);
+        first.close();
+        drop(first);
+
+        let second = AskState::default();
+        second.use_test_keys();
+        second.set_data_dir(dir.0.clone());
+        assert_eq!(second.answer(ANSWERED), answered);
+        assert!(store_dir(&dir.0).join(DATABASE_FILE).exists());
+    }
+
+    #[test]
+    fn the_store_directory_is_bound_to_the_fixture() {
+        let name = store_dir(Path::new("x"))
+            .file_name()
+            .expect("name")
+            .to_string_lossy()
+            .into_owned();
+        let digest = DigestSha256::of(FIXTURE).to_hex();
+        assert_eq!(name, format!("{STORE_DIR_PREFIX}{}", &digest[..16]));
+    }
+
+    #[test]
+    fn a_store_whose_main_file_is_deleted_does_not_forget_what_it_held() {
+        let dir = TempDir::new();
+        let session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
+        drop(session);
+        std::fs::remove_file(store_dir(&dir.0).join(DATABASE_FILE)).expect("delete");
+        assert!(AskSession::open(&dir.0, &TEST_KEYS).is_err());
+        assert!(
+            !store_dir(&dir.0).join(DATABASE_FILE).exists(),
+            "nothing was recreated"
+        );
+    }
+
+    /// The whole path on the real protector: a real key, a real store, and a real reopen.
+    #[cfg(windows)]
+    #[test]
+    fn an_answer_survives_a_restart_on_real_dpapi() {
+        let dir = TempDir::new();
+        let keys = KeySource::default();
+        let mut session = AskSession::open(&dir.0, &keys).expect("session");
+        let first = session.ask(ANSWERED);
+        let proof_id = first.proof_id.clone().expect("proof");
+        drop(session);
+        let mut session = AskSession::open(&dir.0, &keys).expect("reopened");
+        assert_eq!(
+            session.store.read(&proof_id).expect("stored").state,
+            ProofState::Committed
+        );
+        assert_eq!(session.ask(ANSWERED), first);
+    }
+
+    #[test]
     fn a_lost_key_is_refused_and_keeps_the_store() {
         let dir = TempDir::new();
-        let store_dir = dir.0.join(STORE_DIR);
+        let store_dir = store_dir(&dir.0);
         let session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
         drop(session);
         let database = std::fs::read(store_dir.join(DATABASE_FILE)).expect("store");
@@ -513,7 +580,7 @@ mod tests {
     #[test]
     fn a_wrong_key_is_refused_and_the_right_one_still_opens_the_store() {
         let dir = TempDir::new();
-        let store_dir = dir.0.join(STORE_DIR);
+        let store_dir = store_dir(&dir.0);
         let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
         let proof_id = session.ask(ANSWERED).proof_id.expect("proof");
         drop(session);
@@ -573,7 +640,7 @@ mod tests {
         );
 
         let dir = TempDir::new();
-        std::fs::write(dir.0.join(STORE_DIR), b"not a directory").expect("file");
+        std::fs::write(store_dir(&dir.0), b"not a directory").expect("file");
         let state = AskState::default();
         state.use_test_keys();
         state.set_data_dir(dir.0.clone());
