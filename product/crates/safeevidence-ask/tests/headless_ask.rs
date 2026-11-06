@@ -707,10 +707,42 @@ fn proof_identity_is_pinned_for_the_fixture() {
     );
 }
 
-/// `plan-v1.4`: every donor case's question ends in one outcome with a reason, and none is answered
-/// by this closed grammar. The type gives "exactly one"; this checks the outcome is an allowed one.
+/// `plan-v1.4`: what Ask actually returns for each donor question, pinned so a change is seen. Ask's
+/// closed grammar refuses nearly all of them before retrieval runs. That is not parity with the donor,
+/// though 6 happen to share its state. `EVIDENCE_INSUFFICIENT` is the closest allowed code for an
+/// unparsed question.
 #[test]
-fn every_donor_fixture_question_ends_in_one_refusal_with_a_reason() {
+fn every_donor_fixture_question_gets_its_pinned_refusal_and_no_text() {
+    const ABSTAIN: (TerminalOutcome, ReasonCode) =
+        (TerminalOutcome::Abstain, ReasonCode::EvidenceInsufficient);
+    let pinned = [
+        ("tool-available-routes-to-tool", ABSTAIN),
+        ("evidence-class-retrieves-evidence", ABSTAIN),
+        ("no-requested-tool-plain-answer", ABSTAIN),
+        ("unknown-tool-fails-closed", ABSTAIN),
+        ("clinical-score-gate-closed-t017", ABSTAIN),
+        ("interaction-lookup-gate-closed-t018", ABSTAIN),
+        ("tool-unavailable-fails-closed", ABSTAIN),
+        ("tool-timeout-fails-closed", ABSTAIN),
+        ("missing-slot-asks-more-en", ABSTAIN),
+        (
+            "emergency-keyword-en",
+            (
+                TerminalOutcome::Escalate,
+                ReasonCode::ClinicianAuthorityRequired,
+            ),
+        ),
+        (
+            "emergency-keyword-ar-msa",
+            (TerminalOutcome::Abstain, ReasonCode::UnsupportedLanguage),
+        ),
+        ("severe-pattern-escalates", ABSTAIN),
+        ("ambiguous-risk-fails-toward-escalation-not-answer", ABSTAIN),
+        ("injection-suppressed-emergency-preserved", ABSTAIN),
+        ("injection-suppressed-missing-slot-preserved", ABSTAIN),
+        ("spoofed-provenance-rejected", ABSTAIN),
+        ("genuine-provenance-accepted", ABSTAIN),
+    ];
     let mut cases = Vec::new();
     for file in [
         include_str!("../../safeevidence-assurance/tests/fixtures/t13_cases_us1_tool_routing.json"),
@@ -724,25 +756,15 @@ fn every_donor_fixture_question_ends_in_one_refusal_with_a_reason() {
         let document: serde_json::Value = serde_json::from_str(file).expect("case vectors parse");
         cases.extend(document["cases"].as_array().expect("cases").clone());
     }
-    assert_eq!(cases.len(), 17);
+    assert_eq!(cases.len(), pinned.len());
     let corpus = corpus();
-    for case in &cases {
-        let (id, text) = (
-            case["case_id"].as_str().unwrap(),
-            case["text"].as_str().unwrap(),
-        );
-        let result = ask(text, &corpus);
-        assert!(
-            !matches!(
-                result.outcome,
-                TerminalOutcome::Answer
-                    | TerminalOutcome::AnswerWithCaution
-                    | TerminalOutcome::EmergencyNotice
-            ),
-            "{id}: {:?}",
-            result.outcome
-        );
-        assert_ne!(result.reason, ReasonCode::None, "{id}");
+    for (id, expected) in pinned {
+        let case = cases
+            .iter()
+            .find(|case| case["case_id"] == id)
+            .unwrap_or_else(|| panic!("{id} is missing"));
+        let result = ask(case["text"].as_str().expect("text"), &corpus);
+        assert_eq!((result.outcome, result.reason), expected, "{id}");
         assert!(result.brief.is_none() && result.manifest.is_none(), "{id}");
     }
 }

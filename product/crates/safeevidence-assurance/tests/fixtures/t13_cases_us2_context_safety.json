@@ -5,7 +5,7 @@
   {
    "case_id": "missing-slot-asks-more-en",
    "text": "How much should I take of it?",
-   "lexical_emergency": false,
+   "excluded_reason": null,
    "fired": [
     [
      "R006-DOSAGE-INTENT-INCOMPLETE-V1",
@@ -18,34 +18,28 @@
   {
    "case_id": "emergency-keyword-en",
    "text": "My father has severe bleeding right now",
-   "lexical_emergency": true,
+   "excluded_reason": "lexical emergency trigger, which P00 disables in V1",
    "fired": [],
    "donor_state": null
   },
   {
    "case_id": "emergency-keyword-ar-msa",
    "text": "عندي ألم في الصدر شديد الآن",
-   "lexical_emergency": true,
+   "excluded_reason": "lexical emergency trigger, which P00 disables in V1",
    "fired": [],
    "donor_state": null
   },
   {
    "case_id": "severe-pattern-escalates",
    "text": "This is the worst headache of my life",
-   "lexical_emergency": false,
-   "fired": [
-    [
-     "R006-ESCALATE-SEVERE-PATTERN-V1",
-     3,
-     "ESCALATE"
-    ]
-   ],
-   "donor_state": "ESCALATE"
+   "excluded_reason": "symptom-phrase trigger for ESCALATE, which P00 guard 2 forbids",
+   "fired": [],
+   "donor_state": null
   },
   {
    "case_id": "ambiguous-risk-fails-toward-escalation-not-answer",
    "text": "I took double pills and feel dizzy and my chest hurts slightly",
-   "lexical_emergency": true,
+   "excluded_reason": "lexical emergency trigger, which P00 disables in V1",
    "fired": [],
    "donor_state": null
   }

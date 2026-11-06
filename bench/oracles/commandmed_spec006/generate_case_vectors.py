@@ -7,7 +7,8 @@ Writes one `t13_cases_<fixture>.json` per donor fixture file.
 
 Each case keeps the question text, the rules the donor's pipeline actually fired, and its final state.
 The Rust port then resolves those same rules (`plan-v1.4`). The donor's code stays out of this
-repository. The lexical emergency cases P00 excludes are marked, and their fired rules are dropped.
+repository. Cases P00 excludes keep their reason and text, and their fired rules are dropped.
+Reason codes are not kept. The caller must pass a checkout at the pinned commit; this does not verify it.
 """
 from __future__ import annotations
 
@@ -17,11 +18,13 @@ from pathlib import Path
 
 PIN = "51f73ec05750137e5bd94ffa0765f6383f475fee"
 FIXTURES = ["us1-tool-routing", "us2-context-safety", "us3-injection-spoof"]
-LEXICAL_EMERGENCY = {
-    "emergency-keyword-en",
-    "emergency-keyword-ar-msa",
-    "ambiguous-risk-fails-toward-escalation-not-answer",
-    "injection-suppressed-emergency-preserved",
+LEXICAL_EMERGENCY = "lexical emergency trigger, which P00 disables in V1"
+EXCLUDED = {
+    "emergency-keyword-en": LEXICAL_EMERGENCY,
+    "emergency-keyword-ar-msa": LEXICAL_EMERGENCY,
+    "ambiguous-risk-fails-toward-escalation-not-answer": LEXICAL_EMERGENCY,
+    "injection-suppressed-emergency-preserved": LEXICAL_EMERGENCY,
+    "severe-pattern-escalates": "symptom-phrase trigger for ESCALATE, which P00 guard 2 forbids",
 }
 INTERACTION_ID = "22222222-3333-4444-8555-666666666666"
 
@@ -47,8 +50,6 @@ def main() -> int:
         return original(fired_rules)
 
     policy.evaluate_precedence = capture
-    if hasattr(scaffold, "evaluate_precedence"):
-        scaffold.evaluate_precedence = capture
 
     total = 0
     for name in FIXTURES:
@@ -63,7 +64,7 @@ def main() -> int:
                 raise SystemExit(f"{case['case_id']}: donor gave {decision['state_after']}")
             if len(captured) != 1:
                 raise SystemExit(f"{case['case_id']}: precedence ran {len(captured)} times")
-            lexical = case["case_id"] in LEXICAL_EMERGENCY
+            reason = EXCLUDED.get(case["case_id"])
             fired = [
                 [rule["rule_id"], rule["precedence"], rule["required_state"]]
                 for rule in captured[0]
@@ -72,14 +73,14 @@ def main() -> int:
                 {
                     "case_id": case["case_id"],
                     "text": case["request"]["text"],
-                    "lexical_emergency": lexical,
-                    "fired": [] if lexical else fired,
-                    "donor_state": None if lexical else decision["state_after"],
+                    "excluded_reason": reason,
+                    "fired": [] if reason else fired,
+                    "donor_state": None if reason else decision["state_after"],
                 }
             )
         document = {"donor": "TheHalfMoon/commandMed", "commit": PIN, "cases": cases}
         target = output / f"t13_cases_{name.replace('-', '_')}.json"
-        target.write_text(json.dumps(document, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+        target.write_bytes((json.dumps(document, indent=1, ensure_ascii=False) + "\n").encode("utf-8"))
         total += len(cases)
     print(f"{total} cases")
     return 0

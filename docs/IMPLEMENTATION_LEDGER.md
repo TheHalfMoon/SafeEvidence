@@ -13,7 +13,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | `main` at last update | `724dfad9d024ae6cd6684aec3565a7dce726e067` |
 | Milestone | M0 open for its exit review; M1 VS-1 in progress, per the table below |
 | Active packet | WP-00 and WP-01 rows; WP-18a Ask view |
-| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no files copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30); G01a baseline holds `NO_ADMISSIONS` |
+| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
 | Next executable task | M1 exit items: Linux protector helper, key custody, end-to-end WebView test |
 
@@ -25,7 +25,7 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 | Milestone | Status | Blocked by |
 |---|---|---|
 | M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED`; TA-02 `TESTED_PASSED` | Exit review, including crate closures; open defects below |
-| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4 `IMPLEMENTED_UNTESTED` end to end, TA-20 not claimed | Linux protector helper; desktop; open defects below |
+| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4 `IMPLEMENTED_UNTESTED` end to end, TA-20 not claimed | M0 exit review; Linux protector helper; desktop; open defects below |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
 | M4 Desktop V1 | `NOT_STARTED` | M3 |
@@ -47,9 +47,9 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 
 ## Known defects
 
-**TA-13 for VS-1 is narrowed by `plan-v1.4`** (founder decision, 2026-11-06). Its VS-1 clauses now have tests: 1,329 mechanics vectors, 13 of 17 donor fixture cases at
-resolution level, all 17 questions through `ask`, and the lexical-emergency test. The port resolves the rules the donor's pipeline chose, and does not detect them. TA-13 as a whole is not met: its DAL
-vectors are owed at WP-11.
+**TA-13 for VS-1 is narrowed by `plan-v1.4`** (founder decisions, 2026-11-06). Its VS-1 clauses have tests: 1,329 mechanics vectors, 12 of 17 donor fixture cases at resolution level, all 17 questions
+through `ask`, and the lexical-emergency test. This shows little beyond the vectors, because no case runs through V1 to a matching outcome, and the amendment states that. TA-13 as a whole is not met: its DAL vectors are
+owed at WP-11. Ask also uses `EVIDENCE_INSUFFICIENT` for a question it could not parse, before retrieval runs, because no allowed code fits better.
 
 **Sockets in the core's tree:** TA-29's named HTTP clients are absent, but `mio` and `socket2` are present through
 `tokio` and `zbus`, for the Linux Secret Service protector in T03. Architecture §2 says the core opens no sockets, and
