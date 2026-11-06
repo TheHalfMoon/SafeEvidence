@@ -14,12 +14,13 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
 
 ## Limits
 
-- **Key custody is not implemented.** Each launch uses a new random in-memory key and a store deleted at exit, or when the next launch starts
-  after a kill, so committed answers do not survive a restart. The T03 OS protectors are not wired in. This holds invented data only.
-- A lock file gives one running instance per data directory. A second instance refuses every question it would answer with `BLOCKED`. After a failed
-  open or a poisoned lock, the store stays until the next launch clears it.
-- `Cargo.lock` holds `tauri-runtime` and `tauri-runtime-wry` at 2.12.0, because `tauri` 2.12.0's mock runtime does not compile against 2.12.2 on macOS.
-  `cargo update` would undo this, and only macOS CI would notice.
+- **Key custody is on-device and has no recovery path.** The store's root key is held by the OS protector: DPAPI on Windows, Keychain on macOS, and Secret Service through the helper on Linux. Answers survive a restart. If the key is lost or wrong, the store is
+  refused and left as it was, with no way to recover it yet. Backup, restore and rotation are not wired in. This holds invented data only.
+- Only Windows runs its real protector in the desktop tests. macOS has not been run through this path, and Linux reaches it only through the helper, whose real-provider tests are in its own crate. Nothing installs the helper beside the app, so on Linux the app refuses every question until
+  `safeevidence-linux-keyring-helper` is placed next to its executable.
+- The store has no migrations, so a schema change would refuse an existing store. `vault-identity.bin` is not secret and not protected: changing it only stops the key from being found.
+- The P00 states such as `KEY_UNAVAILABLE` are not shown. Key loss reaches the view as `BLOCKED` with `TOOL_FAILURE`.
+- A lock file gives one running instance per data directory. A second instance refuses every question it would answer with `BLOCKED`.
 - `TA-20` and `TA-21` are not claimed. Tests run the production handler and capability on Tauri's mock runtime, which establishes no native
   WebView privacy, OS isolation or network behaviour. No end-to-end WebView test exists yet.
 - `TA-22` is not claimed. The view is keyboard-operable with `dir="auto"` text, but has no axe or RTL snapshot run. The donor's contrast test was

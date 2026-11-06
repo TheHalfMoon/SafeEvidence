@@ -10,8 +10,9 @@ fn test_app(data_dir: &std::path::Path) -> tauri::App<MockRuntime> {
     let app = super::presentation_builder(mock_builder())
         .build(super::app_context())
         .expect("build production permission context");
-    app.state::<super::ask_command::AskState>()
-        .set_data_dir(data_dir.to_path_buf());
+    let state = app.state::<super::ask_command::AskState>();
+    state.use_test_keys();
+    state.set_data_dir(data_dir.to_path_buf());
     app
 }
 
