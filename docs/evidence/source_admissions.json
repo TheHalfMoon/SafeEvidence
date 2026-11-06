@@ -882,6 +882,37 @@
           "modification": "not_copied"
         }
       ]
+    },
+    {
+      "admission_id": "ADM-0008",
+      "packet": "T30",
+      "repo": "TheHalfMoon/ottari",
+      "source_commit": "73706029849bcbe51243624e37f03a1969dc74ca",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Python standard library only",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "tools/provenance.py",
+          "git_blob_oid": "a36568be1b789a34222de76fd25e88f13a768332",
+          "bytes": 23492,
+          "dest_path": "tools/governance/donor/tool_audit.py",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "tools/provenance_gate.py",
+          "git_blob_oid": "8dffa32146529bbdd3e3026a0fceff4bce58c24e",
+          "bytes": 18516,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
     }
   ]
 }
