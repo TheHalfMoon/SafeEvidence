@@ -26,7 +26,7 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/p01-preentry-governance.yml": "efe37c703ed5c24ec230e355ef2579070507d626b00f6f17f93a418ebe6dbfab",
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
     ".github/workflows/product-ci.yml": "3f23d93c73cb49d743083cb02d4c7fe3d342046fca2015943da30942b5d14b87",
-    ".github/workflows/desktop-ci.yml": "0f197425b8f0c65c33382c35dc81400e4eedbd09645053c954f3cef0db49b06a",
+    ".github/workflows/desktop-ci.yml": "ddf4941a21f55bd6001ccbf1408c41be4a090ab36527b18ce7e841ad4aa6982a",
 }
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.
