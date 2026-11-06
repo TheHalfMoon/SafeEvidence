@@ -890,6 +890,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "safeevidence-privacy-probes"
+version = "0.0.0"
+dependencies = [
+ "safeevidence-ask",
+ "safeevidence-contracts",
+ "safeevidence-proofstore",
+ "safeevidence-vault",
+]
+
+[[package]]
 name = "safeevidence-proofstore"
 version = "0.0.0"
 dependencies = [

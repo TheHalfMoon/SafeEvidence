@@ -837,6 +837,51 @@
           "modification": "not_copied"
         }
       ]
+    },
+    {
+      "admission_id": "ADM-0007",
+      "packet": "T12",
+      "repo": "AbdulazizShehri/MedScale",
+      "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "No new crates: dev-dependencies are workspace crates under product/deny.toml",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "crates/medscale-storage/src/privacy_probes.rs",
+          "git_blob_oid": "30345568e69188ce6960a2d9ffd94db79c0ee797",
+          "bytes": 15640,
+          "dest_path": "product/tests/privacy/src/lib.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/privacy_probes_032.rs",
+          "git_blob_oid": "6615336a642e84efe956118f89d8db6b2a5a9595",
+          "bytes": 2470,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/vault_privacy_023.rs",
+          "git_blob_oid": "4e89724eb33f9a9b01bfed1ac098fc81af8a1eeb",
+          "bytes": 1556,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/hostile_mime_010.rs",
+          "git_blob_oid": "d35cce1777aa95b51fd9a6466678f0eb4e48035b",
+          "bytes": 1154,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
     }
   ]
 }

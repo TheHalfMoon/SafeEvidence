@@ -1,0 +1,13 @@
+[package]
+name = "safeevidence-privacy-probes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dev-dependencies]
+safeevidence-ask = { version = "=0.0.0", path = "../../crates/safeevidence-ask" }
+safeevidence-contracts = { version = "=0.0.0", path = "../../crates/safeevidence-contracts" }
+safeevidence-proofstore = { version = "=0.0.0", path = "../../crates/safeevidence-proofstore" }
+safeevidence-vault = { version = "=0.0.0", path = "../../crates/safeevidence-vault" }
