@@ -75,9 +75,22 @@ fn answer() -> (AnswerProofManifest, Vec<u8>) {
     (result.manifest.unwrap(), result.brief.unwrap().into_bytes())
 }
 
+fn admit_fixture(store: &mut ProofStore) {
+    let corpus = load_corpus(FIXTURE, &DigestSha256::of(FIXTURE)).expect("fixture");
+    store
+        .set_rights_grant(&corpus.rights_grant_version)
+        .expect("rights");
+    for document in &corpus.documents {
+        store
+            .put_source(&document.doc_id, document.text.as_bytes())
+            .expect("source");
+    }
+}
+
 fn at_fixture_epoch(path: &Path) -> ProofStore {
     let mut store = open(path);
     store.advance_epoch(EPOCH).expect("epoch");
+    admit_fixture(&mut store);
     store
 }
 
@@ -117,7 +130,7 @@ fn retry_is_idempotent_and_never_stores_two_texts_under_one_id() {
     changed.final_text_digest = DigestSha256::of(&other);
     assert!(matches!(
         store.commit(&changed, &other),
-        Err(StoreError::ConflictingText)
+        Err(StoreError::ConflictingProof)
     ));
     assert_eq!(store.read(&manifest.proof_id).unwrap().final_text, text);
 }
@@ -129,7 +142,13 @@ fn retry_after_the_epoch_moved_still_reports_the_durable_answer() {
     let mut store = at_fixture_epoch(&db.path());
     store.commit(&manifest, &text).expect("commit");
     store.advance_epoch(EPOCH + 1).unwrap();
-    assert!(store.commit(&manifest, &text).expect("retry").replayed);
+    let receipt = store.commit(&manifest, &text).expect("retry");
+    assert!(receipt.replayed);
+    assert_eq!(
+        receipt.state,
+        ProofState::CurrentnessUnknown,
+        "receipt reports today's standing"
+    );
     assert_eq!(
         store.read(&manifest.proof_id).unwrap().state,
         ProofState::CurrentnessUnknown
@@ -141,6 +160,7 @@ fn validity_moving_after_verification_refuses_the_commit() {
     let db = TempDb::new();
     let (manifest, text) = answer();
     let mut store = open(&db.path());
+    admit_fixture(&mut store);
     store.advance_epoch(EPOCH + 1).unwrap();
     assert!(matches!(
         store.commit(&manifest, &text),
@@ -287,9 +307,14 @@ fn wrong_key_cannot_open_and_plaintext_is_not_on_disk() {
         store.commit(&manifest, &text).unwrap();
     }
     assert!(open_with_key(&db.path(), 0x53).is_err());
-    let bytes = fs::read(db.path()).unwrap();
     let marker = b"Synthetic evidence brief";
-    assert!(!bytes.windows(marker.len()).any(|window| window == marker));
+    let mut files = 0;
+    for entry in fs::read_dir(&db.0).unwrap() {
+        let bytes = fs::read(entry.unwrap().path()).unwrap();
+        files += 1;
+        assert!(!bytes.windows(marker.len()).any(|window| window == marker));
+    }
+    assert!(files >= 1);
 }
 
 /// Child entry, spawned by the kill test; ignored in normal runs.
@@ -305,6 +330,7 @@ fn commit_writer_entry() {
     if store.epoch().unwrap() < EPOCH {
         store.advance_epoch(EPOCH).unwrap();
     }
+    admit_fixture(&mut store);
     for index in 0..u64::MAX {
         let text = format!("synthetic answer {index}").into_bytes();
         let mut next = manifest.clone();
@@ -396,4 +422,116 @@ fn kill_during_commits_loses_no_acknowledged_answer() {
             Err(StoreError::UnknownProof)
         ));
     }
+}
+
+#[test]
+fn replay_with_a_different_manifest_or_after_invalidation_tells_the_truth() {
+    let db = TempDb::new();
+    let (manifest, text) = answer();
+    let mut store = at_fixture_epoch(&db.path());
+    store.commit(&manifest, &text).unwrap();
+    let mut other_epoch = manifest.clone();
+    other_epoch.validity_epoch = 999;
+    assert!(matches!(
+        store.commit(&other_epoch, &text),
+        Err(StoreError::ConflictingProof)
+    ));
+    store.invalidate(&manifest.proof_id, "synthetic").unwrap();
+    let receipt = store.commit(&manifest, &text).unwrap();
+    assert!(receipt.replayed);
+    assert_eq!(receipt.state, ProofState::CurrentlyInvalidated);
+}
+
+#[test]
+fn every_cited_source_must_be_stored_with_the_cited_digest() {
+    let db = TempDb::new();
+    let (manifest, text) = answer();
+    let mut store = open(&db.path());
+    store.advance_epoch(EPOCH).unwrap();
+    store
+        .set_rights_grant(&manifest.rights_grant_version)
+        .unwrap();
+    assert!(matches!(
+        store.commit(&manifest, &text),
+        Err(StoreError::SourceNotAdmitted(_))
+    ));
+    let cited = manifest.claims[0].spans[0].source_id.clone();
+    store.put_source(&cited, b"different bytes").unwrap();
+    assert!(
+        matches!(store.commit(&manifest, &text), Err(StoreError::SourceNotAdmitted(id)) if id == cited)
+    );
+    assert!(matches!(
+        store.read(&manifest.proof_id),
+        Err(StoreError::UnknownProof)
+    ));
+}
+
+#[test]
+fn the_rights_grant_in_force_must_match_and_a_later_change_ends_assurance() {
+    let db = TempDb::new();
+    let (manifest, text) = answer();
+    let mut store = open(&db.path());
+    store.advance_epoch(EPOCH).unwrap();
+    assert!(
+        matches!(
+            store.commit(&manifest, &text),
+            Err(StoreError::RightsChanged)
+        ),
+        "no grant yet"
+    );
+    admit_fixture(&mut store);
+    store.set_rights_grant("a-different-grant").unwrap();
+    assert!(matches!(
+        store.commit(&manifest, &text),
+        Err(StoreError::RightsChanged)
+    ));
+    admit_fixture(&mut store);
+    store.commit(&manifest, &text).unwrap();
+    store.set_rights_grant("a-different-grant").unwrap();
+    assert_eq!(
+        store.read(&manifest.proof_id).unwrap().state,
+        ProofState::CurrentnessUnknown
+    );
+}
+
+#[test]
+fn amending_a_cited_source_invalidates_the_answer_and_keeps_its_bytes() {
+    let db = TempDb::new();
+    let (manifest, text) = answer();
+    let mut store = at_fixture_epoch(&db.path());
+    store.commit(&manifest, &text).unwrap();
+    let cited = manifest.claims[0].spans[0].source_id.clone();
+    store.put_source("correction", b"corrected").unwrap();
+    store
+        .amend(&cited, "correction", "synthetic correction")
+        .unwrap();
+    let stored = store.read(&manifest.proof_id).unwrap();
+    assert_eq!(stored.state, ProofState::CurrentlyInvalidated);
+    assert_eq!(stored.final_text, text);
+}
+
+#[test]
+fn settings_persist_across_reopen_so_triggers_still_catch_replacement() {
+    let db = TempDb::new();
+    {
+        let mut store = open(&db.path());
+        store.put_source("s", b"original").unwrap();
+    }
+    let mut store = open(&db.path());
+    assert!(matches!(
+        store.put_source("s", b"replaced"),
+        Err(StoreError::SourceConflict)
+    ));
+    assert_eq!(
+        store.source("s").unwrap().as_deref(),
+        Some(&b"original"[..])
+    );
+    let wal = fs::read_dir(&db.0).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with("-wal")
+    });
+    assert!(wal, "WAL mode leaves a -wal file while open");
 }

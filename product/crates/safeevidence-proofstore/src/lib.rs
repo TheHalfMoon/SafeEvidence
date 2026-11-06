@@ -1,29 +1,32 @@
 //! Atomic answer commit in the private vault (`docs/P00_PROOF_ADMISSION_CONTRACT.md`), step 3 of
 //! `plan-v1.1` §C, plus the append-only stores `plan-v1.3` requires.
 //!
-//! Answer, manifest and audit event are written in one transaction. Database triggers refuse any
-//! update or delete of those records, of stored sources and of amendments, so a bug here cannot
-//! overwrite history. This holds invented fixture data today and makes no clinical claim. Covered:
-//! process kills and SQL-level tampering. Not covered: power loss, disk full, or an attacker with the key.
+//! Answer, manifest and audit event are written in one transaction. Triggers refuse updates and
+//! deletes of those records, sources and amendments, including `INSERT OR REPLACE`. This guards
+//! against bugs in this codebase. It is no boundary against malicious in-process code or anyone
+//! holding the key. It holds invented fixture data today and makes no clinical claim.
+//! Covered: process kills. Not covered: power loss, disk full, restore, cross-store outbox.
 
 use std::path::Path;
 
-use rusqlite::{OptionalExtension, Transaction, params};
+use rusqlite::params;
 use safeevidence_contracts::assurance::ProofState;
 use safeevidence_contracts::objects::DigestSha256;
 use safeevidence_contracts::proof::{AnswerProofManifest, ManifestDefect, commit_defects};
 use safeevidence_vault::vault_keys::{KeyDerivationContext, OwnedKeyMaterial};
 use safeevidence_vault::vault_lease::KeyedHandleLease;
 use safeevidence_vault::vault_sqlcipher::{
-    SqlCipherDatabaseHandle, SqlCipherOpenError, SqlCipherTransactionError, open_sqlcipher_database,
+    GuardedSqlError, GuardedTransaction, SqlCipherDatabaseHandle, SqlCipherOpenError,
+    SqlCipherTransactionError, open_sqlcipher_database,
 };
 
 const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS validity (id INTEGER PRIMARY KEY CHECK (id = 1), epoch INTEGER NOT NULL);
-INSERT OR IGNORE INTO validity (id, epoch) VALUES (1, 0);
+CREATE TABLE IF NOT EXISTS authority (
+    id INTEGER PRIMARY KEY CHECK (id = 1), epoch INTEGER NOT NULL, rights_grant TEXT NOT NULL);
+INSERT OR IGNORE INTO authority (id, epoch, rights_grant) VALUES (1, 0, '');
 CREATE TABLE IF NOT EXISTS answers (
     proof_id TEXT PRIMARY KEY, final_text BLOB NOT NULL, final_text_digest TEXT NOT NULL,
-    manifest TEXT NOT NULL, committed_epoch INTEGER NOT NULL);
+    manifest TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_events (
     seq INTEGER PRIMARY KEY AUTOINCREMENT, proof_id TEXT NOT NULL, event TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS invalidations (
@@ -33,53 +36,88 @@ CREATE TABLE IF NOT EXISTS sources (
 CREATE TABLE IF NOT EXISTS amendments (
     seq INTEGER PRIMARY KEY AUTOINCREMENT, prior_id TEXT NOT NULL, superseding_id TEXT NOT NULL,
     reason TEXT NOT NULL);
-CREATE TRIGGER IF NOT EXISTS validity_monotonic BEFORE UPDATE ON validity
-    WHEN NEW.epoch <= OLD.epoch BEGIN SELECT RAISE(ABORT, 'validity epoch must increase'); END;
-CREATE TRIGGER IF NOT EXISTS validity_keep BEFORE DELETE ON validity
+CREATE TRIGGER IF NOT EXISTS authority_monotonic BEFORE UPDATE ON authority
+    WHEN NEW.epoch < OLD.epoch BEGIN SELECT RAISE(ABORT, 'validity epoch must not decrease'); END;
+CREATE TRIGGER IF NOT EXISTS authority_keep BEFORE DELETE ON authority
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS answers_no_update BEFORE UPDATE ON answers
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS answers_no_delete BEFORE DELETE ON answers
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS audit_events_no_update BEFORE UPDATE ON audit_events
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS audit_events_no_delete BEFORE DELETE ON audit_events
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS invalidations_no_update BEFORE UPDATE ON invalidations
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS invalidations_no_delete BEFORE DELETE ON invalidations
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS sources_no_update BEFORE UPDATE ON sources
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS sources_no_delete BEFORE DELETE ON sources
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS amendments_no_update BEFORE UPDATE ON amendments
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS amendments_no_delete BEFORE DELETE ON amendments
     BEGIN SELECT RAISE(ABORT, 'append-only'); END;
 ";
-const APPEND_ONLY: [&str; 5] = [
-    "answers",
-    "audit_events",
-    "invalidations",
-    "sources",
-    "amendments",
-];
 
 #[derive(Debug)]
 pub enum StoreError {
     Open(SqlCipherOpenError),
     Lease(String),
     Provider(rusqlite::Error),
+    StatementNotAllowed,
     Corrupt(String),
-    /// The manifest cannot back a committed answer.
+    /// The connection did not accept the required durability settings.
+    NotDurable,
+    /// The commit outcome is unknown. Retry with the same proof to reconcile.
+    CommitUnknown(rusqlite::Error),
     Defects(Vec<ManifestDefect>),
-    /// Only a verified, uncommitted proof can be committed.
     WrongState(ProofState),
-    /// These bytes are not the text the manifest binds.
     TextDigestMismatch,
     /// Validity moved after verification: `PROOF_RACE_INVALIDATED`.
     ProofRace {
         verified: u64,
         current: u64,
     },
-    /// One proof ID may never hold two different texts.
-    ConflictingText,
-    /// Stored source bytes may never be replaced under the same ID.
+    /// The manifest's rights grant is not the one in force.
+    RightsChanged,
+    /// A cited source is not stored, or its digest differs from the cited one.
+    SourceNotAdmitted(String),
+    /// One proof ID may never hold a different text or manifest.
+    ConflictingProof,
     SourceConflict,
-    /// An amendment must name an existing, different prior.
     InvalidAmendment,
+    EpochMustIncrease,
     UnknownProof,
 }
 
-impl From<rusqlite::Error> for StoreError {
-    fn from(error: rusqlite::Error) -> Self {
-        Self::Provider(error)
+impl From<GuardedSqlError> for StoreError {
+    fn from(error: GuardedSqlError) -> Self {
+        match error {
+            GuardedSqlError::StatementNotAllowed => Self::StatementNotAllowed,
+            GuardedSqlError::Provider(error) => Self::Provider(error),
+        }
     }
 }
 
-fn flatten<T, E: Into<StoreError>>(
-    result: Result<T, SqlCipherTransactionError<E>>,
+fn flatten<T>(result: Result<T, SqlCipherTransactionError<StoreError>>) -> Result<T, StoreError> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(SqlCipherTransactionError::Access(error)) => {
+            Err(StoreError::Lease(format!("{error:?}")))
+        }
+        Err(SqlCipherTransactionError::Provider(error)) => Err(StoreError::Provider(error)),
+        Err(SqlCipherTransactionError::CommitUnknown(error)) => {
+            Err(StoreError::CommitUnknown(error))
+        }
+        Err(SqlCipherTransactionError::Operation(error)) => Err(error),
+    }
+}
+
+fn flatten_setup<T>(
+    result: Result<T, SqlCipherTransactionError<std::convert::Infallible>>,
 ) -> Result<T, StoreError> {
     match result {
         Ok(value) => Ok(value),
@@ -87,11 +125,14 @@ fn flatten<T, E: Into<StoreError>>(
             Err(StoreError::Lease(format!("{error:?}")))
         }
         Err(SqlCipherTransactionError::Provider(error)) => Err(StoreError::Provider(error)),
-        Err(SqlCipherTransactionError::Operation(error)) => Err(error.into()),
+        Err(SqlCipherTransactionError::CommitUnknown(error)) => {
+            Err(StoreError::CommitUnknown(error))
+        }
+        Err(SqlCipherTransactionError::Operation(never)) => match never {},
     }
 }
 
-/// What a commit returned. `replayed` means this exact answer was already durable.
+/// `state` is this answer's standing now, not merely that it was once committed.
 #[derive(Debug, PartialEq, Eq)]
 pub struct CommitReceipt {
     pub proof_id: String,
@@ -99,7 +140,7 @@ pub struct CommitReceipt {
     pub replayed: bool,
 }
 
-/// A stored answer and its standing now. Historical bytes never change; only the state can.
+/// `manifest` is the historical record. `state` is the standing now: only this says if it holds.
 #[derive(Debug, PartialEq, Eq)]
 pub struct StoredAnswer {
     pub final_text: Vec<u8>,
@@ -111,11 +152,72 @@ pub struct ProofStore {
     handle: SqlCipherDatabaseHandle,
 }
 
+fn one<T>(mut rows: Vec<T>) -> Option<T> {
+    rows.pop()
+}
+
+fn authority(tx: &GuardedTransaction<'_>) -> Result<(u64, String), StoreError> {
+    let row = one(tx.query(
+        "SELECT epoch, rights_grant FROM authority WHERE id = 1",
+        [],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+    )?)
+    .ok_or_else(|| StoreError::Corrupt("authority row missing".to_owned()))?;
+    let epoch =
+        u64::try_from(row.0).map_err(|_| StoreError::Corrupt("negative epoch".to_owned()))?;
+    Ok((epoch, row.1))
+}
+
+fn epoch_value(epoch: u64) -> Result<i64, StoreError> {
+    i64::try_from(epoch).map_err(|_| StoreError::Corrupt("epoch out of range".to_owned()))
+}
+
+fn cited_sources(manifest: &AnswerProofManifest) -> impl Iterator<Item = (&str, String)> {
+    manifest
+        .claims
+        .iter()
+        .flat_map(|claim| &claim.spans)
+        .map(|span| (span.source_id.as_str(), span.source_digest.to_hex()))
+}
+
+/// The standing now. A correction to a cited source invalidates, per the proof contract.
+fn standing(
+    tx: &GuardedTransaction<'_>,
+    manifest: &AnswerProofManifest,
+) -> Result<ProofState, StoreError> {
+    let invalidated = !tx
+        .query(
+            "SELECT 1 FROM invalidations WHERE proof_id = ?1",
+            params![manifest.proof_id],
+            |row| row.get::<_, i64>(0),
+        )?
+        .is_empty();
+    let mut amended = false;
+    for (source_id, _) in cited_sources(manifest) {
+        amended |= !tx
+            .query(
+                "SELECT 1 FROM amendments WHERE prior_id = ?1",
+                params![source_id],
+                |row| row.get::<_, i64>(0),
+            )?
+            .is_empty();
+    }
+    if invalidated || amended {
+        return Ok(ProofState::CurrentlyInvalidated);
+    }
+    let (epoch, rights) = authority(tx)?;
+    if epoch == manifest.validity_epoch && rights == manifest.rights_grant_version {
+        Ok(ProofState::Committed)
+    } else {
+        Ok(ProofState::CurrentnessUnknown)
+    }
+}
+
 impl ProofStore {
-    /// Opens the keyed vault database, requires full durability and installs the schema.
+    /// Opens the keyed vault database, requires durable settings and installs the schema.
     ///
     /// # Errors
-    /// Fails on a wrong key, lease, or provider failure.
+    /// Fails on a wrong key, lease or provider failure, or settings that did not take.
     pub fn open<P: AsRef<Path>>(
         path: P,
         lease: KeyedHandleLease,
@@ -124,43 +226,19 @@ impl ProofStore {
     ) -> Result<Self, StoreError> {
         let mut handle =
             open_sqlcipher_database(path, lease, context, vrk).map_err(StoreError::Open)?;
-        flatten(
-            handle
-                .require_full_synchronous()
-                .map_err(|error| match error {
-                    SqlCipherTransactionError::Access(a) => SqlCipherTransactionError::Access(a),
-                    SqlCipherTransactionError::Provider(p) => {
-                        SqlCipherTransactionError::Provider(p)
-                    }
-                    SqlCipherTransactionError::Operation(()) => {
-                        SqlCipherTransactionError::Operation(StoreError::Corrupt(
-                            "synchronous".to_owned(),
-                        ))
-                    }
-                }),
-        )?;
-        flatten(
-            handle.immediate_transaction(|tx| -> Result<(), StoreError> {
-                tx.execute_batch(SCHEMA)?;
-                for table in APPEND_ONLY {
-                    tx.execute_batch(&format!(
-                        "CREATE TRIGGER IF NOT EXISTS {table}_no_update BEFORE UPDATE ON {table}
-                         BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-                     CREATE TRIGGER IF NOT EXISTS {table}_no_delete BEFORE DELETE ON {table}
-                         BEGIN SELECT RAISE(ABORT, 'append-only'); END;"
-                    ))?;
-                }
-                Ok(())
-            }),
-        )?;
+        flatten_setup(handle.configure_durable_store())?;
+        if !flatten_setup(handle.durable_settings_hold())? {
+            return Err(StoreError::NotDurable);
+        }
+        flatten_setup(handle.install_schema(SCHEMA))?;
         Ok(Self { handle })
     }
 
-    /// Commits one verified answer, or returns the stored receipt if this exact answer is durable.
+    /// Commits one verified answer, or reports the durable one if this exact proof is stored.
     ///
     /// # Errors
-    /// Refuses before writing on any manifest defect, wrong state, text mismatch, epoch race or
-    /// conflicting text. Nothing partial can persist: all writes share one transaction.
+    /// Refuses before writing on any manifest defect, wrong state, text mismatch, source not
+    /// admitted, rights change, epoch race or conflicting proof. All writes share one transaction.
     pub fn commit(
         &mut self,
         manifest: &AnswerProofManifest,
@@ -182,84 +260,104 @@ impl ProofStore {
         let encoded = serde_json::to_string(&stored)
             .map_err(|error| StoreError::Corrupt(error.to_string()))?;
         let digest_hex = digest.to_hex();
-        flatten(self.handle.immediate_transaction(|tx| -> Result<CommitReceipt, StoreError> {
-            let existing: Option<String> = tx
-                .query_row(
-                    "SELECT final_text_digest FROM answers WHERE proof_id = ?1",
-                    params![manifest.proof_id],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            if let Some(existing) = existing {
-                if existing != digest_hex {
-                    return Err(StoreError::ConflictingText);
-                }
-                return Ok(CommitReceipt {
-                    proof_id: manifest.proof_id.clone(),
-                    state: ProofState::Committed,
-                    replayed: true,
-                });
-            }
-            let current = current_epoch(tx)?;
-            if manifest.validity_epoch != current {
-                return Err(StoreError::ProofRace {
-                    verified: manifest.validity_epoch,
-                    current,
-                });
-            }
-            tx.execute(
-                "INSERT INTO answers (proof_id, final_text, final_text_digest, manifest, committed_epoch)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![manifest.proof_id, final_text, digest_hex, encoded, epoch_value(current)?],
-            )?;
-            tx.execute(
-                "INSERT INTO audit_events (proof_id, event) VALUES (?1, 'COMMITTED')",
-                params![manifest.proof_id],
-            )?;
-            Ok(CommitReceipt {
-                proof_id: manifest.proof_id.clone(),
-                state: ProofState::Committed,
-                replayed: false,
-            })
-        }))
+        flatten(
+            self.handle
+                .immediate_transaction(|tx| -> Result<CommitReceipt, StoreError> {
+                    let existing = one(tx.query(
+                        "SELECT final_text_digest, manifest FROM answers WHERE proof_id = ?1",
+                        params![manifest.proof_id],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                    )?);
+                    if let Some((existing_digest, existing_manifest)) = existing {
+                        if existing_digest != digest_hex || existing_manifest != encoded {
+                            return Err(StoreError::ConflictingProof);
+                        }
+                        return Ok(CommitReceipt {
+                            proof_id: manifest.proof_id.clone(),
+                            state: standing(tx, &stored)?,
+                            replayed: true,
+                        });
+                    }
+                    let (current, rights) = authority(tx)?;
+                    if manifest.validity_epoch != current {
+                        return Err(StoreError::ProofRace {
+                            verified: manifest.validity_epoch,
+                            current,
+                        });
+                    }
+                    if manifest.rights_grant_version != rights {
+                        return Err(StoreError::RightsChanged);
+                    }
+                    for (source_id, cited) in cited_sources(manifest) {
+                        let found = one(tx.query(
+                            "SELECT digest FROM sources WHERE source_id = ?1",
+                            params![source_id],
+                            |row| row.get::<_, String>(0),
+                        )?);
+                        if found.as_deref() != Some(cited.as_str()) {
+                            return Err(StoreError::SourceNotAdmitted(source_id.to_owned()));
+                        }
+                    }
+                    tx.execute(
+                        "INSERT INTO answers (proof_id, final_text, final_text_digest, manifest)
+                 VALUES (?1, ?2, ?3, ?4)",
+                        params![manifest.proof_id, final_text, digest_hex, encoded],
+                    )?;
+                    tx.execute(
+                        "INSERT INTO audit_events (proof_id, event) VALUES (?1, 'COMMITTED')",
+                        params![manifest.proof_id],
+                    )?;
+                    Ok(CommitReceipt {
+                        proof_id: manifest.proof_id.clone(),
+                        state: ProofState::Committed,
+                        replayed: false,
+                    })
+                }),
+        )
     }
 
-    /// Reads an answer with its current standing. An answer is only `Committed` while the local
-    /// validity epoch is the one it was verified at: otherwise this cannot say it still holds.
+    /// Reads an answer with its standing now.
     ///
     /// # Errors
     /// Fails on an unknown proof, or stored content that no longer matches its digest.
     pub fn read(&mut self, proof_id: &str) -> Result<StoredAnswer, StoreError> {
-        flatten(self.handle.immediate_transaction(|tx| -> Result<StoredAnswer, StoreError> {
-            let row: Option<(Vec<u8>, String, String)> = tx
-                .query_row(
-                    "SELECT final_text, final_text_digest, manifest FROM answers WHERE proof_id = ?1",
-                    params![proof_id],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                )
-                .optional()?;
-            let Some((final_text, digest, manifest)) = row else {
-                return Err(StoreError::UnknownProof);
-            };
-            if DigestSha256::of(&final_text).to_hex() != digest {
-                return Err(StoreError::Corrupt("answer text does not match its digest".to_owned()));
-            }
-            let manifest: AnswerProofManifest = serde_json::from_str(&manifest)
-                .map_err(|error| StoreError::Corrupt(error.to_string()))?;
-            let invalidated: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM invalidations WHERE proof_id = ?1)",
+        flatten(
+            self.handle
+                .immediate_transaction(|tx| -> Result<StoredAnswer, StoreError> {
+                    let row = one(tx.query(
+                "SELECT final_text, final_text_digest, manifest FROM answers WHERE proof_id = ?1",
                 params![proof_id],
-                |row| row.get(0),
-            )?;
-            let state = if invalidated {
-                ProofState::CurrentlyInvalidated
-            } else if current_epoch(tx)? == manifest.validity_epoch {
-                ProofState::Committed
-            } else {
-                ProofState::CurrentnessUnknown
-            };
-            Ok(StoredAnswer { final_text, manifest, state })
-        }))
+                |row| {
+                    Ok((
+                        row.get::<_, Vec<u8>>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )?);
+                    let Some((final_text, digest, manifest)) = row else {
+                        return Err(StoreError::UnknownProof);
+                    };
+                    if DigestSha256::of(&final_text).to_hex() != digest {
+                        return Err(StoreError::Corrupt(
+                            "answer text does not match its digest".to_owned(),
+                        ));
+                    }
+                    let manifest: AnswerProofManifest = serde_json::from_str(&manifest)
+                        .map_err(|error| StoreError::Corrupt(error.to_string()))?;
+                    if manifest.final_text_digest.to_hex() != digest {
+                        return Err(StoreError::Corrupt(
+                            "manifest does not bind this text".to_owned(),
+                        ));
+                    }
+                    let state = standing(tx, &manifest)?;
+                    Ok(StoredAnswer {
+                        final_text,
+                        manifest,
+                        state,
+                    })
+                }),
+        )
     }
 
     /// Records that a committed answer no longer stands. Its bytes stay as they were.
@@ -270,11 +368,13 @@ impl ProofStore {
         flatten(
             self.handle
                 .immediate_transaction(|tx| -> Result<(), StoreError> {
-                    let known: bool = tx.query_row(
-                        "SELECT EXISTS(SELECT 1 FROM answers WHERE proof_id = ?1)",
-                        params![proof_id],
-                        |row| row.get(0),
-                    )?;
+                    let known = !tx
+                        .query(
+                            "SELECT 1 FROM answers WHERE proof_id = ?1",
+                            params![proof_id],
+                            |row| row.get::<_, i64>(0),
+                        )?
+                        .is_empty();
                     if !known {
                         return Err(StoreError::UnknownProof);
                     }
@@ -293,17 +393,37 @@ impl ProofStore {
         )
     }
 
-    /// Moves the local validity epoch forward. Moving it back or sideways is refused.
+    /// Moves the local validity epoch forward.
     ///
     /// # Errors
-    /// Fails if the new epoch is not greater than the current one.
+    /// Fails unless the new epoch is greater than the current one.
     pub fn advance_epoch(&mut self, epoch: u64) -> Result<(), StoreError> {
         flatten(
             self.handle
                 .immediate_transaction(|tx| -> Result<(), StoreError> {
+                    if epoch <= authority(tx)?.0 {
+                        return Err(StoreError::EpochMustIncrease);
+                    }
                     tx.execute(
-                        "UPDATE validity SET epoch = ?1 WHERE id = 1",
+                        "UPDATE authority SET epoch = ?1 WHERE id = 1",
                         params![epoch_value(epoch)?],
+                    )?;
+                    Ok(())
+                }),
+        )
+    }
+
+    /// Sets the rights grant in force. Earlier answers stop being assured if it differs.
+    ///
+    /// # Errors
+    /// Fails on a lease or provider failure.
+    pub fn set_rights_grant(&mut self, grant: &str) -> Result<(), StoreError> {
+        flatten(
+            self.handle
+                .immediate_transaction(|tx| -> Result<(), StoreError> {
+                    tx.execute(
+                        "UPDATE authority SET rights_grant = ?1 WHERE id = 1",
+                        params![grant],
                     )?;
                     Ok(())
                 }),
@@ -317,7 +437,7 @@ impl ProofStore {
     pub fn epoch(&mut self) -> Result<u64, StoreError> {
         flatten(
             self.handle
-                .immediate_transaction(|tx| -> Result<u64, StoreError> { current_epoch(tx) }),
+                .immediate_transaction(|tx| -> Result<u64, StoreError> { Ok(authority(tx)?.0) }),
         )
     }
 
@@ -330,13 +450,11 @@ impl ProofStore {
         flatten(
             self.handle
                 .immediate_transaction(|tx| -> Result<(), StoreError> {
-                    let existing: Option<String> = tx
-                        .query_row(
-                            "SELECT digest FROM sources WHERE source_id = ?1",
-                            params![source_id],
-                            |row| row.get(0),
-                        )
-                        .optional()?;
+                    let existing = one(tx.query(
+                        "SELECT digest FROM sources WHERE source_id = ?1",
+                        params![source_id],
+                        |row| row.get::<_, String>(0),
+                    )?);
                     match existing {
                         Some(found) if found == digest => Ok(()),
                         Some(_) => Err(StoreError::SourceConflict),
@@ -360,18 +478,17 @@ impl ProofStore {
         flatten(
             self.handle
                 .immediate_transaction(|tx| -> Result<Option<Vec<u8>>, StoreError> {
-                    Ok(tx
-                        .query_row(
-                            "SELECT bytes FROM sources WHERE source_id = ?1",
-                            params![source_id],
-                            |row| row.get(0),
-                        )
-                        .optional()?)
+                    Ok(one(tx.query(
+                        "SELECT bytes FROM sources WHERE source_id = ?1",
+                        params![source_id],
+                        |row| row.get::<_, Vec<u8>>(0),
+                    )?))
                 }),
         )
     }
 
-    /// Appends an amendment: a new source superseding a stored one. Both stay stored.
+    /// Appends an amendment: a new source superseding a stored one. Both stay stored, and answers
+    /// citing the prior source stop being assured.
     ///
     /// # Errors
     /// Returns `InvalidAmendment` unless both exist and differ.
@@ -384,12 +501,12 @@ impl ProofStore {
         flatten(
             self.handle
                 .immediate_transaction(|tx| -> Result<(), StoreError> {
-                    let count: i64 = tx.query_row(
-                        "SELECT COUNT(*) FROM sources WHERE source_id IN (?1, ?2)",
+                    let found = tx.query(
+                        "SELECT source_id FROM sources WHERE source_id IN (?1, ?2)",
                         params![prior_id, superseding_id],
-                        |row| row.get(0),
+                        |row| row.get::<_, String>(0),
                     )?;
-                    if prior_id == superseding_id || count != 2 {
+                    if prior_id == superseding_id || found.len() != 2 {
                         return Err(StoreError::InvalidAmendment);
                     }
                     tx.execute(
@@ -409,11 +526,11 @@ impl ProofStore {
         flatten(
             self.handle
                 .immediate_transaction(|tx| -> Result<Vec<String>, StoreError> {
-                    let mut statement = tx.prepare(
+                    Ok(tx.query(
                         "SELECT superseding_id FROM amendments WHERE prior_id = ?1 ORDER BY seq",
-                    )?;
-                    let rows = statement.query_map(params![prior_id], |row| row.get(0))?;
-                    Ok(rows.collect::<Result<Vec<String>, _>>()?)
+                        params![prior_id],
+                        |row| row.get(0),
+                    )?)
                 }),
         )
     }
@@ -426,25 +543,14 @@ impl ProofStore {
         flatten(
             self.handle
                 .immediate_transaction(|tx| -> Result<Vec<String>, StoreError> {
-                    let mut statement = tx.prepare(
+                    Ok(tx.query(
                         "SELECT event FROM audit_events WHERE proof_id = ?1 ORDER BY seq",
-                    )?;
-                    let rows = statement.query_map(params![proof_id], |row| row.get(0))?;
-                    Ok(rows.collect::<Result<Vec<String>, _>>()?)
+                        params![proof_id],
+                        |row| row.get(0),
+                    )?)
                 }),
         )
     }
-}
-
-fn current_epoch(tx: &Transaction<'_>) -> Result<u64, StoreError> {
-    let value: i64 = tx.query_row("SELECT epoch FROM validity WHERE id = 1", [], |row| {
-        row.get(0)
-    })?;
-    u64::try_from(value).map_err(|_| StoreError::Corrupt("negative epoch".to_owned()))
-}
-
-fn epoch_value(epoch: u64) -> Result<i64, StoreError> {
-    i64::try_from(epoch).map_err(|_| StoreError::Corrupt("epoch out of range".to_owned()))
 }
 
 #[cfg(test)]
@@ -457,17 +563,39 @@ mod tests {
 
     const FIXTURE: &[u8] = include_bytes!("../../safeevidence-ask/fixtures/vs1a_corpus.json");
 
-    fn attempt_raw_sql(store: &mut ProofStore, sql: &str) -> Result<usize, String> {
+    struct TempDb(std::path::PathBuf);
+
+    impl TempDb {
+        fn new() -> Self {
+            static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let dir = std::env::temp_dir().join(format!("se-unit-{}-{id}", std::process::id()));
+            std::fs::create_dir_all(&dir).expect("temp dir");
+            Self(dir.join("vault.db"))
+        }
+    }
+
+    impl Drop for TempDb {
+        fn drop(&mut self) {
+            if let Some(dir) = self.0.parent() {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+        }
+    }
+
+    fn attempt_raw_sql(store: &mut ProofStore, sql: &'static str) -> Result<usize, String> {
         let result = store
             .handle
-            .immediate_transaction(|tx| -> Result<usize, rusqlite::Error> { tx.execute(sql, []) });
+            .immediate_transaction(|tx| -> Result<usize, GuardedSqlError> { tx.execute(sql, []) });
         match result {
             Ok(count) => Ok(count),
-            Err(
-                SqlCipherTransactionError::Operation(error)
-                | SqlCipherTransactionError::Provider(error),
-            ) => Err(error.to_string()),
-            Err(SqlCipherTransactionError::Access(error)) => Err(format!("{error:?}")),
+            Err(SqlCipherTransactionError::Operation(GuardedSqlError::StatementNotAllowed)) => {
+                Err("statement not allowed".to_owned())
+            }
+            Err(SqlCipherTransactionError::Operation(GuardedSqlError::Provider(error))) => {
+                Err(error.to_string())
+            }
+            Err(other) => Err(format!("{other:?}")),
         }
     }
 
@@ -483,8 +611,9 @@ mod tests {
             identity.key_generation(),
             KeyPurpose::StructuredStore,
         );
+        let db = TempDb::new();
         let mut store = ProofStore::open(
-            ":memory:",
+            db.0.as_path(),
             lease.keyed_handle_lease(),
             context,
             &OwnedKeyMaterial::from_bytes([0x52; KEY_MATERIAL_BYTES]),
@@ -498,6 +627,14 @@ mod tests {
         let manifest = result.manifest.expect("manifest");
         let text = result.brief.expect("brief").into_bytes();
         store.advance_epoch(manifest.validity_epoch).expect("epoch");
+        store
+            .set_rights_grant(&manifest.rights_grant_version)
+            .expect("rights");
+        for document in &corpus.documents {
+            store
+                .put_source(&document.doc_id, document.text.as_bytes())
+                .expect("source");
+        }
         store.commit(&manifest, &text).expect("commit");
         store.put_source("s1", b"original").expect("source");
         store.put_source("s2", b"newer").expect("source");
@@ -517,12 +654,16 @@ mod tests {
             "DELETE FROM sources",
             "UPDATE amendments SET reason = 'X'",
             "DELETE FROM amendments",
-            "DELETE FROM validity",
-            "UPDATE validity SET epoch = 1",
+            "INSERT OR REPLACE INTO answers (proof_id, final_text, final_text_digest, manifest) SELECT proof_id, x'00', final_text_digest, manifest FROM answers",
+            "INSERT OR REPLACE INTO sources (source_id, digest, bytes) VALUES ('s1', 'x', x'00')",
+            "INSERT OR REPLACE INTO amendments (seq, prior_id, superseding_id, reason) VALUES (1, 'x', 'y', 'z')",
+            "DELETE FROM authority",
+            "UPDATE authority SET epoch = 1",
+            "INSERT OR REPLACE INTO authority (id, epoch, rights_grant) VALUES (1, 1, 'x')",
         ] {
             let error = attempt_raw_sql(&mut store, sql).expect_err(sql);
             assert!(
-                error.contains("append-only") || error.contains("must increase"),
+                error.contains("append-only") || error.contains("must not decrease"),
                 "{sql}: {error}"
             );
         }
@@ -534,5 +675,239 @@ mod tests {
             store.source("s1").expect("source").as_deref(),
             Some(&b"original"[..])
         );
+    }
+
+    #[test]
+    fn guarded_transaction_refuses_everything_but_row_statements() {
+        let identity = VaultLeaseIdentity::new(
+            VaultId::from_bytes([0x41; VAULT_ID_BYTES]),
+            KeyGeneration::new(7).expect("generation"),
+        );
+        let lease = VaultLease::new(identity);
+        let context = KeyDerivationContext::new(
+            identity.vault_id(),
+            identity.key_generation(),
+            KeyPurpose::StructuredStore,
+        );
+        let db = TempDb::new();
+        let mut store = ProofStore::open(
+            db.0.as_path(),
+            lease.keyed_handle_lease(),
+            context,
+            &OwnedKeyMaterial::from_bytes([0x52; KEY_MATERIAL_BYTES]),
+        )
+        .expect("store opens");
+        for sql in [
+            "SELECT 1",
+            "DROP TRIGGER sources_no_update",
+            "DROP TABLE sources",
+            "ALTER TABLE sources ADD COLUMN x",
+            "PRAGMA rekey = 'x'",
+            "PRAGMA writable_schema = ON",
+            "PRAGMA journal_mode = MEMORY",
+            "ATTACH DATABASE 'x' AS y",
+            "COMMIT",
+            "VACUUM",
+            "REPLACE INTO sources (source_id, digest, bytes) VALUES ('a', 'b', x'00')",
+            "",
+        ] {
+            assert_eq!(
+                attempt_raw_sql(&mut store, sql).expect_err(sql),
+                "statement not allowed",
+                "{sql}"
+            );
+        }
+        let batched = attempt_raw_sql(&mut store, "DELETE FROM sources; DROP TABLE sources");
+        assert!(
+            batched.is_err(),
+            "several statements in one call are refused"
+        );
+        store
+            .put_source("still-here", b"x")
+            .expect("table survives");
+    }
+
+    #[test]
+    fn a_failed_operation_rolls_back_every_write() {
+        let identity = VaultLeaseIdentity::new(
+            VaultId::from_bytes([0x41; VAULT_ID_BYTES]),
+            KeyGeneration::new(7).expect("generation"),
+        );
+        let lease = VaultLease::new(identity);
+        let context = KeyDerivationContext::new(
+            identity.vault_id(),
+            identity.key_generation(),
+            KeyPurpose::StructuredStore,
+        );
+        let db = TempDb::new();
+        let mut store = ProofStore::open(
+            db.0.as_path(),
+            lease.keyed_handle_lease(),
+            context,
+            &OwnedKeyMaterial::from_bytes([0x52; KEY_MATERIAL_BYTES]),
+        )
+        .expect("store opens");
+        let result = store
+            .handle
+            .immediate_transaction(|tx| -> Result<(), StoreError> {
+                tx.execute(
+                    "INSERT INTO audit_events (proof_id, event) VALUES ('p', 'COMMITTED')",
+                    [],
+                )?;
+                Err(StoreError::ConflictingProof)
+            });
+        assert!(matches!(
+            result,
+            Err(SqlCipherTransactionError::Operation(
+                StoreError::ConflictingProof
+            ))
+        ));
+        assert!(store.audit_events("p").expect("audit").is_empty());
+    }
+
+    fn temp_store() -> (TempDb, VaultLease, ProofStore) {
+        let identity = VaultLeaseIdentity::new(
+            VaultId::from_bytes([0x41; VAULT_ID_BYTES]),
+            KeyGeneration::new(7).expect("generation"),
+        );
+        let lease = VaultLease::new(identity);
+        let db = TempDb::new();
+        let store = reopen(&db, &lease);
+        (db, lease, store)
+    }
+
+    fn reopen(db: &TempDb, lease: &VaultLease) -> ProofStore {
+        let context = KeyDerivationContext::new(
+            VaultId::from_bytes([0x41; VAULT_ID_BYTES]),
+            KeyGeneration::new(7).expect("generation"),
+            KeyPurpose::StructuredStore,
+        );
+        ProofStore::open(
+            db.0.as_path(),
+            lease.keyed_handle_lease(),
+            context,
+            &OwnedKeyMaterial::from_bytes([0x52; KEY_MATERIAL_BYTES]),
+        )
+        .expect("store opens")
+    }
+
+    fn fixture_answer(store: &mut ProofStore) -> (AnswerProofManifest, Vec<u8>) {
+        let corpus = load_corpus(FIXTURE, &DigestSha256::of(FIXTURE)).expect("fixture");
+        let result = ask(
+            "Does veltrixamine help adults with glimmer syndrome?",
+            &corpus,
+        );
+        let manifest = result.manifest.expect("manifest");
+        store.advance_epoch(manifest.validity_epoch).expect("epoch");
+        store
+            .set_rights_grant(&manifest.rights_grant_version)
+            .expect("rights");
+        for document in &corpus.documents {
+            store
+                .put_source(&document.doc_id, document.text.as_bytes())
+                .expect("source");
+        }
+        (manifest, result.brief.expect("brief").into_bytes())
+    }
+
+    #[test]
+    fn durable_settings_are_on_after_open() {
+        let (_db, _lease, mut store) = temp_store();
+        assert!(matches!(store.handle.durable_settings_hold(), Ok(true)));
+    }
+
+    #[test]
+    fn a_failed_audit_write_leaves_no_answer_behind() {
+        let (_db, _lease, mut store) = temp_store();
+        let (manifest, text) = fixture_answer(&mut store);
+        store
+            .handle
+            .install_schema(
+                "CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events
+                 BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END;",
+            )
+            .expect("trigger");
+        assert!(matches!(
+            store.commit(&manifest, &text),
+            Err(StoreError::Provider(_))
+        ));
+        store
+            .handle
+            .install_schema("DROP TRIGGER fail_audit;")
+            .expect("drop");
+        assert!(matches!(
+            store.read(&manifest.proof_id),
+            Err(StoreError::UnknownProof)
+        ));
+        store.commit(&manifest, &text).expect("clean retry");
+    }
+
+    #[test]
+    fn a_transaction_holds_the_write_lock_before_its_first_write() {
+        let (db, lease, mut first) = temp_store();
+        let mut second = reopen(&db, &lease);
+        let blocked = first
+            .handle
+            .immediate_transaction(|_tx| -> Result<bool, StoreError> {
+                Ok(second.put_source("s", b"x").is_err())
+            })
+            .map_err(|_| "transaction failed")
+            .expect("transaction");
+        assert!(
+            blocked,
+            "another connection must not write inside a transaction"
+        );
+    }
+
+    #[test]
+    fn read_refuses_text_that_no_longer_matches_its_digest() {
+        let (_db, _lease, mut store) = temp_store();
+        let (manifest, text) = fixture_answer(&mut store);
+        store.commit(&manifest, &text).expect("commit");
+        store
+            .handle
+            .install_schema(
+                "DROP TRIGGER answers_no_update; UPDATE answers SET final_text = x'00';",
+            )
+            .expect("simulated corruption");
+        assert!(matches!(
+            store.read(&manifest.proof_id),
+            Err(StoreError::Corrupt(_))
+        ));
+    }
+
+    #[test]
+    fn epochs_outside_the_stored_range_are_refused() {
+        let (_db, _lease, mut store) = temp_store();
+        assert!(matches!(
+            store.advance_epoch(u64::MAX),
+            Err(StoreError::Corrupt(_))
+        ));
+        assert_eq!(store.epoch().expect("epoch"), 0);
+        store
+            .handle
+            .install_schema("DROP TRIGGER authority_monotonic; UPDATE authority SET epoch = -1;")
+            .expect("simulated corruption");
+        assert!(matches!(store.epoch(), Err(StoreError::Corrupt(_))));
+    }
+
+    #[test]
+    fn read_refuses_a_manifest_that_does_not_bind_the_stored_text() {
+        let (_db, _lease, mut store) = temp_store();
+        let (manifest, text) = fixture_answer(&mut store);
+        store.commit(&manifest, &text).expect("commit");
+        // The digest below is SHA-256 of the single zero byte, so text and column agree.
+        store
+            .handle
+            .install_schema(
+                "DROP TRIGGER answers_no_update;
+                 UPDATE answers SET final_text = x'00', final_text_digest =
+                 '6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d';",
+            )
+            .expect("simulated corruption");
+        assert!(matches!(
+            store.read(&manifest.proof_id),
+            Err(StoreError::Corrupt(reason)) if reason.contains("manifest")
+        ));
     }
 }

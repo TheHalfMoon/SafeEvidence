@@ -387,35 +387,114 @@ impl SqlCipherDatabaseHandle {
 pub enum SqlCipherTransactionError<E> {
     /// The vault lease rejected the operation, so nothing ran.
     Access(KeyedHandleError),
-    /// The provider failed. A failed commit leaves the outcome for the caller to reconcile.
+    /// The provider failed before commit, so the transaction rolled back.
     Provider(rusqlite::Error),
     /// The operation returned an error, so the transaction rolled back.
     Operation(E),
+    /// The commit itself failed. Whether it became durable is unknown until reconciled.
+    CommitUnknown(rusqlite::Error),
 }
 
-/// SafeEvidence addition to the donor's handle: one narrow route to run SQL. The connection stays
-/// private, and each call holds the lease permit for its whole transaction.
+/// Failure of a statement run through [`GuardedTransaction`].
+#[derive(Debug)]
+pub enum GuardedSqlError {
+    /// Only single SELECT, INSERT, UPDATE and DELETE statements are allowed.
+    StatementNotAllowed,
+    Provider(rusqlite::Error),
+}
+
+impl From<rusqlite::Error> for GuardedSqlError {
+    fn from(error: rusqlite::Error) -> Self {
+        Self::Provider(error)
+    }
+}
+
+/// A transaction limited to row reads and writes, using compile-time statement text. It offers no
+/// route to PRAGMA, ATTACH, schema changes or transaction control, so stores cannot weaken the
+/// connection by mistake. This guards against bugs, not malicious code in this process: a SELECT
+/// can still call any SQL function the provider registers.
+pub struct GuardedTransaction<'a> {
+    transaction: &'a rusqlite::Transaction<'a>,
+}
+
+/// SQLite reports full synchronous as 2 and an enabled flag as 1.
+fn settings_are_durable(journal: &str, synchronous: i64, recursive_triggers: i64) -> bool {
+    journal.eq_ignore_ascii_case("wal") && synchronous == 2 && recursive_triggers == 1
+}
+
+fn statement_allowed(sql: &str) -> bool {
+    let first = sql.split_whitespace().next().unwrap_or_default();
+    ["INSERT", "UPDATE", "DELETE"]
+        .iter()
+        .any(|keyword| first.eq_ignore_ascii_case(keyword))
+}
+
+impl GuardedTransaction<'_> {
+    /// Runs one INSERT, UPDATE or DELETE. The provider refuses several statements in one string.
+    ///
+    /// # Errors
+    /// Refuses other statement kinds, and returns provider failures.
+    pub fn execute<P: rusqlite::Params>(
+        &self,
+        sql: &'static str,
+        params: P,
+    ) -> Result<usize, GuardedSqlError> {
+        if !statement_allowed(sql) {
+            return Err(GuardedSqlError::StatementNotAllowed);
+        }
+        Ok(self.transaction.execute(sql, params)?)
+    }
+
+    /// Runs one query, mapping every row.
+    ///
+    /// # Errors
+    /// Refuses anything but SELECT, and returns provider failures.
+    pub fn query<T, P, F>(
+        &self,
+        sql: &'static str,
+        params: P,
+        map: F,
+    ) -> Result<Vec<T>, GuardedSqlError>
+    where
+        P: rusqlite::Params,
+        F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+    {
+        let first = sql.split_whitespace().next().unwrap_or_default();
+        if !first.eq_ignore_ascii_case("SELECT") {
+            return Err(GuardedSqlError::StatementNotAllowed);
+        }
+        let mut statement = self.transaction.prepare(sql)?;
+        let rows = statement.query_map(params, map)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<T>>>()?)
+    }
+}
+
+/// SafeEvidence addition to the donor's handle: the narrow routes a store needs. The connection
+/// stays private, and each call holds the lease permit for its whole duration.
 impl SqlCipherDatabaseHandle {
     /// Runs `operation` in one immediate transaction. An `Err` rolls it back; `Ok` commits.
     ///
     /// # Errors
-    /// Returns the lease, provider or operation failure.
+    /// Returns the lease, provider, operation or commit failure.
     pub fn immediate_transaction<T, E, F>(
         &mut self,
         operation: F,
     ) -> Result<T, SqlCipherTransactionError<E>>
     where
-        F: FnOnce(&rusqlite::Transaction<'_>) -> Result<T, E>,
+        F: FnOnce(&GuardedTransaction<'_>) -> Result<T, E>,
     {
         let result = self.inner.write(|backend| {
             let transaction = backend
                 ._connection
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(SqlCipherTransactionError::Provider)?;
-            let value = operation(&transaction).map_err(SqlCipherTransactionError::Operation)?;
+            let value = operation(&GuardedTransaction {
+                transaction: &transaction,
+            })
+            .map_err(SqlCipherTransactionError::Operation)?;
             transaction
                 .commit()
-                .map_err(SqlCipherTransactionError::Provider)?;
+                .map_err(SqlCipherTransactionError::CommitUnknown)?;
             Ok(value)
         });
         match result {
@@ -425,19 +504,85 @@ impl SqlCipherDatabaseHandle {
         }
     }
 
-    /// Requires the strongest SQLite durability setting on this connection.
+    /// Applies a compile-time schema in one transaction. `'static` keeps runtime text out of it.
+    ///
+    /// # Errors
+    /// Returns the lease, provider or commit failure.
+    pub fn install_schema(
+        &mut self,
+        schema: &'static str,
+    ) -> Result<(), SqlCipherTransactionError<std::convert::Infallible>> {
+        let result = self.inner.write(|backend| {
+            let transaction = backend
+                ._connection
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(SqlCipherTransactionError::Provider)?;
+            transaction
+                .execute_batch(schema)
+                .map_err(SqlCipherTransactionError::Provider)?;
+            transaction
+                .commit()
+                .map_err(SqlCipherTransactionError::CommitUnknown)
+        });
+        match result {
+            Ok(()) => Ok(()),
+            Err(KeyedIoError::Access(error)) => Err(SqlCipherTransactionError::Access(error)),
+            Err(KeyedIoError::Backend(error)) => Err(error),
+        }
+    }
+
+    /// Applies the settings a durable store needs: WAL, full sync, and recursive triggers, without
+    /// which `INSERT OR REPLACE` would skip delete triggers. Confirm with
+    /// [`Self::durable_settings_hold`].
     ///
     /// # Errors
     /// Returns the lease or provider failure.
-    pub fn require_full_synchronous(&mut self) -> Result<(), SqlCipherTransactionError<()>> {
+    pub fn configure_durable_store(
+        &mut self,
+    ) -> Result<(), SqlCipherTransactionError<std::convert::Infallible>> {
         let result = self.inner.write(|backend| {
-            backend
-                ._connection
-                .execute_batch("PRAGMA synchronous = FULL;")
+            let connection = &backend._connection;
+            connection
+                .query_row("PRAGMA journal_mode = WAL;", [], |row| {
+                    row.get::<_, String>(0)
+                })
+                .map_err(SqlCipherTransactionError::Provider)?;
+            connection
+                .execute_batch("PRAGMA synchronous = FULL; PRAGMA recursive_triggers = ON;")
                 .map_err(SqlCipherTransactionError::Provider)
         });
         match result {
             Ok(()) => Ok(()),
+            Err(KeyedIoError::Access(error)) => Err(SqlCipherTransactionError::Access(error)),
+            Err(KeyedIoError::Backend(error)) => Err(error),
+        }
+    }
+
+    /// Reads back whether the connection is on WAL, full sync and recursive triggers.
+    ///
+    /// # Errors
+    /// Returns the lease or provider failure.
+    pub fn durable_settings_hold(
+        &mut self,
+    ) -> Result<bool, SqlCipherTransactionError<std::convert::Infallible>> {
+        let result = self.inner.write(|backend| {
+            let connection = &backend._connection;
+            let journal: String = connection
+                .query_row("PRAGMA journal_mode;", [], |row| row.get(0))
+                .map_err(SqlCipherTransactionError::Provider)?;
+            let read = |pragma: &str| {
+                connection
+                    .query_row(pragma, [], |row| row.get::<_, i64>(0))
+                    .map_err(SqlCipherTransactionError::Provider)
+            };
+            Ok(settings_are_durable(
+                &journal,
+                read("PRAGMA synchronous;")?,
+                read("PRAGMA recursive_triggers;")?,
+            ))
+        });
+        match result {
+            Ok(value) => Ok(value),
             Err(KeyedIoError::Access(error)) => Err(SqlCipherTransactionError::Access(error)),
             Err(KeyedIoError::Backend(error)) => Err(error),
         }
@@ -1859,5 +2004,22 @@ mod tests {
         drop(target_handle);
         remove_database_files(&source_path);
         remove_database_files(&target_path);
+    }
+}
+
+#[cfg(test)]
+mod durable_settings_tests {
+    use super::settings_are_durable;
+
+    #[test]
+    fn every_setting_must_hold() {
+        assert!(settings_are_durable("wal", 2, 1));
+        assert!(settings_are_durable("WAL", 2, 1));
+        assert!(!settings_are_durable("delete", 2, 1));
+        assert!(!settings_are_durable("memory", 2, 1));
+        assert!(!settings_are_durable("wal", 1, 1));
+        assert!(!settings_are_durable("wal", 0, 1));
+        assert!(!settings_are_durable("wal", 3, 1));
+        assert!(!settings_are_durable("wal", 2, 0));
     }
 }

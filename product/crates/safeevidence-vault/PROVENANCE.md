@@ -24,8 +24,9 @@ Admission `ADM-0003` (T03) in `docs/evidence/source_admissions.json`.
   `forbid(unsafe_code)`, and is listed in the row but lies outside the 37-file commitment. One synthetic
   test marker was reworded.
 - Not carried: native keystore tests and probes, which are not run here.
-- SafeEvidence addition: `immediate_transaction` and `require_full_synchronous` on the database handle in
-  `src/vault_sqlcipher.rs`, the narrow route `safeevidence-proofstore` uses. The raw connection stays private.
+- SafeEvidence addition in `src/vault_sqlcipher.rs`: `immediate_transaction` with `GuardedTransaction`, `install_schema` and
+  `configure_durable_store`, the routes `safeevidence-proofstore` uses. They limit statements to guard against bugs, not malicious
+  in-process code.
 - One donor test is corrected: `staged_byte_identity_mismatch_fails_before_sqlcipher_acceptance` wrote a fixed `0xff`
   over a random salt byte, so it failed about 1 run in 256 when the byte already held that value. It now inverts the byte.
 - **TA-05 is not claimed.** Disk-full, restore-to-clean, key-loss and WAL/temp residue campaigns against
