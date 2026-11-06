@@ -256,8 +256,9 @@ fn retrieve(connection: &Connection, terms: &[&str]) -> rusqlite::Result<Vec<Str
         .iter()
         .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
         .collect();
-    let mut statement = connection
-        .prepare("SELECT doc_id FROM evidence WHERE evidence MATCH ?1 ORDER BY bm25(evidence)")?;
+    let mut statement = connection.prepare(
+        "SELECT doc_id FROM evidence WHERE evidence MATCH ?1 ORDER BY bm25(evidence), doc_id",
+    )?;
     let rows = statement.query_map(params![quoted.join(" AND ")], |row| row.get(0))?;
     rows.collect()
 }

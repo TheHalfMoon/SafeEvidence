@@ -20,61 +20,62 @@ use safeevidence_vault::vault_sqlcipher::{
     SqlCipherTransactionError, open_sqlcipher_database,
 };
 
-const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS authority (
-    id INTEGER PRIMARY KEY CHECK (id = 1), epoch INTEGER NOT NULL, rights_grant TEXT NOT NULL);
-INSERT OR IGNORE INTO authority (id, epoch, rights_grant) VALUES (1, 0, '');
-CREATE TABLE IF NOT EXISTS answers (
+const SCHEMA: &[&str] = &[
+    "CREATE TABLE authority (
+    id INTEGER PRIMARY KEY CHECK (id = 1), epoch INTEGER NOT NULL, rights_grant TEXT NOT NULL)",
+    "INSERT INTO authority (id, epoch, rights_grant) VALUES (1, 0, '')",
+    "CREATE TABLE answers (
     proof_id TEXT PRIMARY KEY, final_text BLOB NOT NULL, final_text_digest TEXT NOT NULL,
-    manifest TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS audit_events (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT, proof_id TEXT NOT NULL, event TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS invalidations (
-    proof_id TEXT PRIMARY KEY REFERENCES answers(proof_id), reason TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS sources (
-    source_id TEXT PRIMARY KEY, digest TEXT NOT NULL, bytes BLOB NOT NULL);
-CREATE TABLE IF NOT EXISTS amendments (
+    manifest TEXT NOT NULL)",
+    "CREATE TABLE audit_events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, proof_id TEXT NOT NULL, event TEXT NOT NULL)",
+    "CREATE TABLE invalidations (
+    proof_id TEXT PRIMARY KEY REFERENCES answers(proof_id), reason TEXT NOT NULL)",
+    "CREATE TABLE sources (
+    source_id TEXT PRIMARY KEY, digest TEXT NOT NULL, bytes BLOB NOT NULL)",
+    "CREATE TABLE amendments (
     seq INTEGER PRIMARY KEY AUTOINCREMENT, prior_id TEXT NOT NULL, superseding_id TEXT NOT NULL,
-    reason TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS rights_grants (version TEXT PRIMARY KEY);
-CREATE TABLE IF NOT EXISTS store_events (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT NOT NULL, subject TEXT NOT NULL);
-CREATE TRIGGER IF NOT EXISTS authority_monotonic BEFORE UPDATE ON authority
-    WHEN NEW.epoch < OLD.epoch BEGIN SELECT RAISE(ABORT, 'validity epoch must not decrease'); END;
-CREATE TRIGGER IF NOT EXISTS authority_keep BEFORE DELETE ON authority
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS answers_no_update BEFORE UPDATE ON answers
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS answers_no_delete BEFORE DELETE ON answers
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS audit_events_no_update BEFORE UPDATE ON audit_events
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS audit_events_no_delete BEFORE DELETE ON audit_events
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS invalidations_no_update BEFORE UPDATE ON invalidations
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS invalidations_no_delete BEFORE DELETE ON invalidations
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS sources_no_update BEFORE UPDATE ON sources
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS sources_no_delete BEFORE DELETE ON sources
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS amendments_no_update BEFORE UPDATE ON amendments
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS amendments_no_delete BEFORE DELETE ON amendments
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS rights_grants_no_update BEFORE UPDATE ON rights_grants
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS rights_grants_no_delete BEFORE DELETE ON rights_grants
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS store_events_no_update BEFORE UPDATE ON store_events
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-CREATE TRIGGER IF NOT EXISTS store_events_no_delete BEFORE DELETE ON store_events
-    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-";
+    reason TEXT NOT NULL)",
+    "CREATE TABLE rights_grants (version TEXT PRIMARY KEY)",
+    "CREATE TABLE store_events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT NOT NULL, subject TEXT NOT NULL)",
+    "CREATE TRIGGER authority_monotonic BEFORE UPDATE ON authority
+    WHEN NEW.epoch < OLD.epoch BEGIN SELECT RAISE(ABORT, 'validity epoch must not decrease'); END",
+    "CREATE TRIGGER authority_keep BEFORE DELETE ON authority
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER answers_no_update BEFORE UPDATE ON answers
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER answers_no_delete BEFORE DELETE ON answers
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON audit_events
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER audit_events_no_delete BEFORE DELETE ON audit_events
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER invalidations_no_update BEFORE UPDATE ON invalidations
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER invalidations_no_delete BEFORE DELETE ON invalidations
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER sources_no_update BEFORE UPDATE ON sources
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER sources_no_delete BEFORE DELETE ON sources
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER amendments_no_update BEFORE UPDATE ON amendments
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER amendments_no_delete BEFORE DELETE ON amendments
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER rights_grants_no_update BEFORE UPDATE ON rights_grants
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER rights_grants_no_delete BEFORE DELETE ON rights_grants
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER store_events_no_update BEFORE UPDATE ON store_events
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER store_events_no_delete BEFORE DELETE ON store_events
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+];
 
 /// SHA-256 of the stored names and text of every schema object. A store whose triggers or tables
-/// differ is refused on open. Change this only together with `SCHEMA`.
+/// differ is refused before anything is written to it. There are no migrations yet. Change this
+/// only together with `SCHEMA`.
 const SCHEMA_OBJECTS_SHA256: &str =
     "7e67770f3aeccf9bc4387ba0203b31698303ce9289636c9a4b559bb06a545918";
 
@@ -91,7 +92,7 @@ pub enum StoreError {
     SchemaMismatch {
         found: String,
     },
-    /// Another connection holds the write lock. Nothing was written; retry.
+    /// SQLite reported the database busy. Nothing was written; retry.
     Busy,
     /// The commit outcome is unknown. Retry with the same proof to reconcile.
     CommitUnknown(rusqlite::Error),
@@ -275,8 +276,36 @@ fn standing(
     }
 }
 
+/// The digest of every schema object, or `None` for an empty database.
+fn schema_objects_digest(
+    handle: &mut SqlCipherDatabaseHandle,
+) -> Result<Option<String>, StoreError> {
+    flatten(
+        handle.deferred_transaction(|tx| -> Result<Option<String>, StoreError> {
+            let objects = tx.query(
+                "SELECT name, sql FROM sqlite_master
+                 WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name",
+                [],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )?;
+            if objects.is_empty() {
+                return Ok(None);
+            }
+            let mut text = String::new();
+            for (name, sql) in objects {
+                text.push_str(&name);
+                text.push('\0');
+                text.push_str(&sql);
+                text.push('\0');
+            }
+            Ok(Some(DigestSha256::of(text.as_bytes()).to_hex()))
+        }),
+    )
+}
+
 impl ProofStore {
-    /// Opens the keyed vault database, requires durable settings and installs the schema.
+    /// Opens the keyed vault database. It verifies an existing schema before writing anything, or
+    /// installs the schema into an empty database, and requires durable settings.
     ///
     /// # Errors
     /// Fails on a wrong key, lease or provider failure, settings that did not take, or a stored
@@ -289,31 +318,25 @@ impl ProofStore {
     ) -> Result<Self, StoreError> {
         let mut handle =
             open_sqlcipher_database(path, lease, context, vrk).map_err(StoreError::Open)?;
+        let existing = schema_objects_digest(&mut handle)?;
+        if existing
+            .as_deref()
+            .is_some_and(|found| found != SCHEMA_OBJECTS_SHA256)
+        {
+            return Err(StoreError::SchemaMismatch {
+                found: existing.unwrap_or_default(),
+            });
+        }
         flatten_setup(handle.configure_durable_store())?;
         if !flatten_setup(handle.durable_settings_hold())? {
             return Err(StoreError::NotDurable);
         }
-        flatten_setup(handle.install_schema(SCHEMA))?;
-        let found = flatten(
-            handle.deferred_transaction(|tx| -> Result<String, StoreError> {
-                let objects = tx.query(
-                    "SELECT name, sql FROM sqlite_master
-                 WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY name",
-                    [],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-                )?;
-                let mut text = String::new();
-                for (name, sql) in objects {
-                    text.push_str(&name);
-                    text.push('\0');
-                    text.push_str(&sql);
-                    text.push('\0');
-                }
-                Ok(DigestSha256::of(text.as_bytes()).to_hex())
-            }),
-        )?;
-        if found != SCHEMA_OBJECTS_SHA256 {
-            return Err(StoreError::SchemaMismatch { found });
+        if existing.is_none() {
+            flatten_setup(handle.install_schema(SCHEMA))?;
+            let found = schema_objects_digest(&mut handle)?.unwrap_or_default();
+            if found != SCHEMA_OBJECTS_SHA256 {
+                return Err(StoreError::SchemaMismatch { found });
+            }
         }
         Ok(Self { handle })
     }
@@ -956,10 +979,8 @@ mod tests {
         let (manifest, text) = fixture_answer(&mut store);
         store
             .handle
-            .install_schema(
-                "CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events
-                 BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END;",
-            )
+            .install_schema(&["CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events
+                 BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END"])
             .expect("trigger");
         assert!(matches!(
             store.commit(&manifest, &text),
@@ -967,7 +988,7 @@ mod tests {
         ));
         store
             .handle
-            .install_schema("DROP TRIGGER fail_audit;")
+            .install_schema(&["DROP TRIGGER fail_audit"])
             .expect("drop");
         assert!(matches!(
             store.read(&manifest.proof_id),
@@ -1003,9 +1024,10 @@ mod tests {
         store.commit(&manifest, &text).expect("commit");
         store
             .handle
-            .install_schema(
-                "DROP TRIGGER answers_no_update; UPDATE answers SET final_text = x'00';",
-            )
+            .install_schema(&[
+                "DROP TRIGGER answers_no_update",
+                "UPDATE answers SET final_text = x'00'",
+            ])
             .expect("simulated corruption");
         assert!(matches!(
             store.read(&manifest.proof_id),
@@ -1023,7 +1045,10 @@ mod tests {
         assert_eq!(store.epoch().expect("epoch"), 0);
         store
             .handle
-            .install_schema("DROP TRIGGER authority_monotonic; UPDATE authority SET epoch = -1;")
+            .install_schema(&[
+                "DROP TRIGGER authority_monotonic",
+                "UPDATE authority SET epoch = -1",
+            ])
             .expect("simulated corruption");
         assert!(matches!(store.epoch(), Err(StoreError::Corrupt(_))));
     }
@@ -1036,11 +1061,11 @@ mod tests {
         // The digest below is SHA-256 of the single zero byte, so text and column agree.
         store
             .handle
-            .install_schema(
-                "DROP TRIGGER answers_no_update;
-                 UPDATE answers SET final_text = x'00', final_text_digest =
-                 '6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d';",
-            )
+            .install_schema(&[
+                "DROP TRIGGER answers_no_update",
+                "UPDATE answers SET final_text = x'00', final_text_digest =
+                 '6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d'",
+            ])
             .expect("simulated corruption");
         assert!(matches!(
             store.read(&manifest.proof_id),
@@ -1067,11 +1092,11 @@ mod tests {
         let (db, lease, mut store) = temp_store();
         store
             .handle
-            .install_schema(
-                "DROP TRIGGER answers_no_update;
-                 CREATE TRIGGER answers_no_update BEFORE UPDATE ON answers WHEN 0
-                     BEGIN SELECT RAISE(ABORT, 'append-only'); END;",
-            )
+            .install_schema(&[
+                "DROP TRIGGER answers_no_update",
+                "CREATE TRIGGER answers_no_update BEFORE UPDATE ON answers WHEN 0
+                     BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+            ])
             .expect("weaken");
         drop(store);
         assert!(matches!(
@@ -1101,10 +1126,32 @@ mod tests {
         )
         .expect("raw handle");
         handle
-            .install_schema("CREATE TABLE answers (other TEXT);")
+            .install_schema(&["CREATE TABLE answers (other TEXT)"])
             .expect("foreign table");
         drop(handle);
-        assert!(try_reopen(&db, &lease).is_err());
+        assert!(matches!(
+            try_reopen(&db, &lease),
+            Err(StoreError::SchemaMismatch { .. })
+        ));
+        let mut handle = open_sqlcipher_database(
+            db.0.as_path(),
+            lease.keyed_handle_lease(),
+            KeyDerivationContext::new(
+                identity.vault_id(),
+                identity.key_generation(),
+                KeyPurpose::StructuredStore,
+            ),
+            &OwnedKeyMaterial::from_bytes([0x52; KEY_MATERIAL_BYTES]),
+        )
+        .expect("raw handle");
+        let objects = handle
+            .immediate_transaction(|tx| {
+                tx.query("SELECT count(*) FROM sqlite_master", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+            })
+            .expect("count");
+        assert_eq!(objects, [1], "a refused open writes nothing");
     }
 
     #[test]
@@ -1135,5 +1182,42 @@ mod tests {
                 GuardedSqlError::StatementNotAllowed
             ))
         ));
+    }
+
+    fn assert_refused_on_reopen(statements: &'static [&'static str]) {
+        let (db, lease, mut store) = temp_store();
+        store.handle.install_schema(statements).expect("change");
+        drop(store);
+        assert!(
+            matches!(
+                try_reopen(&db, &lease),
+                Err(StoreError::SchemaMismatch { .. })
+            ),
+            "{statements:?}"
+        );
+    }
+
+    #[test]
+    fn open_refuses_missing_objects_instead_of_recreating_them() {
+        assert_refused_on_reopen(&["DROP TABLE rights_grants"]);
+        assert_refused_on_reopen(&["DROP TABLE invalidations"]);
+        assert_refused_on_reopen(&["DROP TRIGGER answers_no_update"]);
+    }
+
+    #[test]
+    fn open_refuses_an_object_named_to_look_internal() {
+        assert_refused_on_reopen(&["CREATE TRIGGER sqlitex_gag BEFORE INSERT ON audit_events
+                 BEGIN SELECT RAISE(IGNORE); END"]);
+    }
+
+    #[test]
+    fn a_store_opens_while_another_connection_writes() {
+        let (db, lease, mut writer) = temp_store();
+        let result = writer
+            .handle
+            .immediate_transaction(|_tx| -> Result<u64, StoreError> {
+                try_reopen(&db, &lease)?.epoch()
+            });
+        assert!(matches!(result, Ok(0)), "{result:?}");
     }
 }
