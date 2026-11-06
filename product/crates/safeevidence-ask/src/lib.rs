@@ -256,8 +256,9 @@ fn retrieve(connection: &Connection, terms: &[&str]) -> rusqlite::Result<Vec<Str
         .iter()
         .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
         .collect();
-    let mut statement = connection
-        .prepare("SELECT doc_id FROM evidence WHERE evidence MATCH ?1 ORDER BY bm25(evidence)")?;
+    let mut statement = connection.prepare(
+        "SELECT doc_id FROM evidence WHERE evidence MATCH ?1 ORDER BY bm25(evidence), doc_id",
+    )?;
     let rows = statement.query_map(params![quoted.join(" AND ")], |row| row.get(0))?;
     rows.collect()
 }
@@ -752,8 +753,8 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
 
     let question_digest = DigestSha256::of(normalized(text).as_bytes());
     let text_digest = DigestSha256::of(brief.as_bytes());
-    let manifest = AnswerProofManifest {
-        proof_id: format!("vs1a-{}-{}", question_digest.to_hex(), text_digest.to_hex()),
+    let mut manifest = AnswerProofManifest {
+        proof_id: String::new(),
         question_snapshot_digest: question_digest,
         final_text_digest: text_digest,
         claims: claims
@@ -791,6 +792,7 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         verified_at_utc: "fixture-time".to_owned(),
         state: ProofState::VerifiedUncommitted,
     };
+    manifest.proof_id = derive_proof_id(&manifest);
     if !commit_defects(&manifest).is_empty() {
         return refuse(
             TerminalOutcome::Blocked,
@@ -807,4 +809,15 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         excluded,
         funnel,
     }
+}
+
+/// Covers everything verified except the clock, so re-verifying at a later epoch or under another
+/// grant is a new proof, and retrying the same one is not. Empty on failure, which commit refuses.
+fn derive_proof_id(manifest: &AnswerProofManifest) -> String {
+    let mut basis = manifest.clone();
+    basis.proof_id.clear();
+    basis.verified_at_utc.clear();
+    serde_json::to_vec(&basis)
+        .map(|encoded| format!("vs1a-{}", DigestSha256::of(&encoded).to_hex()))
+        .unwrap_or_default()
 }

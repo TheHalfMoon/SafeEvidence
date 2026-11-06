@@ -696,3 +696,13 @@ fn population_missing_keeps_its_own_reason_beside_other_rules() {
     assert_eq!(result.outcome, TerminalOutcome::AskMore);
     assert_eq!(result.reason, ReasonCode::MissingCriticalContext);
 }
+
+/// A digest of the serialized manifest, so a change here means retries of stored proofs conflict.
+#[test]
+fn proof_identity_is_pinned_for_the_fixture() {
+    let manifest = ask(ADULT, &corpus()).manifest.unwrap();
+    assert_eq!(
+        manifest.proof_id,
+        "vs1a-23b55df9e5d6e7e76c991aa9233bc6d853d8bc9059f1cab62c21cedaad4b74fe"
+    );
+}

@@ -382,6 +382,325 @@ impl SqlCipherDatabaseHandle {
     }
 }
 
+/// Failure of one lease-guarded database transaction.
+#[derive(Debug)]
+pub enum SqlCipherTransactionError<E> {
+    /// The vault lease rejected the operation, so nothing ran.
+    Access(KeyedHandleError),
+    /// The provider failed before commit, so the transaction rolled back.
+    Provider(rusqlite::Error),
+    /// The operation returned an error, so the transaction rolled back.
+    Operation(E),
+    /// The commit itself failed. Whether it became durable is unknown until reconciled.
+    CommitUnknown(rusqlite::Error),
+    /// SQLite ended the transaction early, as a conflict clause, `RAISE(ROLLBACK)` or a full disk
+    /// can, and the operation still returned `Ok`. Its earlier writes were rolled back, and later
+    /// ones were refused.
+    TransactionLost,
+}
+
+/// Failure of a statement run through [`GuardedTransaction`].
+#[derive(Debug)]
+pub enum GuardedSqlError {
+    /// Only SELECT, INSERT, UPDATE and DELETE statements are allowed.
+    StatementNotAllowed,
+    /// SQLite already ended this transaction, so another statement would autocommit outside it.
+    TransactionEnded,
+    Provider(rusqlite::Error),
+}
+
+impl From<rusqlite::Error> for GuardedSqlError {
+    fn from(error: rusqlite::Error) -> Self {
+        Self::Provider(error)
+    }
+}
+
+/// A transaction limited to row reads and writes, using compile-time statement text. The keyword
+/// check stops other statement kinds, and an authorizer denies PRAGMA, ATTACH, DETACH and
+/// transaction control statements while SQLite prepares. A conflict clause or `RAISE(ROLLBACK)` can
+/// still end the transaction, and no authorizer action covers that, so statements are refused once
+/// it has ended. This guards against bugs, not malicious code in this process: a SELECT can still
+/// call any SQL function the provider registers.
+pub struct GuardedTransaction<'a> {
+    transaction: &'a rusqlite::Transaction<'a>,
+}
+
+/// SQLite reports full synchronous as 2 and an enabled flag as 1.
+fn settings_are_durable(journal: &str, synchronous: i64, recursive_triggers: i64) -> bool {
+    journal.eq_ignore_ascii_case("wal") && synchronous == 2 && recursive_triggers == 1
+}
+
+fn first_keyword_is(sql: &str, keywords: &[&str]) -> bool {
+    let first = sql.split_whitespace().next().unwrap_or_default();
+    keywords
+        .iter()
+        .any(|keyword| first.eq_ignore_ascii_case(keyword))
+}
+
+fn statement_allowed(sql: &str) -> bool {
+    first_keyword_is(sql, &["INSERT", "UPDATE", "DELETE"])
+}
+
+fn query_allowed(sql: &str) -> bool {
+    first_keyword_is(sql, &["SELECT"])
+}
+
+fn schema_statement_allowed(sql: &str) -> bool {
+    first_keyword_is(sql, &["CREATE", "DROP", "INSERT", "UPDATE", "DELETE"])
+}
+
+fn is_denied_action(action: &rusqlite::hooks::AuthAction<'_>) -> bool {
+    use rusqlite::hooks::AuthAction;
+    matches!(
+        action,
+        AuthAction::Pragma { .. }
+            | AuthAction::Attach { .. }
+            | AuthAction::Detach { .. }
+            | AuthAction::Transaction { .. }
+            | AuthAction::Savepoint { .. }
+    )
+}
+
+fn deny_settings_and_transaction_control(
+    context: rusqlite::hooks::AuthContext<'_>,
+) -> rusqlite::hooks::Authorization {
+    if is_denied_action(&context.action) {
+        rusqlite::hooks::Authorization::Deny
+    } else {
+        rusqlite::hooks::Authorization::Allow
+    }
+}
+
+/// Denies settings and transaction control until dropped. SQLite applies some PRAGMAs at prepare,
+/// and rusqlite prepares a trailing statement to detect it, so this must act during prepare. It
+/// must also end before commit or rollback, so declare it after the transaction it guards.
+struct StatementDenial<'a>(&'a rusqlite::Connection);
+
+impl<'a> StatementDenial<'a> {
+    fn begin(connection: &'a rusqlite::Connection) -> rusqlite::Result<Self> {
+        connection.authorizer(Some(deny_settings_and_transaction_control))?;
+        Ok(Self(connection))
+    }
+}
+
+impl Drop for StatementDenial<'_> {
+    fn drop(&mut self) {
+        let none: Option<
+            for<'r> fn(rusqlite::hooks::AuthContext<'r>) -> rusqlite::hooks::Authorization,
+        > = None;
+        let _ = self.0.authorizer(none);
+    }
+}
+
+impl GuardedTransaction<'_> {
+    /// Runs one INSERT, UPDATE or DELETE. The provider refuses a second statement in one string.
+    ///
+    /// # Errors
+    /// Refuses other statement kinds, and returns provider failures.
+    pub fn execute<P: rusqlite::Params>(
+        &self,
+        sql: &'static str,
+        params: P,
+    ) -> Result<usize, GuardedSqlError> {
+        if !statement_allowed(sql) {
+            return Err(GuardedSqlError::StatementNotAllowed);
+        }
+        if self.transaction.is_autocommit() {
+            return Err(GuardedSqlError::TransactionEnded);
+        }
+        Ok(self.transaction.execute(sql, params)?)
+    }
+
+    /// Runs one query, mapping every row.
+    ///
+    /// # Errors
+    /// Refuses anything but SELECT, and returns provider failures.
+    pub fn query<T, P, F>(
+        &self,
+        sql: &'static str,
+        params: P,
+        map: F,
+    ) -> Result<Vec<T>, GuardedSqlError>
+    where
+        P: rusqlite::Params,
+        F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+    {
+        if !query_allowed(sql) {
+            return Err(GuardedSqlError::StatementNotAllowed);
+        }
+        if self.transaction.is_autocommit() {
+            return Err(GuardedSqlError::TransactionEnded);
+        }
+        let mut statement = self.transaction.prepare(sql)?;
+        let rows = statement.query_map(params, map)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<T>>>()?)
+    }
+}
+
+/// SafeEvidence addition to the donor's handle: the narrow routes a store needs. The connection
+/// stays private, and each call holds the lease permit for its whole duration.
+impl SqlCipherDatabaseHandle {
+    fn run_transaction<T, E, F>(
+        &mut self,
+        behavior: rusqlite::TransactionBehavior,
+        operation: F,
+    ) -> Result<T, SqlCipherTransactionError<E>>
+    where
+        F: FnOnce(&GuardedTransaction<'_>) -> Result<T, E>,
+    {
+        let result = self.inner.write(|backend| {
+            let transaction = backend
+                ._connection
+                .transaction_with_behavior(behavior)
+                .map_err(SqlCipherTransactionError::Provider)?;
+            let denial = StatementDenial::begin(&transaction)
+                .map_err(SqlCipherTransactionError::Provider)?;
+            let value = operation(&GuardedTransaction {
+                transaction: &transaction,
+            })
+            .map_err(SqlCipherTransactionError::Operation)?;
+            drop(denial);
+            if transaction.is_autocommit() {
+                return Err(SqlCipherTransactionError::TransactionLost);
+            }
+            transaction
+                .commit()
+                .map_err(SqlCipherTransactionError::CommitUnknown)?;
+            Ok(value)
+        });
+        match result {
+            Ok(value) => Ok(value),
+            Err(KeyedIoError::Access(error)) => Err(SqlCipherTransactionError::Access(error)),
+            Err(KeyedIoError::Backend(error)) => Err(error),
+        }
+    }
+
+    /// Runs `operation` holding the write lock from the start. If `operation` returns `Err`, nothing
+    /// is written. If it returns `Ok`, this commits, so an operation must propagate statement errors:
+    /// a swallowed error can leave that statement's write in place. If the transaction already ended,
+    /// the result is `TransactionLost`.
+    ///
+    /// # Errors
+    /// Returns the lease, provider, operation or commit failure.
+    pub fn immediate_transaction<T, E, F>(
+        &mut self,
+        operation: F,
+    ) -> Result<T, SqlCipherTransactionError<E>>
+    where
+        F: FnOnce(&GuardedTransaction<'_>) -> Result<T, E>,
+    {
+        self.run_transaction(rusqlite::TransactionBehavior::Immediate, operation)
+    }
+
+    /// Runs `operation` taking no lock until it reads, so reads proceed beside a writer under WAL.
+    ///
+    /// # Errors
+    /// Returns the lease, provider, operation or commit failure.
+    pub fn deferred_transaction<T, E, F>(
+        &mut self,
+        operation: F,
+    ) -> Result<T, SqlCipherTransactionError<E>>
+    where
+        F: FnOnce(&GuardedTransaction<'_>) -> Result<T, E>,
+    {
+        self.run_transaction(rusqlite::TransactionBehavior::Deferred, operation)
+    }
+
+    /// Applies compile-time schema statements in one transaction, one statement per string. Each
+    /// must start with CREATE, DROP, INSERT, UPDATE or DELETE, and the authorizer denies PRAGMA,
+    /// ATTACH, DETACH and transaction control during prepare, including in a trailing statement.
+    ///
+    /// # Errors
+    /// Returns the lease, provider or commit failure. A refused statement is a provider failure.
+    pub fn install_schema(
+        &mut self,
+        statements: &'static [&'static str],
+    ) -> Result<(), SqlCipherTransactionError<std::convert::Infallible>> {
+        let result = self.inner.write(|backend| {
+            if !statements.iter().all(|sql| schema_statement_allowed(sql)) {
+                return Err(SqlCipherTransactionError::Provider(
+                    rusqlite::Error::InvalidQuery,
+                ));
+            }
+            let transaction = backend
+                ._connection
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(SqlCipherTransactionError::Provider)?;
+            let denial = StatementDenial::begin(&transaction)
+                .map_err(SqlCipherTransactionError::Provider)?;
+            for sql in statements {
+                transaction
+                    .execute(sql, [])
+                    .map_err(SqlCipherTransactionError::Provider)?;
+            }
+            drop(denial);
+            transaction
+                .commit()
+                .map_err(SqlCipherTransactionError::CommitUnknown)
+        });
+        match result {
+            Ok(()) => Ok(()),
+            Err(KeyedIoError::Access(error)) => Err(SqlCipherTransactionError::Access(error)),
+            Err(KeyedIoError::Backend(error)) => Err(error),
+        }
+    }
+
+    /// Applies WAL and full sync. Confirm with [`Self::durable_settings_hold`].
+    ///
+    /// # Errors
+    /// Returns the lease or provider failure.
+    pub fn configure_durable_store(
+        &mut self,
+    ) -> Result<(), SqlCipherTransactionError<std::convert::Infallible>> {
+        let result = self.inner.write(|backend| {
+            let connection = &backend._connection;
+            connection
+                .query_row("PRAGMA journal_mode = WAL;", [], |row| {
+                    row.get::<_, String>(0)
+                })
+                .map_err(SqlCipherTransactionError::Provider)?;
+            connection
+                .execute_batch("PRAGMA synchronous = FULL;")
+                .map_err(SqlCipherTransactionError::Provider)
+        });
+        match result {
+            Ok(()) => Ok(()),
+            Err(KeyedIoError::Access(error)) => Err(SqlCipherTransactionError::Access(error)),
+            Err(KeyedIoError::Backend(error)) => Err(error),
+        }
+    }
+
+    /// Reads back whether the connection is on WAL, full sync and recursive triggers.
+    ///
+    /// # Errors
+    /// Returns the lease or provider failure.
+    pub fn durable_settings_hold(
+        &mut self,
+    ) -> Result<bool, SqlCipherTransactionError<std::convert::Infallible>> {
+        let result = self.inner.write(|backend| {
+            let connection = &backend._connection;
+            let journal: String = connection
+                .query_row("PRAGMA journal_mode;", [], |row| row.get(0))
+                .map_err(SqlCipherTransactionError::Provider)?;
+            let read = |pragma: &str| {
+                connection
+                    .query_row(pragma, [], |row| row.get::<_, i64>(0))
+                    .map_err(SqlCipherTransactionError::Provider)
+            };
+            Ok(settings_are_durable(
+                &journal,
+                read("PRAGMA synchronous;")?,
+                read("PRAGMA recursive_triggers;")?,
+            ))
+        });
+        match result {
+            Ok(value) => Ok(value),
+            Err(KeyedIoError::Access(error)) => Err(SqlCipherTransactionError::Access(error)),
+            Err(KeyedIoError::Backend(error)) => Err(error),
+        }
+    }
+}
+
 impl SqlCipherDatabaseHandle {
     fn checkpoint_truncate_backup_wal(&mut self) -> Result<(), SqlCipherBackupCheckpointError> {
         match self.inner.write(|backend| {
@@ -470,6 +789,10 @@ fn open_reviewed_connection(
     verify_runtime_identity(&connection)?;
     verify_encryption_active(&connection)?;
     enforce_b303_provider_and_temp_posture(&connection)?;
+    // SafeEvidence addition: without this, INSERT OR REPLACE skips delete triggers.
+    connection
+        .execute_batch("PRAGMA recursive_triggers = ON;")
+        .map_err(|_| SqlCipherOpenError::Open)?;
     Ok(connection)
 }
 
@@ -1129,6 +1452,329 @@ mod tests {
         enforce_b303_provider_and_temp_posture(&connection)
             .expect("reviewed B303 provider/temp posture must be enforced");
         connection
+    }
+
+    fn store_handle(path: &Path, lease: &VaultLease) -> super::SqlCipherDatabaseHandle {
+        remove_database_files(path);
+        open_sqlcipher_database(
+            path,
+            lease.keyed_handle_lease(),
+            context(KeyPurpose::StructuredStore),
+            &vrk(),
+        )
+        .expect("test database opens")
+    }
+
+    #[test]
+    fn every_opened_connection_fires_delete_triggers_on_replacement() {
+        let path = unused_path("recursive");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .install_schema(&[
+                "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)",
+                "INSERT INTO t VALUES (1, 'a')",
+                "CREATE TRIGGER t_keep BEFORE DELETE ON t
+                     BEGIN SELECT RAISE(ABORT, 'kept'); END",
+            ])
+            .expect("schema");
+        let replaced = handle
+            .immediate_transaction(|tx| tx.execute("INSERT OR REPLACE INTO t VALUES (1, 'b')", []));
+        assert!(matches!(
+            replaced,
+            Err(super::SqlCipherTransactionError::Operation(
+                super::GuardedSqlError::Provider(_)
+            ))
+        ));
+        drop(handle);
+        remove_database_files(&path);
+    }
+
+    fn setting(handle: &mut super::SqlCipherDatabaseHandle, pragma: &'static str) -> i64 {
+        handle
+            .inner
+            .write(|backend| backend._connection.query_row(pragma, [], |row| row.get(0)))
+            .expect("setting reads")
+    }
+
+    fn assert_settings_untouched(handle: &mut super::SqlCipherDatabaseHandle) {
+        assert!(matches!(handle.durable_settings_hold(), Ok(true)));
+        assert_eq!(setting(handle, "PRAGMA query_only;"), 0);
+        assert_eq!(setting(handle, "PRAGMA writable_schema;"), 0);
+        assert_eq!(setting(handle, "PRAGMA ignore_check_constraints;"), 0);
+    }
+
+    #[test]
+    fn refused_statements_have_no_effect_at_prepare_or_after() {
+        let path = unused_path("schema-guard");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle.configure_durable_store().expect("settings");
+        handle
+            .install_schema(&["CREATE TABLE w (id INTEGER)"])
+            .expect("table the trigger shapes need");
+        let refused: &[&'static [&'static str]] = &[
+            &["PRAGMA synchronous = OFF"],
+            &["PRAGMA recursive_triggers = OFF"],
+            &["PRAGMA journal_mode = DELETE"],
+            &["PRAGMA writable_schema = ON"],
+            &["ATTACH DATABASE 'x' AS y"],
+            &["COMMIT"],
+            &["ALTER TABLE w RENAME TO renamed"],
+            &["CREATE TABLE t (id INTEGER)", "PRAGMA query_only = ON"],
+            &["CREATE TABLE u (id INTEGER); PRAGMA query_only = ON"],
+            &["CREATE TABLE u (id INTEGER); PRAGMA recursive_triggers = OFF"],
+            &["CREATE TRIGGER v AFTER INSERT ON w BEGIN SELECT 1; END; PRAGMA query_only = ON"],
+            &[
+                "CREATE TRIGGER v AFTER INSERT ON w BEGIN SELECT 1; END; PRAGMA query_only = ON; -- END",
+            ],
+            &[
+                "CREATE TRIGGER v AFTER INSERT ON w BEGIN SELECT 1; END; PRAGMA query_only = ON; SELECT CASE WHEN 1 THEN 1 END",
+            ],
+            &[
+                "CREATE TRIGGER v AFTER INSERT ON w BEGIN SELECT 1; END; PRAGMA recursive_triggers = OFF; -- END",
+            ],
+            &[
+                "CREATE TRIGGER v AFTER INSERT ON w BEGIN SELECT 1; END; PRAGMA writable_schema = ON; -- END",
+            ],
+            &[
+                "CREATE TABLE u (id INTEGER); PRAGMA rekey = \"x'0101010101010101010101010101010101010101010101010101010101010101'\"",
+            ],
+        ];
+        for statements in refused.iter().copied() {
+            assert!(handle.install_schema(statements).is_err(), "{statements:?}");
+            assert_settings_untouched(&mut handle);
+        }
+        for sql in [
+            "DELETE FROM w; PRAGMA query_only = ON",
+            "DELETE FROM w; PRAGMA recursive_triggers = OFF",
+            "SELECT 1; PRAGMA query_only = ON",
+        ] {
+            assert!(
+                handle
+                    .immediate_transaction(|tx| tx.execute(sql, []))
+                    .is_err()
+            );
+            assert!(
+                handle
+                    .immediate_transaction(|tx| tx.query(sql, [], |row| row.get::<_, i64>(0)))
+                    .is_err()
+            );
+            assert_settings_untouched(&mut handle);
+        }
+        assert!(
+            handle
+                .immediate_transaction(|tx| tx.execute("INSERT INTO t VALUES (1)", []))
+                .is_err(),
+            "the refused batch ran nothing, not even its allowed first statement"
+        );
+        handle
+            .install_schema(&["CREATE TABLE x (id INTEGER)", "INSERT INTO x VALUES (1)"])
+            .expect("the denial ends with its call, so writes and commits still work");
+        drop(handle);
+        let reopened = open_sqlcipher_database(
+            &path,
+            lease.keyed_handle_lease(),
+            context(KeyPurpose::StructuredStore),
+            &vrk(),
+        );
+        assert!(
+            reopened.is_ok(),
+            "the refused rekey left the original key working"
+        );
+        drop(reopened);
+        remove_database_files(&path);
+    }
+
+    #[test]
+    fn pragma_table_functions_cannot_change_anything() {
+        let path = unused_path("pragma-vtab");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .install_schema(&[
+                "CREATE TABLE w (id INTEGER, v INTEGER)",
+                "CREATE INDEX w_v ON w (v)",
+                "INSERT INTO w VALUES (1, 1), (2, 2), (3, 3)",
+            ])
+            .expect("schema");
+        let _ = handle.immediate_transaction(|tx| {
+            tx.query("SELECT * FROM pragma_optimize(65538)", [], |_row| Ok(()))
+        });
+        let _ = handle.immediate_transaction(|tx| {
+            tx.execute("INSERT INTO w SELECT 1, 1 FROM pragma_optimize(65538)", [])
+        });
+        let stats = handle
+            .immediate_transaction(|tx| {
+                tx.query(
+                    "SELECT count(*) FROM sqlite_master WHERE name LIKE 'sqlite_stat%'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+            })
+            .expect("count");
+        assert_eq!(stats, [0]);
+        drop(handle);
+        remove_database_files(&path);
+    }
+
+    #[test]
+    fn a_failed_operation_rolls_back_once_the_denial_ends() {
+        let path = unused_path("rollback");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .install_schema(&["CREATE TABLE w (id INTEGER)"])
+            .expect("schema");
+        let failed = handle.immediate_transaction(|tx| -> Result<(), super::GuardedSqlError> {
+            tx.execute("INSERT INTO w VALUES (1)", [])?;
+            Err(super::GuardedSqlError::StatementNotAllowed)
+        });
+        assert!(failed.is_err());
+        let rows = handle
+            .immediate_transaction(|tx| {
+                tx.query("SELECT count(*) FROM w", [], |row| row.get::<_, i64>(0))
+            })
+            .expect("connection stays usable");
+        assert_eq!(rows, [0]);
+        drop(handle);
+        remove_database_files(&path);
+    }
+
+    fn rows_in_w(handle: &mut super::SqlCipherDatabaseHandle) -> Vec<i64> {
+        handle
+            .immediate_transaction(|tx| {
+                tx.query("SELECT id FROM w ORDER BY id", [], |row| row.get(0))
+            })
+            .expect("connection stays usable")
+    }
+
+    #[test]
+    fn writes_cannot_escape_a_transaction_ended_by_a_conflict_clause() {
+        let path = unused_path("conflict-rollback");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .install_schema(&[
+                "CREATE TABLE w (id INTEGER PRIMARY KEY)",
+                "INSERT INTO w VALUES (1)",
+            ])
+            .expect("schema");
+
+        // The caller swallows the conflict and writes again, then returns an error.
+        let mut after_conflict = None;
+        let mut read_after = None;
+        let failed = handle.immediate_transaction(|tx| -> Result<(), super::GuardedSqlError> {
+            tx.execute("INSERT INTO w VALUES (10)", [])?;
+            assert!(
+                tx.execute("INSERT OR ROLLBACK INTO w VALUES (1)", [])
+                    .is_err()
+            );
+            after_conflict = Some(tx.execute("INSERT INTO w VALUES (2)", []));
+            read_after = Some(tx.query("SELECT id FROM w", [], |row| row.get::<_, i64>(0)));
+            Err(super::GuardedSqlError::StatementNotAllowed)
+        });
+        assert!(failed.is_err());
+        assert!(matches!(
+            after_conflict,
+            Some(Err(super::GuardedSqlError::TransactionEnded))
+        ));
+        assert!(matches!(
+            read_after,
+            Some(Err(super::GuardedSqlError::TransactionEnded))
+        ));
+        assert_eq!(rows_in_w(&mut handle), [1]);
+
+        // The caller swallows the conflict and reports success.
+        let lost = handle.immediate_transaction(|tx| -> Result<(), super::GuardedSqlError> {
+            tx.execute("INSERT INTO w VALUES (20)", [])?;
+            assert!(
+                tx.execute("INSERT OR ROLLBACK INTO w VALUES (1)", [])
+                    .is_err()
+            );
+            Ok(())
+        });
+        assert!(matches!(
+            lost,
+            Err(super::SqlCipherTransactionError::TransactionLost)
+        ));
+        assert_eq!(rows_in_w(&mut handle), [1]);
+
+        // RAISE(ROLLBACK) in a trigger takes the same route.
+        handle
+            .install_schema(
+                &["CREATE TRIGGER w_guard BEFORE INSERT ON w WHEN NEW.id = 99
+                     BEGIN SELECT RAISE(ROLLBACK, 'synthetic'); END"],
+            )
+            .expect("trigger");
+        let mut after_raise = None;
+        let raised = handle.immediate_transaction(|tx| -> Result<(), super::GuardedSqlError> {
+            tx.execute("INSERT INTO w VALUES (30)", [])?;
+            assert!(tx.execute("INSERT INTO w VALUES (99)", []).is_err());
+            after_raise = Some(tx.execute("INSERT INTO w VALUES (31)", []));
+            Err(super::GuardedSqlError::StatementNotAllowed)
+        });
+        assert!(raised.is_err());
+        assert!(matches!(
+            after_raise,
+            Some(Err(super::GuardedSqlError::TransactionEnded))
+        ));
+        assert_eq!(rows_in_w(&mut handle), [1]);
+        drop(handle);
+        remove_database_files(&path);
+    }
+
+    #[test]
+    fn a_panic_inside_an_operation_leaves_the_handle_usable() {
+        let path = unused_path("panic");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .install_schema(&["CREATE TABLE w (id INTEGER PRIMARY KEY)"])
+            .expect("schema");
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = handle.immediate_transaction(|tx| -> Result<(), super::GuardedSqlError> {
+                tx.execute("INSERT INTO w VALUES (1)", [])?;
+                panic!("synthetic");
+            });
+        }));
+        assert!(panicked.is_err());
+        assert!(rows_in_w(&mut handle).is_empty(), "the write rolled back");
+        assert_eq!(
+            setting(&mut handle, "PRAGMA query_only;"),
+            0,
+            "the denial ended"
+        );
+        drop(handle);
+        remove_database_files(&path);
+    }
+
+    #[test]
+    fn a_failing_commit_reports_an_unknown_outcome() {
+        let path = unused_path("commit-unknown");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .inner
+            .write(|backend| {
+                backend
+                    ._connection
+                    .execute_batch("PRAGMA foreign_keys = ON;")
+            })
+            .expect("foreign keys on");
+        handle
+            .install_schema(&[
+                "CREATE TABLE p (id INTEGER PRIMARY KEY)",
+                "CREATE TABLE c (p_id INTEGER REFERENCES p(id) DEFERRABLE INITIALLY DEFERRED)",
+            ])
+            .expect("schema");
+        let result = handle.immediate_transaction(|tx| tx.execute("INSERT INTO c VALUES (9)", []));
+        assert!(matches!(
+            result,
+            Err(super::SqlCipherTransactionError::CommitUnknown(_))
+        ));
+        drop(handle);
+        remove_database_files(&path);
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1797,5 +2443,57 @@ mod tests {
         drop(target_handle);
         remove_database_files(&source_path);
         remove_database_files(&target_path);
+    }
+}
+
+#[cfg(test)]
+mod durable_settings_tests {
+    use super::{is_denied_action, settings_are_durable};
+    use rusqlite::hooks::{AuthAction, TransactionOperation};
+
+    // ATTACH and transaction control act when stepped, so denying them at prepare shows no effect
+    // that a database test could observe. This pins the list directly.
+    #[test]
+    fn settings_and_transaction_control_are_denied_and_row_work_is_not() {
+        for action in [
+            AuthAction::Pragma {
+                pragma_name: "x",
+                pragma_value: None,
+            },
+            AuthAction::Attach { filename: "x" },
+            AuthAction::Detach { database_name: "x" },
+            AuthAction::Transaction {
+                operation: TransactionOperation::Begin,
+            },
+            AuthAction::Savepoint {
+                operation: TransactionOperation::Begin,
+                savepoint_name: "x",
+            },
+        ] {
+            assert!(is_denied_action(&action), "{action:?}");
+        }
+        for action in [
+            AuthAction::Read {
+                table_name: "x",
+                column_name: "y",
+            },
+            AuthAction::Insert { table_name: "x" },
+            AuthAction::Delete { table_name: "x" },
+            AuthAction::Select,
+        ] {
+            assert!(!is_denied_action(&action), "{action:?}");
+        }
+    }
+
+    #[test]
+    fn every_setting_must_hold() {
+        assert!(settings_are_durable("wal", 2, 1));
+        assert!(settings_are_durable("WAL", 2, 1));
+        assert!(!settings_are_durable("delete", 2, 1));
+        assert!(!settings_are_durable("memory", 2, 1));
+        assert!(!settings_are_durable("wal", 1, 1));
+        assert!(!settings_are_durable("wal", 0, 1));
+        assert!(!settings_are_durable("wal", 3, 1));
+        assert!(!settings_are_durable("wal", 2, 0));
     }
 }
