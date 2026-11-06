@@ -673,6 +673,170 @@
           "modification": "not_copied"
         }
       ]
+    },
+    {
+      "admission_id": "ADM-0006",
+      "packet": "T36",
+      "repo": "AbdulazizShehri/MedScale",
+      "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "product/apps/desktop lockfiles; Tauri, WebView and npm trees are outside product/deny.toml and the TA-02 SBOM",
+      "assets": "none; icons are generated plain squares",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "apps/desktop-tauri/package.json",
+          "git_blob_oid": "d5b4f8a8f44c2130555a0056938cb9ea702e89c1",
+          "bytes": 772,
+          "dest_path": "product/apps/desktop/package.json",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/vite.config.ts",
+          "git_blob_oid": "6022e22fd20b867ef28307edb0d8d7515fa2438e",
+          "bytes": 554,
+          "dest_path": "product/apps/desktop/vite.config.ts",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/tsconfig.json",
+          "git_blob_oid": "1b992d6de73d230fe84347dae76ac4d6463855d5",
+          "bytes": 497,
+          "dest_path": "product/apps/desktop/tsconfig.json",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/index.html",
+          "git_blob_oid": "77c983c27df8827b0e52c72d0122c234af476df9",
+          "bytes": 381,
+          "dest_path": "product/apps/desktop/index.html",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src/main.tsx",
+          "git_blob_oid": "1b79e898cd33a2ed963a6096bace9b2e521bb690",
+          "bytes": 330,
+          "dest_path": "product/apps/desktop/src/main.tsx",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src/bundle-config.test.ts",
+          "git_blob_oid": "6c046161bccfe13fb80cf502df885ad187cf47b2",
+          "bytes": 1417,
+          "dest_path": "product/apps/desktop/src/bundle-config.test.ts",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src/identity.test.ts",
+          "git_blob_oid": "126f8c5db59e83eb110e76a0869bc13ab2d4c6df",
+          "bytes": 3401,
+          "dest_path": "product/apps/desktop/src/identity.test.ts",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src-tauri/Cargo.toml",
+          "git_blob_oid": "1cf3a726e867964ba50cd963800d7be4e1d3f05b",
+          "bytes": 1353,
+          "dest_path": "product/apps/desktop/src-tauri/Cargo.toml",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src-tauri/build.rs",
+          "git_blob_oid": "1cb2f3e26f6cd67ac4300ab9a62aadcb5dcf833b",
+          "bytes": 2882,
+          "dest_path": "product/apps/desktop/src-tauri/build.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src-tauri/tauri.conf.json",
+          "git_blob_oid": "596e0fcff50ef43a1d87f840df8b007c5aa4433a",
+          "bytes": 1769,
+          "dest_path": "product/apps/desktop/src-tauri/tauri.conf.json",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src-tauri/capabilities/default.json",
+          "git_blob_oid": "260b56572dacf02ffa71ddf47561bb68f4d8ad00",
+          "bytes": 2593,
+          "dest_path": "product/apps/desktop/src-tauri/capabilities/default.json",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src-tauri/src/main.rs",
+          "git_blob_oid": "786f22664e9396bb403d05dd8840bd7049ec3e2b",
+          "bytes": 5960,
+          "dest_path": "product/apps/desktop/src-tauri/src/main.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src-tauri/src/navigation_policy.rs",
+          "git_blob_oid": "e7a257339a37c289536ec5a6d30d9863737afae4",
+          "bytes": 1435,
+          "dest_path": "product/apps/desktop/src-tauri/src/navigation_policy.rs",
+          "modification": "none"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src-tauri/src/permission_tests.rs",
+          "git_blob_oid": "42dd5c64fa283c28909fca1e2bcf749adb05eb59",
+          "bytes": 3349,
+          "dest_path": "product/apps/desktop/src-tauri/src/permission_tests.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src-tauri/src/startup_failure.rs",
+          "git_blob_oid": "1a009ab6dc2a80fe7cb6815341769b8baa72b321",
+          "bytes": 5432,
+          "dest_path": "product/apps/desktop/src-tauri/src/startup_failure.rs",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src/ipc.ts",
+          "git_blob_oid": "fb2c48580e026e5150b60adbc6303427c15ee11d",
+          "bytes": 932,
+          "dest_path": "product/apps/desktop/src/ask-view.ts",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src/ipc.test.ts",
+          "git_blob_oid": "57b523e5fd3ecd2306afae7714a4be1804c12058",
+          "bytes": 871,
+          "dest_path": "product/apps/desktop/src/ask-view.test.ts",
+          "modification": "adapted"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src/routes.ts",
+          "git_blob_oid": "82d27275be8981a6cfe23c0bf14f8d430a624359",
+          "bytes": 5507,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src/routes.test.ts",
+          "git_blob_oid": "dfcab0285c122ef20204cd568bba96e1e034c456",
+          "bytes": 818,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src/contrast.test.ts",
+          "git_blob_oid": "46e2404089cccb8b547dc4b7ff74f2c9126e0a77",
+          "bytes": 2870,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "apps/desktop-tauri/src/App.tsx",
+          "git_blob_oid": "cf639a29a047ee1ad30ab868f51831d90e412971",
+          "bytes": 6745,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
     }
   ]
 }

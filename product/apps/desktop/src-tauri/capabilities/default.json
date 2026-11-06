@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window: the named Ask command only; no plugin, filesystem, shell, HTTP or generic core permission",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "allow-ask-question"
+  ]
+}

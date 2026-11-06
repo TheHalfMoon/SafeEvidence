@@ -1,0 +1,33 @@
+/* No inline styles: the production CSP allows only this file. */
+:root {
+  color-scheme: light dark;
+  --ink: light-dark(#14202b, #e7edf2);
+  --muted: light-dark(#4a5a68, #a9b6c2);
+  --surface: light-dark(#ffffff, #121a21);
+  --line: light-dark(#c6d0d9, #33414d);
+  --accent: light-dark(#0b5d6b, #6fc7d6);
+  --mark: light-dark(#fff0b3, #5a4a00);
+  --caution: light-dark(#7a4a00, #f0c070);
+  font-family: system-ui, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+body { margin: 0; background: var(--surface); color: var(--ink); }
+main { max-width: 56rem; margin: 0 auto; padding: 1.5rem; }
+h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+h2 { font-size: 1.125rem; margin: 1.5rem 0 0.5rem; }
+h3 { font-size: 1rem; margin: 1rem 0 0.25rem; }
+label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+textarea { width: 100%; box-sizing: border-box; padding: 0.5rem; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 4px; }
+button { margin-top: 0.5rem; padding: 0.4rem 1rem; font: inherit; color: var(--accent); background: transparent; border: 1px solid var(--accent); border-radius: 4px; cursor: pointer; }
+button:disabled { opacity: 0.6; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 0.875em; overflow-wrap: anywhere; }
+mark { background: var(--mark); color: inherit; }
+ul, ol { padding-inline-start: 1.25rem; }
+.notice, .proof, .asked { color: var(--muted); font-size: 0.875rem; }
+.failure { color: var(--caution); }
+.outcome.refused { color: var(--caution); }
+.brief, .source { white-space: pre-wrap; }
+.funnel { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.25rem 1rem; }
+.count { font-weight: 600; font-variant-numeric: tabular-nums; }
+.citations { list-style: none; padding: 0; }
