@@ -1,0 +1,104 @@
+{
+ "donor": "TheHalfMoon/commandMed",
+ "commit": "51f73ec05750137e5bd94ffa0765f6383f475fee",
+ "cases": [
+  {
+   "case_id": "tool-available-routes-to-tool",
+   "text": "Convert 5 mg to mcg for the dose",
+   "excluded_reason": null,
+   "fired": [
+    [
+     "SCAFFOLD::TOOL_LAYER",
+     6,
+     "USE_TOOL"
+    ]
+   ],
+   "donor_state": "USE_TOOL"
+  },
+  {
+   "case_id": "evidence-class-retrieves-evidence",
+   "text": "Show me the evidence for this fixture claim",
+   "excluded_reason": null,
+   "fired": [
+    [
+     "SCAFFOLD::TOOL_LAYER",
+     6,
+     "RETRIEVE_EVIDENCE"
+    ]
+   ],
+   "donor_state": "RETRIEVE_EVIDENCE"
+  },
+  {
+   "case_id": "no-requested-tool-plain-answer",
+   "text": "What does paracetamol do generally?",
+   "excluded_reason": null,
+   "fired": [],
+   "donor_state": "ANSWER"
+  },
+  {
+   "case_id": "unknown-tool-fails-closed",
+   "text": "Look up drug X interactions now",
+   "excluded_reason": null,
+   "fired": [
+    [
+     "SCAFFOLD::TOOL_LAYER",
+     6,
+     "ABSTAIN"
+    ]
+   ],
+   "donor_state": "ABSTAIN"
+  },
+  {
+   "case_id": "clinical-score-gate-closed-t017",
+   "text": "Calculate my risk score please",
+   "excluded_reason": null,
+   "fired": [
+    [
+     "SCAFFOLD::TOOL_LAYER",
+     6,
+     "ABSTAIN"
+    ]
+   ],
+   "donor_state": "ABSTAIN"
+  },
+  {
+   "case_id": "interaction-lookup-gate-closed-t018",
+   "text": "Check interaction between my two medicines",
+   "excluded_reason": null,
+   "fired": [
+    [
+     "SCAFFOLD::TOOL_LAYER",
+     6,
+     "ABSTAIN"
+    ]
+   ],
+   "donor_state": "ABSTAIN"
+  },
+  {
+   "case_id": "tool-unavailable-fails-closed",
+   "text": "Convert 2 g to mg units",
+   "excluded_reason": null,
+   "fired": [
+    [
+     "SCAFFOLD::TOOL_LAYER",
+     6,
+     "ABSTAIN"
+    ]
+   ],
+   "donor_state": "ABSTAIN"
+  },
+  {
+   "case_id": "tool-timeout-fails-closed",
+   "text": "Validate this FHIR payload structure",
+   "excluded_reason": null,
+   "fired": [
+    [
+     "SCAFFOLD::TOOL_LAYER",
+     6,
+     "ABSTAIN"
+    ]
+   ],
+   "donor_state": "ABSTAIN"
+  }
+ ]
+}

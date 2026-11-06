@@ -74,7 +74,7 @@ distribution must wait. No source is silently relicensed into Apache-2.0.
 | ADM-0002 | T11 `deny.toml` and SBOM generator (adapted) | same revision | Apache-2.0 | `product/deny.toml`, `product/crates/safeevidence-release` |
 | ADM-0003 | T03 private vault | `TheHalfMoon/ottari` @ `73706029849bcbe51243624e37f03a1969dc74ca` | Apache-2.0 | `product/crates/safeevidence-vault` |
 | ADM-0004 | T17 span fixture | `maziyarpanahi/openmed` @ `8440bdac59621981372d318f43c8bfb2d6625b86` | Apache-2.0 | `product/crates/safeevidence-contracts/tests/fixtures/t17` |
-| ADM-0005 | T13 precedence mechanics (port and generated vectors) | `TheHalfMoon/commandMed` @ `51f73ec05750137e5bd94ffa0765f6383f475fee` | Apache-2.0 | `product/crates/safeevidence-assurance` |
+| ADM-0005 | T13 precedence mechanics (port, generated vectors and fixture question texts) | `TheHalfMoon/commandMed` @ `51f73ec05750137e5bd94ffa0765f6383f475fee` | Apache-2.0 | `product/crates/safeevidence-assurance` |
 | ADM-0006 | T36 desktop shell (adapted) | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/apps/desktop` |
 | ADM-0007 | T12 privacy probes (adapted) | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/tests/privacy` |
 | ADM-0008 | T30 tool-source audit (adapted) | `TheHalfMoon/ottari` @ `73706029849bcbe51243624e37f03a1969dc74ca` | Apache-2.0 | `tools/governance/donor/tool_audit.py` |

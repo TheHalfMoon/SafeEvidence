@@ -17,7 +17,7 @@ export const REASONS = {
   RIGHTS_UNRESOLVED: "The rights to use a source are not established.",
   SOURCE_UNAVAILABLE: "A required source is unavailable.",
   SOURCE_INVALID_OR_RETRACTED: "A required source is invalid or retracted.",
-  EVIDENCE_INSUFFICIENT: "The evidence is not sufficient to answer.",
+  EVIDENCE_INSUFFICIENT: "This could not be answered from the available evidence.",
   MISSING_CRITICAL_CONTEXT: "The question is missing critical context, such as the population.",
   APPLICABILITY_UNRESOLVED: "The evidence may not apply to this population.",
   MATERIAL_CONTRADICTION: "Sources disagree on a material point.",
