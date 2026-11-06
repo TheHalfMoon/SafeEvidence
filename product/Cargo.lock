@@ -864,6 +864,7 @@ version = "0.0.0"
 dependencies = [
  "libsqlite3-sys",
  "rusqlite",
+ "safeevidence-assurance",
  "safeevidence-contracts",
  "serde",
  "serde_json",

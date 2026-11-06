@@ -4,12 +4,14 @@
 //! answer. The fixture is invented. Questions must fit one closed grammar, so this proves the
 //! pipeline's control flow and refusals, not retrieval quality or real question handling.
 //!
-//! Guards run in the contract's order wherever evidence decides them. Two checks run first,
-//! because no evidence is read for them: unsupported language, and patient-specific requests.
+//! Evidence-based guards are gathered as fired rules and resolved by `safeevidence-assurance`.
+//! Two checks run first, because no evidence is read for them: unsupported language, and
+//! patient-specific requests. Tool failures and an invalid corpus also return directly.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use rusqlite::{Connection, params};
+use safeevidence_assurance::{Cause, FiredRule, Requirement, Resolution, evaluate_precedence};
 use safeevidence_contracts::assurance::{ProofState, ReasonCode, TerminalOutcome};
 use safeevidence_contracts::evidence::EvidenceCorpusRights;
 use safeevidence_contracts::objects::DigestSha256;
@@ -556,21 +558,33 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         );
     }
 
-    // BLOCKED outranks everything evidence-based. An unsupported rights grant is not weak
-    // evidence: it denies presentation, even of a source that would also be refused for validity.
+    // Gather every fact first, then let the ported precedence choose one outcome. Numbers follow
+    // the contract's guard order, so no branch order can decide the result.
+    let mut fired: Vec<(FiredRule, ReasonCode)> = Vec::new();
+    let mut fire = |id: &str, precedence: u32, outcome: TerminalOutcome, reason: ReasonCode| {
+        let rule = FiredRule {
+            rule_id: id.to_owned(),
+            precedence,
+            requirement: Requirement::Outcome(outcome),
+            revoked: false,
+        };
+        fired.push((rule, reason));
+    };
+
     let denied: Vec<&&Document> = matching.iter().filter(|d| !d.rights.admissible()).collect();
-    if !denied.is_empty() {
-        for document in denied {
-            excluded.push((document.doc_id.clone(), "rights not established".to_owned()));
-        }
-        return refuse(
+    for document in &denied {
+        excluded.push((document.doc_id.clone(), "rights not established".to_owned()));
+    }
+    if denied.is_empty() {
+        funnel.rights_admissible = matching.len();
+    } else {
+        fire(
+            "rights-denied",
+            1,
             TerminalOutcome::Blocked,
             ReasonCode::RightsUnresolved,
-            &funnel,
-            &excluded,
         );
     }
-    funnel.rights_admissible = matching.len();
 
     // A retracted or withdrawn report takes its whole study out: a follow-up cannot rescue it.
     // This scans the whole corpus, since that report may be indexed under other terms.
@@ -606,12 +620,54 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         } else {
             ReasonCode::CurrentnessUnknown
         };
-        return refuse(TerminalOutcome::Abstain, reason, &funnel, &excluded);
+        fire("no-citable-source", 5, TerminalOutcome::Abstain, reason);
     }
 
-    // CONFLICT, then ASK_MORE: asking for a population cannot resolve independent contradiction
-    // that exists within one population.
-    let Some(population) = &question.population else {
+    let mut applicable = Vec::new();
+    if let Some(population) = &question.population {
+        for document in &citable {
+            if normalized(&document.population) == *population {
+                applicable.push(*document);
+            } else {
+                excluded.push((
+                    document.doc_id.clone(),
+                    format!(
+                        "population {} does not match {population}",
+                        document.population
+                    ),
+                ));
+            }
+        }
+        funnel.applicable = applicable.len();
+        if applicable.is_empty() && !citable.is_empty() {
+            fire(
+                "not-applicable",
+                5,
+                TerminalOutcome::Abstain,
+                ReasonCode::ApplicabilityUnresolved,
+            );
+        }
+        let studies = study_directions(&applicable);
+        funnel.independent_studies = studies.len();
+        if studies_conflict(&applicable) {
+            fire(
+                "independent-conflict",
+                3,
+                TerminalOutcome::Conflict,
+                ReasonCode::MaterialContradiction,
+            );
+        }
+        // One study's reports disagreeing is unresolved evidence, not independent contradiction.
+        if studies.values().any(|directions| directions.len() > 1) {
+            fire(
+                "within-study-disagreement",
+                5,
+                TerminalOutcome::Abstain,
+                ReasonCode::EvidenceInsufficient,
+            );
+        }
+    } else if !citable.is_empty() {
+        // Asking for a population cannot resolve contradiction that exists within one population.
         let populations: BTreeSet<String> =
             citable.iter().map(|d| normalized(&d.population)).collect();
         let conflict = populations.iter().any(|population| {
@@ -622,56 +678,44 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
                 .collect();
             studies_conflict(&group)
         });
-        let (outcome, reason) = if conflict {
-            (TerminalOutcome::Conflict, ReasonCode::MaterialContradiction)
+        if conflict {
+            fire(
+                "independent-conflict",
+                3,
+                TerminalOutcome::Conflict,
+                ReasonCode::MaterialContradiction,
+            );
         } else {
-            (TerminalOutcome::AskMore, ReasonCode::MissingCriticalContext)
-        };
-        return refuse(outcome, reason, &funnel, &excluded);
-    };
-
-    let mut applicable = Vec::new();
-    for document in &citable {
-        if normalized(&document.population) == *population {
-            applicable.push(*document);
-        } else {
-            excluded.push((
-                document.doc_id.clone(),
-                format!(
-                    "population {} does not match {population}",
-                    document.population
-                ),
-            ));
+            fire(
+                "population-missing",
+                4,
+                TerminalOutcome::AskMore,
+                ReasonCode::MissingCriticalContext,
+            );
         }
     }
-    funnel.applicable = applicable.len();
-    if applicable.is_empty() {
-        return refuse(
-            TerminalOutcome::Abstain,
-            ReasonCode::ApplicabilityUnresolved,
-            &funnel,
-            &excluded,
-        );
-    }
 
-    let studies = study_directions(&applicable);
-    funnel.independent_studies = studies.len();
-    if studies_conflict(&applicable) {
-        return refuse(
-            TerminalOutcome::Conflict,
-            ReasonCode::MaterialContradiction,
-            &funnel,
-            &excluded,
-        );
-    }
-    // One study's reports disagreeing is unresolved evidence, not independent contradiction.
-    if studies.values().any(|directions| directions.len() > 1) {
-        return refuse(
-            TerminalOutcome::Abstain,
-            ReasonCode::EvidenceInsufficient,
-            &funnel,
-            &excluded,
-        );
+    let rules: Vec<FiredRule> = fired.iter().map(|(rule, _)| rule.clone()).collect();
+    if let Resolution::Decided {
+        requirement,
+        cause,
+        winners,
+    } = evaluate_precedence(&rules)
+    {
+        // Only these rules can fire here, so any other result means the guards are broken.
+        let (Requirement::Outcome(outcome), Cause::RuleWon) = (requirement, cause) else {
+            return refuse(
+                TerminalOutcome::Blocked,
+                ReasonCode::ToolFailure,
+                &funnel,
+                &excluded,
+            );
+        };
+        let reason = fired
+            .iter()
+            .find(|(rule, _)| winners.contains(&rule.rule_id))
+            .map_or(ReasonCode::ToolFailure, |(_, reason)| *reason);
+        return refuse(outcome, reason, &funnel, &excluded);
     }
 
     let mut claims = Vec::new();

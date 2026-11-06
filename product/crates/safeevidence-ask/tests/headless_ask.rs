@@ -633,3 +633,36 @@ fn every_negation_word_counts_and_every_unit_counts() {
         assert_eq!(claim_defect(&claim, base), Some("unit"), "{unit}");
     }
 }
+
+#[test]
+fn guard_precedence_holds_when_several_guards_apply() {
+    // BLOCKED outranks CONFLICT.
+    let value = with_doc("doc-orbalin-b", |d| {
+        d.rights = safeevidence_contracts::evidence::EvidenceCorpusRights::Unknown;
+    });
+    let result = ask("Does orbalin help adults with ember fatigue?", &value);
+    assert_eq!(result.outcome, TerminalOutcome::Blocked);
+    assert_eq!(result.reason, ReasonCode::RightsUnresolved);
+    // CONFLICT outranks within-study disagreement's ABSTAIN. Study A's two reports disagree,
+    // and study B also contradicts A's first report.
+    let mut value = corpus();
+    let mut second_report = value
+        .documents
+        .iter()
+        .find(|d| d.doc_id == "doc-orbalin-b")
+        .unwrap()
+        .clone();
+    second_report.doc_id = "doc-orbalin-a-second-report".to_owned();
+    second_report.study_id = "study-orbalin-a".to_owned();
+    value.documents.push(second_report);
+    let result = ask("Does orbalin help adults with ember fatigue?", &value);
+    assert_eq!(result.outcome, TerminalOutcome::Conflict);
+    assert_eq!(result.reason, ReasonCode::MaterialContradiction);
+}
+
+#[test]
+fn asking_for_a_population_is_pointless_when_nothing_can_be_cited() {
+    let result = ask("Does quenzil help with hollow cough?", &corpus());
+    assert_eq!(result.outcome, TerminalOutcome::Abstain);
+    assert_eq!(result.reason, ReasonCode::SourceInvalidOrRetracted);
+}

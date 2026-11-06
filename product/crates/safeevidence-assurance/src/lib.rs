@@ -2,7 +2,7 @@
 //!
 //! The lowest precedence number wins. Different outcomes at equal precedence fail closed and are
 //! never averaged. Exactly one resolution comes back for any input. This resolves rules; deciding
-//! which rules fire is the caller's job, and `safeevidence-ask` does not use this yet.
+//! which rules fire is the caller's job.
 
 use safeevidence_contracts::assurance::{ControlAction, TerminalOutcome};
 

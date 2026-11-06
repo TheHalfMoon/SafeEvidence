@@ -10,12 +10,12 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `375d7bbd2601510bdfe4144c6af9280d247048ea` |
+| `main` at last update | `bd0289c76a88fc192148d10561e5ec5fac309d57` |
 | Milestone | M0 open for rows; M1 VS-1a step 1 in review |
 | Active packet | WP-00 and WP-01 rows; VS-1a headless path |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no files copied); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, stopping at `VERIFIED_UNCOMMITTED` |
-| Next executable task | Wire assurance into Ask; then T03 proof commit, Tauri Ask view (`plan-v1.1` §C) |
+| Next executable task | T03 proof commit, with owed lineage and immutability tests; Tauri Ask view (`plan-v1.1` §C) |
 
 Required checks on `main` (founder decision, 2026-11-05): `foundation-documents`, `preentry structure`, `synthetic-only`
 and `product`, the last three on Ubuntu, Windows and macOS.
@@ -49,7 +49,8 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 
 **TA-13 is not met.** T13 is ported as mechanics, with 1,329 parity vectors from the donor's code. Its fixture subset does
 not run: those cases need a tool and slot layer and a role V1 does not serve. Exactly-one `TerminalOutcome` is not yet a property of
-this crate. `safeevidence-ask` does not use it, so `plan-v1.1` §C step 2 is incomplete. Amend or build this before M1 exit.
+this crate. `safeevidence-ask` resolves its evidence guards through it, but `plan-v1.1` §C step 2's parity is incomplete. Amend or build this
+before M1 exit.
 
 **Sockets in the core's tree:** TA-29's named HTTP clients are absent, but `mio` and `socket2` are present through
 `tokio` and `zbus`, for the Linux Secret Service protector in T03. Architecture §2 says the core opens no sockets, and
