@@ -5,8 +5,8 @@
 //! pipeline's control flow and refusals, not retrieval quality or real question handling.
 //!
 //! Evidence-based guards are gathered as fired rules and resolved by `safeevidence-assurance`.
-//! Two checks run first, because no evidence is read for them: unsupported language, and
-//! patient-specific requests. Tool failures and an invalid corpus also return directly.
+//! Other paths return directly: unsupported language, patient-specific requests, questions outside
+//! the grammar, no matching evidence, tool failures, an invalid corpus, and failed verification.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -558,8 +558,8 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         );
     }
 
-    // Gather every fact first, then let the ported precedence choose one outcome. Numbers follow
-    // the contract's guard order, so no branch order can decide the result.
+    // Gather the evidence facts, then let the ported precedence choose among them. Numbers follow
+    // the contract's guard order. The population branches still make some rules exclusive.
     let mut fired: Vec<(FiredRule, ReasonCode)> = Vec::new();
     let mut fire = |id: &str, precedence: u32, outcome: TerminalOutcome, reason: ReasonCode| {
         let rule = FiredRule {
@@ -694,6 +694,14 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
             );
         }
     }
+
+    // Denied sources must not count as usable evidence in the trace of the refusal they caused.
+    if !denied.is_empty() {
+        funnel.applicable = 0;
+        funnel.independent_studies = 0;
+    }
+    let mut seen = BTreeSet::new();
+    excluded.retain(|(doc_id, _)| seen.insert(doc_id.clone()));
 
     let rules: Vec<FiredRule> = fired.iter().map(|(rule, _)| rule.clone()).collect();
     if let Resolution::Decided {
