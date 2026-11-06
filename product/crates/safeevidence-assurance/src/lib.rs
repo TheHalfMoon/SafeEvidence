@@ -32,6 +32,8 @@ pub enum Cause {
     RevokedRule,
     /// A rule required the emergency notice, which P00 disables in V1.
     EmergencyDisabled,
+    /// A rule had a blank identity.
+    MalformedRule,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,6 +58,9 @@ fn fail_closed(cause: Cause, winners: Vec<String>) -> Resolution {
 /// Resolves fired rules into exactly one result.
 #[must_use]
 pub fn evaluate_precedence(rules: &[FiredRule]) -> Resolution {
+    if rules.iter().any(|rule| rule.rule_id.trim().is_empty()) {
+        return fail_closed(Cause::MalformedRule, Vec::new());
+    }
     if let Some(rule) = rules.iter().find(|rule| rule.revoked) {
         return fail_closed(Cause::RevokedRule, vec![rule.rule_id.clone()]);
     }
@@ -77,12 +82,16 @@ pub fn evaluate_precedence(rules: &[FiredRule]) -> Resolution {
             winners: vec![winners[0].clone()],
         };
     }
-    let escalate = Requirement::Outcome(TerminalOutcome::Escalate);
-    let requirement = if leaders.iter().any(|rule| rule.requirement == escalate) {
-        escalate
-    } else {
-        Requirement::Outcome(TerminalOutcome::Abstain)
-    };
+    // Fails toward the contract's guard order, then ABSTAIN. Never averaged.
+    let requirement = [
+        TerminalOutcome::Blocked,
+        TerminalOutcome::Escalate,
+        TerminalOutcome::Conflict,
+    ]
+    .into_iter()
+    .map(Requirement::Outcome)
+    .find(|wanted| leaders.iter().any(|rule| rule.requirement == *wanted))
+    .unwrap_or(Requirement::Outcome(TerminalOutcome::Abstain));
     Resolution::Decided {
         requirement,
         cause: Cause::ConflictingRules,

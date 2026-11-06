@@ -47,9 +47,9 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 
 ## Known defects
 
-**TA-13:** T13 is ported as mechanics, with 1,329 parity vectors from the donor's code. The row's fixture-subset wording is
-not met: the donor's cases need a tool and slot layer and a role V1 does not serve. Amend or build that layer before M1 exit.
-`safeevidence-ask` does not use this crate yet.
+**TA-13 is not met.** T13 is ported as mechanics, with 1,329 parity vectors from the donor's code. Its fixture subset does
+not run: those cases need a tool and slot layer and a role V1 does not serve. Exactly-one `TerminalOutcome` is not yet a property of
+this crate. `safeevidence-ask` does not use it, so `plan-v1.1` §C step 2 is incomplete. Amend or build this before M1 exit.
 
 **Sockets in the core's tree:** TA-29's named HTTP clients are absent, but `mio` and `socket2` are present through
 `tokio` and `zbus`, for the Linux Secret Service protector in T03. Architecture §2 says the core opens no sockets, and

@@ -12,11 +12,15 @@ Admission `ADM-0005` (T13) in `docs/evidence/source_admissions.json`.
 ## Deliberate differences from the donor
 
 - No rules fired returns `NoRuleFired`, not `ANSWER`: a commit needs its own proof (P00).
-- An emergency requirement fails closed at any precedence: P00 disables `EMERGENCY_NOTICE` in V1.
-- The donor's malformed-rule and bundle validation is not ported; Rust types rule out most of it.
+- An emergency requirement fails closed to `ABSTAIN` at any precedence, even beside a rule requiring `ESCALATE`, where the
+  donor would escalate. P00 disables `EMERGENCY_NOTICE` in V1.
+- Equal-precedence conflicts fail toward P00's guard order: `BLOCKED`, `ESCALATE`, `CONFLICT`, then `ABSTAIN`. The donor has
+  no `BLOCKED` or `CONFLICT` state, so the vectors do not cover these two.
+- Only a blank rule ID is rejected as malformed. The donor's bundle validation is not ported, so unlike the donor, any
+  precedence number is accepted, including out-of-range ones.
 
 ## Not covered
 
 The donor's 17 fixture cases are not run. They need its tool registry and slot layer, use a patient-caregiver role V1 does not
-serve, and 4 are lexical emergency cases P00 excludes. This is mechanics parity only, so **TA-13's fixture-subset wording is not
-met** unless amended. `safeevidence-ask` does not call this crate yet.
+serve, and 4 are lexical emergency cases P00 excludes. This is mechanics parity only, so **TA-13 is not met**: its fixture subset does not run, and this crate alone cannot
+give exactly one `TerminalOutcome`, since it can return `NoRuleFired` or an action. Ask carries the lexical-emergency test today. `safeevidence-ask` does not call this crate yet.

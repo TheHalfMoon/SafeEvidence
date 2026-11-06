@@ -141,3 +141,82 @@ fn donor_named_conflict_cases_hold() {
     };
     assert_eq!((requirement, cause), (ESCALATE, Cause::ConflictingRules));
 }
+
+const BLOCKED: Requirement = Requirement::Outcome(TerminalOutcome::Blocked);
+const CONFLICT: Requirement = Requirement::Outcome(TerminalOutcome::Conflict);
+
+fn decided(rules: &[FiredRule]) -> (Requirement, Cause, Vec<String>) {
+    match evaluate_precedence(rules) {
+        Resolution::Decided {
+            requirement,
+            cause,
+            winners,
+        } => (requirement, cause, winners),
+        Resolution::NoRuleFired => panic!("expected a decision"),
+    }
+}
+
+#[test]
+fn equal_precedence_conflict_follows_the_contract_guard_order_beyond_the_donor() {
+    for (rules, expected) in [
+        (vec![rule("a", 1, BLOCKED), rule("b", 1, ESCALATE)], BLOCKED),
+        (vec![rule("a", 1, ESCALATE), rule("b", 1, BLOCKED)], BLOCKED),
+        (
+            vec![rule("a", 1, ESCALATE), rule("b", 1, CONFLICT)],
+            ESCALATE,
+        ),
+        (
+            vec![rule("a", 1, CONFLICT), rule("b", 1, ASK_MORE)],
+            CONFLICT,
+        ),
+        (vec![rule("a", 1, ASK_MORE), rule("b", 1, ABSTAIN)], ABSTAIN),
+    ] {
+        let (requirement, cause, _) = decided(&rules);
+        assert_eq!(requirement, expected, "{rules:?}");
+        assert_eq!(cause, Cause::ConflictingRules);
+    }
+}
+
+#[test]
+fn fail_closed_checks_report_the_first_offender_in_a_fixed_order() {
+    let revoked = |id: &str| FiredRule {
+        revoked: true,
+        ..rule(id, 1, ASK_MORE)
+    };
+    let (_, cause, winners) = decided(&[revoked("r1"), revoked("r2")]);
+    assert_eq!(
+        (cause, winners),
+        (Cause::RevokedRule, vec!["r1".to_owned()])
+    );
+    let (_, cause, winners) = decided(&[rule("e1", 1, EMERGENCY), rule("e2", 1, EMERGENCY)]);
+    assert_eq!(
+        (cause, winners),
+        (Cause::EmergencyDisabled, vec!["e1".to_owned()])
+    );
+    let (_, cause, _) = decided(&[rule("e", 1, EMERGENCY), revoked("r")]);
+    assert_eq!(
+        cause,
+        Cause::RevokedRule,
+        "revocation is checked before emergency"
+    );
+}
+
+#[test]
+fn conflict_names_every_leader_in_input_order() {
+    let (_, _, winners) = decided(&[
+        rule("z", 1, ASK_MORE),
+        rule("a", 1, ABSTAIN),
+        rule("m", 2, ESCALATE),
+    ]);
+    assert_eq!(winners, ["z", "a"]);
+}
+
+#[test]
+fn blank_rule_identity_fails_closed() {
+    for id in ["", "  "] {
+        let (requirement, cause, winners) =
+            decided(&[rule(id, 1, ASK_MORE), rule("a", 1, ESCALATE)]);
+        assert_eq!((requirement, cause), (ABSTAIN, Cause::MalformedRule));
+        assert!(winners.is_empty());
+    }
+}
