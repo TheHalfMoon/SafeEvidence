@@ -633,3 +633,66 @@ fn every_negation_word_counts_and_every_unit_counts() {
         assert_eq!(claim_defect(&claim, base), Some("unit"), "{unit}");
     }
 }
+
+#[test]
+fn guard_precedence_holds_when_several_guards_apply() {
+    // BLOCKED outranks CONFLICT.
+    let value = with_doc("doc-orbalin-b", |d| {
+        d.rights = safeevidence_contracts::evidence::EvidenceCorpusRights::Unknown;
+    });
+    let result = ask("Does orbalin help adults with ember fatigue?", &value);
+    assert_eq!(result.outcome, TerminalOutcome::Blocked);
+    assert_eq!(result.reason, ReasonCode::RightsUnresolved);
+    // CONFLICT outranks within-study disagreement's ABSTAIN. Study A's two reports disagree,
+    // and study B also contradicts A's first report.
+    let mut value = corpus();
+    let mut second_report = value
+        .documents
+        .iter()
+        .find(|d| d.doc_id == "doc-orbalin-b")
+        .unwrap()
+        .clone();
+    second_report.doc_id = "doc-orbalin-a-second-report".to_owned();
+    second_report.study_id = "study-orbalin-a".to_owned();
+    value.documents.push(second_report);
+    let result = ask("Does orbalin help adults with ember fatigue?", &value);
+    assert_eq!(result.outcome, TerminalOutcome::Conflict);
+    assert_eq!(result.reason, ReasonCode::MaterialContradiction);
+}
+
+#[test]
+fn asking_for_a_population_is_pointless_when_nothing_can_be_cited() {
+    let result = ask("Does quenzil help with hollow cough?", &corpus());
+    assert_eq!(result.outcome, TerminalOutcome::Abstain);
+    assert_eq!(result.reason, ReasonCode::SourceInvalidOrRetracted);
+}
+
+#[test]
+fn rights_refusal_trace_counts_no_denied_source_as_usable_and_lists_each_once() {
+    let value = with_doc("doc-orbalin-b", |d| {
+        d.rights = safeevidence_contracts::evidence::EvidenceCorpusRights::Unknown;
+    });
+    let result = ask("Does orbalin help adults with ember fatigue?", &value);
+    assert_eq!(result.outcome, TerminalOutcome::Blocked);
+    assert_eq!(result.funnel.rights_admissible, 0);
+    assert_eq!(result.funnel.applicable, 0);
+    assert_eq!(result.funnel.independent_studies, 0);
+    assert_eq!(result.excluded.len(), 1);
+    assert_eq!(result.excluded[0].1, "rights not established");
+    let denied_and_other_population = with_doc("doc-veltrix-peds", |d| {
+        d.rights = safeevidence_contracts::evidence::EvidenceCorpusRights::Unknown;
+    });
+    let result = ask(ADULT, &denied_and_other_population);
+    assert_eq!(result.outcome, TerminalOutcome::Blocked);
+    assert_eq!(result.excluded.len(), 1, "one entry per document");
+}
+
+#[test]
+fn population_missing_keeps_its_own_reason_beside_other_rules() {
+    let value = with_doc("doc-veltrix-peds", |d| {
+        d.publication_state = PublicationState::Superseded;
+    });
+    let result = ask("Does veltrixamine help with glimmer syndrome?", &value);
+    assert_eq!(result.outcome, TerminalOutcome::AskMore);
+    assert_eq!(result.reason, ReasonCode::MissingCriticalContext);
+}

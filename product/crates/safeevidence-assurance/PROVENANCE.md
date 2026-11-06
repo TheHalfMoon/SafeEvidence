@@ -23,4 +23,4 @@ Admission `ADM-0005` (T13) in `docs/evidence/source_admissions.json`.
 
 The donor's 17 fixture cases are not run. They need its tool registry and slot layer, use a patient-caregiver role V1 does not
 serve, and 4 are lexical emergency cases P00 excludes. This is mechanics parity only, so **TA-13 is not met**: its fixture subset does not run, and this crate alone cannot
-give exactly one `TerminalOutcome`, since it can return `NoRuleFired` or an action. Ask carries the lexical-emergency test today. `safeevidence-ask` does not call this crate yet.
+give exactly one `TerminalOutcome`, since it can return `NoRuleFired` or an action. Ask carries the lexical-emergency test today. `safeevidence-ask` calls it to resolve evidence-based guards only.
