@@ -302,19 +302,28 @@ fn epoch_only_moves_forward() {
 fn wrong_key_cannot_open_and_plaintext_is_not_on_disk() {
     let db = TempDb::new();
     let (manifest, text) = answer();
+    let marker = b"Synthetic evidence brief";
+    let scan = |db: &TempDb| {
+        let mut names = Vec::new();
+        for entry in fs::read_dir(&db.0).unwrap() {
+            let entry = entry.unwrap();
+            let bytes = fs::read(entry.path()).unwrap();
+            names.push(entry.file_name().to_string_lossy().into_owned());
+            assert!(!bytes.windows(marker.len()).any(|window| window == marker));
+        }
+        names
+    };
     {
         let mut store = at_fixture_epoch(&db.path());
         store.commit(&manifest, &text).unwrap();
+        let live = scan(&db);
+        assert!(
+            live.iter().any(|name| name.ends_with("-wal")),
+            "scanned while the WAL is live: {live:?}"
+        );
     }
+    scan(&db);
     assert!(open_with_key(&db.path(), 0x53).is_err());
-    let marker = b"Synthetic evidence brief";
-    let mut files = 0;
-    for entry in fs::read_dir(&db.0).unwrap() {
-        let bytes = fs::read(entry.unwrap().path()).unwrap();
-        files += 1;
-        assert!(!bytes.windows(marker.len()).any(|window| window == marker));
-    }
-    assert!(files >= 1);
 }
 
 /// Child entry, spawned by the kill test; ignored in normal runs.
@@ -467,7 +476,7 @@ fn every_cited_source_must_be_stored_with_the_cited_digest() {
 }
 
 #[test]
-fn the_rights_grant_in_force_must_match_and_a_later_change_ends_assurance() {
+fn commit_requires_the_rights_grant_in_force() {
     let db = TempDb::new();
     let (manifest, text) = answer();
     let mut store = open(&db.path());
@@ -479,17 +488,111 @@ fn the_rights_grant_in_force_must_match_and_a_later_change_ends_assurance() {
         ),
         "no grant yet"
     );
-    admit_fixture(&mut store);
     store.set_rights_grant("a-different-grant").unwrap();
     assert!(matches!(
         store.commit(&manifest, &text),
         Err(StoreError::RightsChanged)
     ));
-    admit_fixture(&mut store);
+}
+
+#[test]
+fn a_rights_change_is_permanent_recorded_and_cannot_restore_an_answer() {
+    let db = TempDb::new();
+    let (manifest, text) = answer();
+    let mut store = at_fixture_epoch(&db.path());
     store.commit(&manifest, &text).unwrap();
-    store.set_rights_grant("a-different-grant").unwrap();
+    store
+        .set_rights_grant(&manifest.rights_grant_version)
+        .expect("the grant in force is a no-op");
     assert_eq!(
         store.read(&manifest.proof_id).unwrap().state,
+        ProofState::Committed
+    );
+    assert!(matches!(
+        store.set_rights_grant(" "),
+        Err(StoreError::InvalidRightsGrant)
+    ));
+    store.set_rights_grant("revoked-v2").unwrap();
+    assert_eq!(
+        store.read(&manifest.proof_id).unwrap().state,
+        ProofState::CurrentlyInvalidated
+    );
+    assert!(matches!(
+        store.set_rights_grant(&manifest.rights_grant_version),
+        Err(StoreError::RightsGrantRetired)
+    ));
+    assert_eq!(
+        store.read(&manifest.proof_id).unwrap().state,
+        ProofState::CurrentlyInvalidated
+    );
+    let receipt = store.commit(&manifest, &text).unwrap();
+    assert_eq!(receipt.state, ProofState::CurrentlyInvalidated);
+    assert!(
+        store
+            .store_events()
+            .unwrap()
+            .contains(&("RIGHTS_GRANT_SET".to_owned(), "revoked-v2".to_owned()))
+    );
+}
+
+#[test]
+fn a_source_amended_before_commit_refuses_the_answer() {
+    let db = TempDb::new();
+    let (manifest, text) = answer();
+    let mut store = at_fixture_epoch(&db.path());
+    let cited = manifest.claims[0].spans[0].source_id.clone();
+    store.put_source("correction", b"corrected").unwrap();
+    store.amend(&cited, "correction", "synthetic").unwrap();
+    assert!(matches!(
+        store.commit(&manifest, &text),
+        Err(StoreError::SourceAmended(id)) if id == cited
+    ));
+    assert!(matches!(
+        store.read(&manifest.proof_id),
+        Err(StoreError::UnknownProof)
+    ));
+    let events = store.store_events().unwrap();
+    assert!(events.contains(&("SOURCE_AMENDED".to_owned(), cited)));
+    assert!(events.contains(&("SOURCE_STORED".to_owned(), "correction".to_owned())));
+}
+
+#[test]
+fn a_retry_with_a_later_clock_is_the_same_proof() {
+    let db = TempDb::new();
+    let (manifest, text) = answer();
+    let mut store = at_fixture_epoch(&db.path());
+    store.commit(&manifest, &text).unwrap();
+    let mut retry = manifest.clone();
+    retry.verified_at_utc = "a-later-time".to_owned();
+    assert!(store.commit(&retry, &text).unwrap().replayed);
+}
+
+#[test]
+fn verifying_again_at_a_new_epoch_makes_a_new_proof_and_requalifies() {
+    let db = TempDb::new();
+    let (old, text) = answer();
+    let mut store = at_fixture_epoch(&db.path());
+    store.commit(&old, &text).unwrap();
+    store.advance_epoch(EPOCH + 1).unwrap();
+    assert!(
+        store
+            .store_events()
+            .unwrap()
+            .contains(&("EPOCH_ADVANCED".to_owned(), (EPOCH + 1).to_string()))
+    );
+
+    let mut corpus = load_corpus(FIXTURE, &DigestSha256::of(FIXTURE)).expect("fixture");
+    corpus.validity_epoch = EPOCH + 1;
+    let result = ask(QUESTION, &corpus);
+    let new = result.manifest.unwrap();
+    assert_ne!(new.proof_id, old.proof_id);
+    let receipt = store
+        .commit(&new, &result.brief.unwrap().into_bytes())
+        .unwrap();
+    assert_eq!(receipt.state, ProofState::Committed);
+    assert!(!receipt.replayed);
+    assert_eq!(
+        store.read(&old.proof_id).unwrap().state,
         ProofState::CurrentnessUnknown
     );
 }
@@ -511,7 +614,7 @@ fn amending_a_cited_source_invalidates_the_answer_and_keeps_its_bytes() {
 }
 
 #[test]
-fn settings_persist_across_reopen_so_triggers_still_catch_replacement() {
+fn source_bytes_survive_reopen_and_the_store_runs_on_wal() {
     let db = TempDb::new();
     {
         let mut store = open(&db.path());

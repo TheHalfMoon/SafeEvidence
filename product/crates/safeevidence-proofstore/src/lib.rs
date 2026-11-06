@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS sources (
 CREATE TABLE IF NOT EXISTS amendments (
     seq INTEGER PRIMARY KEY AUTOINCREMENT, prior_id TEXT NOT NULL, superseding_id TEXT NOT NULL,
     reason TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS rights_grants (version TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS store_events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT NOT NULL, subject TEXT NOT NULL);
 CREATE TRIGGER IF NOT EXISTS authority_monotonic BEFORE UPDATE ON authority
     WHEN NEW.epoch < OLD.epoch BEGIN SELECT RAISE(ABORT, 'validity epoch must not decrease'); END;
 CREATE TRIGGER IF NOT EXISTS authority_keep BEFORE DELETE ON authority
@@ -60,7 +63,20 @@ CREATE TRIGGER IF NOT EXISTS amendments_no_update BEFORE UPDATE ON amendments
     BEGIN SELECT RAISE(ABORT, 'append-only'); END;
 CREATE TRIGGER IF NOT EXISTS amendments_no_delete BEFORE DELETE ON amendments
     BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rights_grants_no_update BEFORE UPDATE ON rights_grants
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rights_grants_no_delete BEFORE DELETE ON rights_grants
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS store_events_no_update BEFORE UPDATE ON store_events
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+CREATE TRIGGER IF NOT EXISTS store_events_no_delete BEFORE DELETE ON store_events
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
 ";
+
+/// SHA-256 of the stored names and text of every schema object. A store whose triggers or tables
+/// differ is refused on open. Change this only together with `SCHEMA`.
+const SCHEMA_OBJECTS_SHA256: &str =
+    "7e67770f3aeccf9bc4387ba0203b31698303ce9289636c9a4b559bb06a545918";
 
 #[derive(Debug)]
 pub enum StoreError {
@@ -71,6 +87,12 @@ pub enum StoreError {
     Corrupt(String),
     /// The connection did not accept the required durability settings.
     NotDurable,
+    /// The stored schema is not the one this build installs.
+    SchemaMismatch {
+        found: String,
+    },
+    /// Another connection holds the write lock. Nothing was written; retry.
+    Busy,
     /// The commit outcome is unknown. Retry with the same proof to reconcile.
     CommitUnknown(rusqlite::Error),
     Defects(Vec<ManifestDefect>),
@@ -83,8 +105,14 @@ pub enum StoreError {
     },
     /// The manifest's rights grant is not the one in force.
     RightsChanged,
+    /// A rights grant must be non-empty.
+    InvalidRightsGrant,
+    /// A grant that was replaced cannot come back, so it cannot restore an old answer.
+    RightsGrantRetired,
     /// A cited source is not stored, or its digest differs from the cited one.
     SourceNotAdmitted(String),
+    /// A cited source was amended after this answer was verified.
+    SourceAmended(String),
     /// One proof ID may never hold a different text or manifest.
     ConflictingProof,
     SourceConflict,
@@ -97,8 +125,16 @@ impl From<GuardedSqlError> for StoreError {
     fn from(error: GuardedSqlError) -> Self {
         match error {
             GuardedSqlError::StatementNotAllowed => Self::StatementNotAllowed,
-            GuardedSqlError::Provider(error) => Self::Provider(error),
+            GuardedSqlError::Provider(error) => provider_error(error),
         }
+    }
+}
+
+fn provider_error(error: rusqlite::Error) -> StoreError {
+    if error.sqlite_error_code() == Some(rusqlite::ErrorCode::DatabaseBusy) {
+        StoreError::Busy
+    } else {
+        StoreError::Provider(error)
     }
 }
 
@@ -108,7 +144,7 @@ fn flatten<T>(result: Result<T, SqlCipherTransactionError<StoreError>>) -> Resul
         Err(SqlCipherTransactionError::Access(error)) => {
             Err(StoreError::Lease(format!("{error:?}")))
         }
-        Err(SqlCipherTransactionError::Provider(error)) => Err(StoreError::Provider(error)),
+        Err(SqlCipherTransactionError::Provider(error)) => Err(provider_error(error)),
         Err(SqlCipherTransactionError::CommitUnknown(error)) => {
             Err(StoreError::CommitUnknown(error))
         }
@@ -124,7 +160,7 @@ fn flatten_setup<T>(
         Err(SqlCipherTransactionError::Access(error)) => {
             Err(StoreError::Lease(format!("{error:?}")))
         }
-        Err(SqlCipherTransactionError::Provider(error)) => Err(StoreError::Provider(error)),
+        Err(SqlCipherTransactionError::Provider(error)) => Err(provider_error(error)),
         Err(SqlCipherTransactionError::CommitUnknown(error)) => {
             Err(StoreError::CommitUnknown(error))
         }
@@ -180,7 +216,39 @@ fn cited_sources(manifest: &AnswerProofManifest) -> impl Iterator<Item = (&str, 
         .map(|span| (span.source_id.as_str(), span.source_digest.to_hex()))
 }
 
-/// The standing now. A correction to a cited source invalidates, per the proof contract.
+fn is_amended(tx: &GuardedTransaction<'_>, source_id: &str) -> Result<bool, StoreError> {
+    Ok(!tx
+        .query(
+            "SELECT 1 FROM amendments WHERE prior_id = ?1",
+            params![source_id],
+            |row| row.get::<_, i64>(0),
+        )?
+        .is_empty())
+}
+
+fn record_store_event(
+    tx: &GuardedTransaction<'_>,
+    event: &str,
+    subject: &str,
+) -> Result<(), StoreError> {
+    tx.execute(
+        "INSERT INTO store_events (event, subject) VALUES (?1, ?2)",
+        params![event, subject],
+    )?;
+    Ok(())
+}
+
+/// One proof, whatever clock time a retry carries.
+fn same_proof(first: &AnswerProofManifest, second: &AnswerProofManifest) -> bool {
+    let mut first = first.clone();
+    let mut second = second.clone();
+    first.verified_at_utc.clear();
+    second.verified_at_utc.clear();
+    first == second
+}
+
+/// The standing now. A correction to a cited source or a change of rights grant invalidates, per
+/// the proof contract. A moved epoch only leaves currentness unknown.
 fn standing(
     tx: &GuardedTransaction<'_>,
     manifest: &AnswerProofManifest,
@@ -194,19 +262,13 @@ fn standing(
         .is_empty();
     let mut amended = false;
     for (source_id, _) in cited_sources(manifest) {
-        amended |= !tx
-            .query(
-                "SELECT 1 FROM amendments WHERE prior_id = ?1",
-                params![source_id],
-                |row| row.get::<_, i64>(0),
-            )?
-            .is_empty();
-    }
-    if invalidated || amended {
-        return Ok(ProofState::CurrentlyInvalidated);
+        amended |= is_amended(tx, source_id)?;
     }
     let (epoch, rights) = authority(tx)?;
-    if epoch == manifest.validity_epoch && rights == manifest.rights_grant_version {
+    if invalidated || amended || rights != manifest.rights_grant_version {
+        return Ok(ProofState::CurrentlyInvalidated);
+    }
+    if epoch == manifest.validity_epoch {
         Ok(ProofState::Committed)
     } else {
         Ok(ProofState::CurrentnessUnknown)
@@ -217,7 +279,8 @@ impl ProofStore {
     /// Opens the keyed vault database, requires durable settings and installs the schema.
     ///
     /// # Errors
-    /// Fails on a wrong key, lease or provider failure, or settings that did not take.
+    /// Fails on a wrong key, lease or provider failure, settings that did not take, or a stored
+    /// schema that differs from this build's.
     pub fn open<P: AsRef<Path>>(
         path: P,
         lease: KeyedHandleLease,
@@ -231,6 +294,27 @@ impl ProofStore {
             return Err(StoreError::NotDurable);
         }
         flatten_setup(handle.install_schema(SCHEMA))?;
+        let found = flatten(
+            handle.deferred_transaction(|tx| -> Result<String, StoreError> {
+                let objects = tx.query(
+                    "SELECT name, sql FROM sqlite_master
+                 WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY name",
+                    [],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )?;
+                let mut text = String::new();
+                for (name, sql) in objects {
+                    text.push_str(&name);
+                    text.push('\0');
+                    text.push_str(&sql);
+                    text.push('\0');
+                }
+                Ok(DigestSha256::of(text.as_bytes()).to_hex())
+            }),
+        )?;
+        if found != SCHEMA_OBJECTS_SHA256 {
+            return Err(StoreError::SchemaMismatch { found });
+        }
         Ok(Self { handle })
     }
 
@@ -238,7 +322,8 @@ impl ProofStore {
     ///
     /// # Errors
     /// Refuses before writing on any manifest defect, wrong state, text mismatch, source not
-    /// admitted, rights change, epoch race or conflicting proof. All writes share one transaction.
+    /// admitted or since amended, rights change, epoch race or conflicting proof. All writes share
+    /// one transaction.
     pub fn commit(
         &mut self,
         manifest: &AnswerProofManifest,
@@ -269,7 +354,11 @@ impl ProofStore {
                         |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
                     )?);
                     if let Some((existing_digest, existing_manifest)) = existing {
-                        if existing_digest != digest_hex || existing_manifest != encoded {
+                        let existing_manifest: AnswerProofManifest =
+                            serde_json::from_str(&existing_manifest)
+                                .map_err(|error| StoreError::Corrupt(error.to_string()))?;
+                        if existing_digest != digest_hex || !same_proof(&existing_manifest, &stored)
+                        {
                             return Err(StoreError::ConflictingProof);
                         }
                         return Ok(CommitReceipt {
@@ -297,6 +386,9 @@ impl ProofStore {
                         if found.as_deref() != Some(cited.as_str()) {
                             return Err(StoreError::SourceNotAdmitted(source_id.to_owned()));
                         }
+                        if is_amended(tx, source_id)? {
+                            return Err(StoreError::SourceAmended(source_id.to_owned()));
+                        }
                     }
                     tx.execute(
                         "INSERT INTO answers (proof_id, final_text, final_text_digest, manifest)
@@ -323,7 +415,7 @@ impl ProofStore {
     pub fn read(&mut self, proof_id: &str) -> Result<StoredAnswer, StoreError> {
         flatten(
             self.handle
-                .immediate_transaction(|tx| -> Result<StoredAnswer, StoreError> {
+                .deferred_transaction(|tx| -> Result<StoredAnswer, StoreError> {
                     let row = one(tx.query(
                 "SELECT final_text, final_text_digest, manifest FROM answers WHERE proof_id = ?1",
                 params![proof_id],
@@ -408,24 +500,43 @@ impl ProofStore {
                         "UPDATE authority SET epoch = ?1 WHERE id = 1",
                         params![epoch_value(epoch)?],
                     )?;
-                    Ok(())
+                    record_store_event(tx, "EPOCH_ADVANCED", &epoch.to_string())
                 }),
         )
     }
 
-    /// Sets the rights grant in force. Earlier answers stop being assured if it differs.
+    /// Sets the rights grant in force. Answers under any other grant are invalidated for good: a
+    /// replaced grant cannot come back. Setting the grant already in force is a no-op.
     ///
     /// # Errors
-    /// Fails on a lease or provider failure.
+    /// Refuses an empty grant or one that was replaced.
     pub fn set_rights_grant(&mut self, grant: &str) -> Result<(), StoreError> {
         flatten(
             self.handle
                 .immediate_transaction(|tx| -> Result<(), StoreError> {
+                    if grant.trim().is_empty() {
+                        return Err(StoreError::InvalidRightsGrant);
+                    }
+                    if authority(tx)?.1 == grant {
+                        return Ok(());
+                    }
+                    let used = tx.query(
+                        "SELECT 1 FROM rights_grants WHERE version = ?1",
+                        params![grant],
+                        |row| row.get::<_, i64>(0),
+                    )?;
+                    if !used.is_empty() {
+                        return Err(StoreError::RightsGrantRetired);
+                    }
+                    tx.execute(
+                        "INSERT INTO rights_grants (version) VALUES (?1)",
+                        params![grant],
+                    )?;
                     tx.execute(
                         "UPDATE authority SET rights_grant = ?1 WHERE id = 1",
                         params![grant],
                     )?;
-                    Ok(())
+                    record_store_event(tx, "RIGHTS_GRANT_SET", grant)
                 }),
         )
     }
@@ -437,7 +548,7 @@ impl ProofStore {
     pub fn epoch(&mut self) -> Result<u64, StoreError> {
         flatten(
             self.handle
-                .immediate_transaction(|tx| -> Result<u64, StoreError> { Ok(authority(tx)?.0) }),
+                .deferred_transaction(|tx| -> Result<u64, StoreError> { Ok(authority(tx)?.0) }),
         )
     }
 
@@ -463,7 +574,7 @@ impl ProofStore {
                         "INSERT INTO sources (source_id, digest, bytes) VALUES (?1, ?2, ?3)",
                         params![source_id, digest, bytes],
                     )?;
-                            Ok(())
+                            record_store_event(tx, "SOURCE_STORED", source_id)
                         }
                     }
                 }),
@@ -477,7 +588,7 @@ impl ProofStore {
     pub fn source(&mut self, source_id: &str) -> Result<Option<Vec<u8>>, StoreError> {
         flatten(
             self.handle
-                .immediate_transaction(|tx| -> Result<Option<Vec<u8>>, StoreError> {
+                .deferred_transaction(|tx| -> Result<Option<Vec<u8>>, StoreError> {
                     Ok(one(tx.query(
                         "SELECT bytes FROM sources WHERE source_id = ?1",
                         params![source_id],
@@ -513,9 +624,25 @@ impl ProofStore {
                 "INSERT INTO amendments (prior_id, superseding_id, reason) VALUES (?1, ?2, ?3)",
                 params![prior_id, superseding_id, reason],
             )?;
-                    Ok(())
+                    record_store_event(tx, "SOURCE_AMENDED", prior_id)
                 }),
         )
+    }
+
+    /// Store-wide events as (event, subject), oldest first. Per-proof events are `audit_events`.
+    ///
+    /// # Errors
+    /// Fails on a lease or provider failure.
+    pub fn store_events(&mut self) -> Result<Vec<(String, String)>, StoreError> {
+        flatten(self.handle.deferred_transaction(
+            |tx| -> Result<Vec<(String, String)>, StoreError> {
+                Ok(tx.query(
+                    "SELECT event, subject FROM store_events ORDER BY seq",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )?)
+            },
+        ))
     }
 
     /// The amendment chain for a source, oldest first.
@@ -525,7 +652,7 @@ impl ProofStore {
     pub fn amendments(&mut self, prior_id: &str) -> Result<Vec<String>, StoreError> {
         flatten(
             self.handle
-                .immediate_transaction(|tx| -> Result<Vec<String>, StoreError> {
+                .deferred_transaction(|tx| -> Result<Vec<String>, StoreError> {
                     Ok(tx.query(
                         "SELECT superseding_id FROM amendments WHERE prior_id = ?1 ORDER BY seq",
                         params![prior_id],
@@ -542,7 +669,7 @@ impl ProofStore {
     pub fn audit_events(&mut self, proof_id: &str) -> Result<Vec<String>, StoreError> {
         flatten(
             self.handle
-                .immediate_transaction(|tx| -> Result<Vec<String>, StoreError> {
+                .deferred_transaction(|tx| -> Result<Vec<String>, StoreError> {
                     Ok(tx.query(
                         "SELECT event FROM audit_events WHERE proof_id = ?1 ORDER BY seq",
                         params![proof_id],
@@ -658,6 +785,10 @@ mod tests {
             "INSERT OR REPLACE INTO sources (source_id, digest, bytes) VALUES ('s1', 'x', x'00')",
             "INSERT OR REPLACE INTO amendments (seq, prior_id, superseding_id, reason) VALUES (1, 'x', 'y', 'z')",
             "DELETE FROM authority",
+            "DELETE FROM store_events",
+            "UPDATE store_events SET event = 'X'",
+            "DELETE FROM rights_grants",
+            "UPDATE rights_grants SET version = 'X'",
             "UPDATE authority SET epoch = 1",
             "INSERT OR REPLACE INTO authority (id, epoch, rights_grant) VALUES (1, 1, 'x')",
         ] {
@@ -777,6 +908,10 @@ mod tests {
     }
 
     fn reopen(db: &TempDb, lease: &VaultLease) -> ProofStore {
+        try_reopen(db, lease).expect("store opens")
+    }
+
+    fn try_reopen(db: &TempDb, lease: &VaultLease) -> Result<ProofStore, StoreError> {
         let context = KeyDerivationContext::new(
             VaultId::from_bytes([0x41; VAULT_ID_BYTES]),
             KeyGeneration::new(7).expect("generation"),
@@ -788,7 +923,6 @@ mod tests {
             context,
             &OwnedKeyMaterial::from_bytes([0x52; KEY_MATERIAL_BYTES]),
         )
-        .expect("store opens")
     }
 
     fn fixture_answer(store: &mut ProofStore) -> (AnswerProofManifest, Vec<u8>) {
@@ -849,7 +983,10 @@ mod tests {
         let blocked = first
             .handle
             .immediate_transaction(|_tx| -> Result<bool, StoreError> {
-                Ok(second.put_source("s", b"x").is_err())
+                Ok(matches!(
+                    second.put_source("s", b"x"),
+                    Err(StoreError::Busy)
+                ))
             })
             .map_err(|_| "transaction failed")
             .expect("transaction");
@@ -908,6 +1045,95 @@ mod tests {
         assert!(matches!(
             store.read(&manifest.proof_id),
             Err(StoreError::Corrupt(reason)) if reason.contains("manifest")
+        ));
+    }
+
+    #[test]
+    fn replacement_is_still_refused_after_reopen() {
+        let (db, lease, mut store) = temp_store();
+        store.put_source("s", b"original").expect("source");
+        drop(store);
+        let mut store = reopen(&db, &lease);
+        let error = attempt_raw_sql(
+            &mut store,
+            "INSERT OR REPLACE INTO sources (source_id, digest, bytes) VALUES ('s', 'x', x'00')",
+        )
+        .expect_err("replacement");
+        assert!(error.contains("append-only"), "{error}");
+    }
+
+    #[test]
+    fn open_refuses_a_weakened_trigger() {
+        let (db, lease, mut store) = temp_store();
+        store
+            .handle
+            .install_schema(
+                "DROP TRIGGER answers_no_update;
+                 CREATE TRIGGER answers_no_update BEFORE UPDATE ON answers WHEN 0
+                     BEGIN SELECT RAISE(ABORT, 'append-only'); END;",
+            )
+            .expect("weaken");
+        drop(store);
+        assert!(matches!(
+            try_reopen(&db, &lease),
+            Err(StoreError::SchemaMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn open_refuses_foreign_tables_with_the_same_names() {
+        let db = TempDb::new();
+        let identity = VaultLeaseIdentity::new(
+            VaultId::from_bytes([0x41; VAULT_ID_BYTES]),
+            KeyGeneration::new(7).expect("generation"),
+        );
+        let lease = VaultLease::new(identity);
+        let context = KeyDerivationContext::new(
+            identity.vault_id(),
+            identity.key_generation(),
+            KeyPurpose::StructuredStore,
+        );
+        let mut handle = open_sqlcipher_database(
+            db.0.as_path(),
+            lease.keyed_handle_lease(),
+            context,
+            &OwnedKeyMaterial::from_bytes([0x52; KEY_MATERIAL_BYTES]),
+        )
+        .expect("raw handle");
+        handle
+            .install_schema("CREATE TABLE answers (other TEXT);")
+            .expect("foreign table");
+        drop(handle);
+        assert!(try_reopen(&db, &lease).is_err());
+    }
+
+    #[test]
+    fn reads_proceed_while_another_connection_writes() {
+        let (db, lease, mut writer) = temp_store();
+        let mut reader = reopen(&db, &lease);
+        let result = writer
+            .handle
+            .immediate_transaction(|tx| -> Result<u64, StoreError> {
+                tx.execute(
+                    "INSERT INTO store_events (event, subject) VALUES ('X', 'Y')",
+                    [],
+                )?;
+                reader.epoch()
+            });
+        assert!(matches!(result, Ok(0)), "{result:?}");
+    }
+
+    #[test]
+    fn query_refuses_anything_but_select() {
+        let (_db, _lease, mut store) = temp_store();
+        let result = store.handle.immediate_transaction(|tx| {
+            tx.query("DELETE FROM sources", [], |row| row.get::<_, i64>(0))
+        });
+        assert!(matches!(
+            result,
+            Err(SqlCipherTransactionError::Operation(
+                GuardedSqlError::StatementNotAllowed
+            ))
         ));
     }
 }

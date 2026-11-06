@@ -25,7 +25,7 @@ and `product`, the last three on Ubuntu, Windows and macOS.
 | Milestone | Status | Blocked by |
 |---|---|---|
 | M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED`; TA-02 `TESTED_PASSED` | Rows for T12, T13, T30, T36 |
-| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C implemented; step 2 partial | M0 rows; TA-13; desktop; open defects below |
+| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial | M0 rows; TA-13; desktop; open defects below |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
 | M4 Desktop V1 | `NOT_STARTED` | M3 |
@@ -59,8 +59,9 @@ restriction. Resolve before M1 exit: move the protector out of the core process,
 TA-29's tree check covers normal dependencies. Build-only crates such as `cc` and `openssl-src` are covered by the
 `cargo deny` bans.
 
-**`plan-v1.3` lineage and immutability:** tested against the keyed vault store in `safeevidence-proofstore`, with triggers and guarded
-SQL. This guards against bugs, not malicious in-process code, and covers process kills, not power loss. P00 proof steps 1 and 2 are the
+**`plan-v1.3` immutability:** tested against the keyed vault store in `safeevidence-proofstore`, with triggers and guarded SQL.
+**`plan-v1.3` lineage: partly owed.** The store amends sources, not the prior assertion, and keeps no `AmendmentRecord` fields.
+This guards against bugs, not malicious in-process code, and covers process kills, not power loss. P00 proof steps 1 and 2 are the
 caller's job, and `ProofStore::commit` trusts them. `COMMIT_UNKNOWN` is surfaced with no recovery flow beyond idempotent retry. The guard's fixtures test declared structure only, not extraction or statistics.
 
 **TA-03:** Linux (empty network namespace) and macOS (sandbox profile) run all checks under OS-level denial.

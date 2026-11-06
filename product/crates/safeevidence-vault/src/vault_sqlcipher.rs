@@ -469,15 +469,19 @@ impl GuardedTransaction<'_> {
     }
 }
 
+fn schema_statement_allowed(sql: &str) -> bool {
+    let first = sql.split_whitespace().next().unwrap_or_default();
+    ["CREATE", "DROP", "INSERT", "UPDATE", "DELETE"]
+        .iter()
+        .any(|keyword| first.eq_ignore_ascii_case(keyword))
+}
+
 /// SafeEvidence addition to the donor's handle: the narrow routes a store needs. The connection
 /// stays private, and each call holds the lease permit for its whole duration.
 impl SqlCipherDatabaseHandle {
-    /// Runs `operation` in one immediate transaction. An `Err` rolls it back; `Ok` commits.
-    ///
-    /// # Errors
-    /// Returns the lease, provider, operation or commit failure.
-    pub fn immediate_transaction<T, E, F>(
+    fn run_transaction<T, E, F>(
         &mut self,
+        behavior: rusqlite::TransactionBehavior,
         operation: F,
     ) -> Result<T, SqlCipherTransactionError<E>>
     where
@@ -486,7 +490,7 @@ impl SqlCipherDatabaseHandle {
         let result = self.inner.write(|backend| {
             let transaction = backend
                 ._connection
-                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .transaction_with_behavior(behavior)
                 .map_err(SqlCipherTransactionError::Provider)?;
             let value = operation(&GuardedTransaction {
                 transaction: &transaction,
@@ -504,22 +508,65 @@ impl SqlCipherDatabaseHandle {
         }
     }
 
-    /// Applies a compile-time schema in one transaction. `'static` keeps runtime text out of it.
+    /// Runs `operation` holding the write lock from the start. An `Err` rolls it back; `Ok` commits.
     ///
     /// # Errors
-    /// Returns the lease, provider or commit failure.
+    /// Returns the lease, provider, operation or commit failure.
+    pub fn immediate_transaction<T, E, F>(
+        &mut self,
+        operation: F,
+    ) -> Result<T, SqlCipherTransactionError<E>>
+    where
+        F: FnOnce(&GuardedTransaction<'_>) -> Result<T, E>,
+    {
+        self.run_transaction(rusqlite::TransactionBehavior::Immediate, operation)
+    }
+
+    /// Runs `operation` taking no lock until it reads, so reads proceed beside a writer under WAL.
+    ///
+    /// # Errors
+    /// Returns the lease, provider, operation or commit failure.
+    pub fn deferred_transaction<T, E, F>(
+        &mut self,
+        operation: F,
+    ) -> Result<T, SqlCipherTransactionError<E>>
+    where
+        F: FnOnce(&GuardedTransaction<'_>) -> Result<T, E>,
+    {
+        self.run_transaction(rusqlite::TransactionBehavior::Deferred, operation)
+    }
+
+    /// Applies a compile-time schema in one transaction. `'static` keeps runtime text out of it,
+    /// and each statement must be CREATE, DROP, INSERT, UPDATE or DELETE, so PRAGMA, ATTACH and
+    /// transaction control are refused.
+    ///
+    /// # Errors
+    /// Returns the lease, provider or commit failure. A refused statement is a provider failure.
     pub fn install_schema(
         &mut self,
         schema: &'static str,
     ) -> Result<(), SqlCipherTransactionError<std::convert::Infallible>> {
+        use rusqlite::fallible_iterator::FallibleIterator as _;
+
         let result = self.inner.write(|backend| {
             let transaction = backend
                 ._connection
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(SqlCipherTransactionError::Provider)?;
-            transaction
-                .execute_batch(schema)
-                .map_err(SqlCipherTransactionError::Provider)?;
+            let mut batch = rusqlite::Batch::new(&transaction, schema);
+            while let Some(mut statement) =
+                batch.next().map_err(SqlCipherTransactionError::Provider)?
+            {
+                let text = statement.expanded_sql().unwrap_or_default();
+                if !schema_statement_allowed(&text) {
+                    return Err(SqlCipherTransactionError::Provider(
+                        rusqlite::Error::InvalidQuery,
+                    ));
+                }
+                statement
+                    .execute([])
+                    .map_err(SqlCipherTransactionError::Provider)?;
+            }
             transaction
                 .commit()
                 .map_err(SqlCipherTransactionError::CommitUnknown)
@@ -531,9 +578,7 @@ impl SqlCipherDatabaseHandle {
         }
     }
 
-    /// Applies the settings a durable store needs: WAL, full sync, and recursive triggers, without
-    /// which `INSERT OR REPLACE` would skip delete triggers. Confirm with
-    /// [`Self::durable_settings_hold`].
+    /// Applies WAL and full sync. Confirm with [`Self::durable_settings_hold`].
     ///
     /// # Errors
     /// Returns the lease or provider failure.
@@ -548,7 +593,7 @@ impl SqlCipherDatabaseHandle {
                 })
                 .map_err(SqlCipherTransactionError::Provider)?;
             connection
-                .execute_batch("PRAGMA synchronous = FULL; PRAGMA recursive_triggers = ON;")
+                .execute_batch("PRAGMA synchronous = FULL;")
                 .map_err(SqlCipherTransactionError::Provider)
         });
         match result {
@@ -677,6 +722,10 @@ fn open_reviewed_connection(
     verify_runtime_identity(&connection)?;
     verify_encryption_active(&connection)?;
     enforce_b303_provider_and_temp_posture(&connection)?;
+    // SafeEvidence addition: without this, INSERT OR REPLACE skips delete triggers.
+    connection
+        .execute_batch("PRAGMA recursive_triggers = ON;")
+        .map_err(|_| SqlCipherOpenError::Open)?;
     Ok(connection)
 }
 
@@ -1336,6 +1385,93 @@ mod tests {
         enforce_b303_provider_and_temp_posture(&connection)
             .expect("reviewed B303 provider/temp posture must be enforced");
         connection
+    }
+
+    fn store_handle(path: &Path, lease: &VaultLease) -> super::SqlCipherDatabaseHandle {
+        remove_database_files(path);
+        open_sqlcipher_database(
+            path,
+            lease.keyed_handle_lease(),
+            context(KeyPurpose::StructuredStore),
+            &vrk(),
+        )
+        .expect("test database opens")
+    }
+
+    #[test]
+    fn every_opened_connection_fires_delete_triggers_on_replacement() {
+        let path = unused_path("recursive");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .install_schema(
+                "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT);
+                 INSERT INTO t VALUES (1, 'a');
+                 CREATE TRIGGER t_keep BEFORE DELETE ON t
+                     BEGIN SELECT RAISE(ABORT, 'kept'); END;",
+            )
+            .expect("schema");
+        let replaced = handle
+            .immediate_transaction(|tx| tx.execute("INSERT OR REPLACE INTO t VALUES (1, 'b')", []));
+        assert!(matches!(
+            replaced,
+            Err(super::SqlCipherTransactionError::Operation(
+                super::GuardedSqlError::Provider(_)
+            ))
+        ));
+        drop(handle);
+        remove_database_files(&path);
+    }
+
+    #[test]
+    fn install_schema_refuses_settings_and_transaction_control() {
+        let path = unused_path("schema-guard");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        for schema in [
+            "COMMIT; PRAGMA synchronous = OFF; BEGIN;",
+            "PRAGMA recursive_triggers = OFF;",
+            "ATTACH DATABASE 'x' AS y;",
+            "CREATE TABLE t (id INTEGER); PRAGMA journal_mode = DELETE;",
+        ] {
+            assert!(handle.install_schema(schema).is_err(), "{schema}");
+        }
+        assert!(
+            handle
+                .immediate_transaction(|tx| tx.execute("INSERT INTO t VALUES (1)", []))
+                .is_err(),
+            "a refused schema leaves nothing behind"
+        );
+        drop(handle);
+        remove_database_files(&path);
+    }
+
+    #[test]
+    fn a_failing_commit_reports_an_unknown_outcome() {
+        let path = unused_path("commit-unknown");
+        let lease = VaultLease::new(identity());
+        let mut handle = store_handle(&path, &lease);
+        handle
+            .inner
+            .write(|backend| {
+                backend
+                    ._connection
+                    .execute_batch("PRAGMA foreign_keys = ON;")
+            })
+            .expect("foreign keys on");
+        handle
+            .install_schema(
+                "CREATE TABLE p (id INTEGER PRIMARY KEY);
+                 CREATE TABLE c (p_id INTEGER REFERENCES p(id) DEFERRABLE INITIALLY DEFERRED);",
+            )
+            .expect("schema");
+        let result = handle.immediate_transaction(|tx| tx.execute("INSERT INTO c VALUES (9)", []));
+        assert!(matches!(
+            result,
+            Err(super::SqlCipherTransactionError::CommitUnknown(_))
+        ));
+        drop(handle);
+        remove_database_files(&path);
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
