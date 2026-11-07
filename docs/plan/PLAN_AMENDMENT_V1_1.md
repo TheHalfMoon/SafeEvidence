@@ -1,6 +1,6 @@
 # Plan Amendment `plan-v1.1` (2026-11-05)
 
-State: **PROPOSED. Not in force until merged with the reviews in §F.** Amends the
+State: **In force: ratified by the founder on 2026-11-07, recorded in `plan-v1.5`, with no independent human review of its text.** Amends the
 `plan-v1.0.0` baseline by pointer. The frozen artifacts and their digests in
 `docs/PLAN_FREEZE.md` stay unchanged; where they differ, this amendment controls.
 
