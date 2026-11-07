@@ -269,9 +269,9 @@ fn view(
         excluded: result
             .excluded
             .iter()
-            .map(|(doc_id, reason)| ExcludedView {
-                doc_id: doc_id.clone(),
-                reason: reason.clone(),
+            .map(|exclusion| ExcludedView {
+                doc_id: exclusion.doc_id.clone(),
+                reason: exclusion.detail.clone(),
             })
             .collect(),
         brief,

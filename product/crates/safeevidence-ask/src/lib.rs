@@ -157,13 +157,21 @@ pub struct Question {
     pub condition: String,
 }
 
+/// A source left out of an answer: the code is for checking, the detail is for reading.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Exclusion {
+    pub doc_id: String,
+    pub reason: ReasonCode,
+    pub detail: String,
+}
+
 #[derive(Debug)]
 pub struct AskResult {
     pub outcome: TerminalOutcome,
     pub reason: ReasonCode,
     pub brief: Option<String>,
     pub manifest: Option<AnswerProofManifest>,
-    pub excluded: Vec<(String, String)>,
+    pub excluded: Vec<Exclusion>,
     pub funnel: Funnel,
 }
 
@@ -493,7 +501,7 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         indexed: corpus.documents.len(),
         ..Funnel::default()
     };
-    let refuse = |outcome, reason, funnel: &Funnel, excluded: &[(String, String)]| {
+    let refuse = |outcome, reason, funnel: &Funnel, excluded: &[Exclusion]| {
         let mut result = AskResult::refuse(outcome, reason, funnel.clone());
         result.excluded = excluded.to_vec();
         result
@@ -538,15 +546,16 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         normalized(&document.condition) == question.condition
             && normalized(&document.intervention) == question.intervention
     };
-    let mut excluded: Vec<(String, String)> = Vec::new();
+    let mut excluded: Vec<Exclusion> = Vec::new();
     for id in &retrieved {
         if let Some(document) = corpus.documents.iter().find(|d| &d.doc_id == id)
             && !relevant(&document)
         {
-            excluded.push((
-                document.doc_id.clone(),
-                "different condition or intervention".to_owned(),
-            ));
+            excluded.push(Exclusion {
+                doc_id: document.doc_id.clone(),
+                reason: ReasonCode::ApplicabilityUnresolved,
+                detail: "different condition or intervention".to_owned(),
+            });
         }
     }
     let matching: Vec<&Document> = corpus.documents.iter().filter(relevant).collect();
@@ -574,7 +583,11 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
 
     let denied: Vec<&&Document> = matching.iter().filter(|d| !d.rights.admissible()).collect();
     for document in &denied {
-        excluded.push((document.doc_id.clone(), "rights not established".to_owned()));
+        excluded.push(Exclusion {
+            doc_id: document.doc_id.clone(),
+            reason: ReasonCode::RightsUnresolved,
+            detail: "rights not established".to_owned(),
+        });
     }
     if denied.is_empty() {
         funnel.rights_admissible = matching.len();
@@ -598,17 +611,19 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
     let mut citable = Vec::new();
     for document in &matching {
         if withdrawn.contains(document.study_id.as_str()) {
-            excluded.push((
-                document.doc_id.clone(),
-                "study has a retracted or withdrawn report".to_owned(),
-            ));
+            excluded.push(Exclusion {
+                doc_id: document.doc_id.clone(),
+                reason: ReasonCode::SourceInvalidOrRetracted,
+                detail: "study has a retracted or withdrawn report".to_owned(),
+            });
         } else if document.publication_state.citable() {
             citable.push(*document);
         } else {
-            excluded.push((
-                document.doc_id.clone(),
-                "publication state is not citable".to_owned(),
-            ));
+            excluded.push(Exclusion {
+                doc_id: document.doc_id.clone(),
+                reason: ReasonCode::CurrentnessUnknown,
+                detail: "publication state is not citable".to_owned(),
+            });
         }
     }
     funnel.citable = citable.len();
@@ -630,13 +645,14 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
             if normalized(&document.population) == *population {
                 applicable.push(*document);
             } else {
-                excluded.push((
-                    document.doc_id.clone(),
-                    format!(
+                excluded.push(Exclusion {
+                    doc_id: document.doc_id.clone(),
+                    reason: ReasonCode::ApplicabilityUnresolved,
+                    detail: format!(
                         "population {} does not match {population}",
                         document.population
                     ),
-                ));
+                });
             }
         }
         funnel.applicable = applicable.len();
@@ -702,7 +718,7 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         funnel.independent_studies = 0;
     }
     let mut seen = BTreeSet::new();
-    excluded.retain(|(doc_id, _)| seen.insert(doc_id.clone()));
+    excluded.retain(|exclusion| seen.insert(exclusion.doc_id.clone()));
 
     let rules: Vec<FiredRule> = fired.iter().map(|(rule, _)| rule.clone()).collect();
     if let Resolution::Decided {
