@@ -1,0 +1,227 @@
+{
+  "description": "Invented engineering fixture for TA-09. Compounds, conditions, populations and results do not exist. Not medical information.",
+  "queries": [
+    {
+      "query_id": "q01",
+      "question": "Does veltrixamine help adults with glimmer syndrome?",
+      "qrels": {
+        "study-1bb29054e8": 2,
+        "study-97ec4147c6": 1
+      }
+    },
+    {
+      "query_id": "q02",
+      "question": "Does veltrixamine help children with glimmer syndrome?",
+      "qrels": {
+        "study-1bb29054e8": 1,
+        "study-97ec4147c6": 2
+      }
+    },
+    {
+      "query_id": "q03",
+      "question": "Does tessarine help adults with glimmer syndrome?",
+      "qrels": {
+        "study-2459cf8b21": 2,
+        "study-a3d43e7107": 1
+      }
+    },
+    {
+      "query_id": "q04",
+      "question": "Does tessarine help children with glimmer syndrome?",
+      "qrels": {
+        "study-2459cf8b21": 1,
+        "study-a3d43e7107": 2
+      }
+    },
+    {
+      "query_id": "q05",
+      "question": "Does pexadone help adults with glimmer syndrome?",
+      "qrels": {
+        "study-fde6a45ff4": 2
+      }
+    },
+    {
+      "query_id": "q06",
+      "question": "Does orbalin help adults with ember fatigue?",
+      "qrels": {
+        "study-35ac0b7035": 2
+      }
+    },
+    {
+      "query_id": "q07",
+      "question": "Does calvoride help adults with ember fatigue?",
+      "qrels": {
+        "study-c92931ba63": 2
+      }
+    },
+    {
+      "query_id": "q08",
+      "question": "Does sorvane help adults with ember fatigue?",
+      "qrels": {
+        "study-8c78bd8b79": 2
+      }
+    },
+    {
+      "query_id": "q09",
+      "question": "Does quenzil help adults with hollow cough?",
+      "qrels": {
+        "study-5468c08612": 2
+      }
+    },
+    {
+      "query_id": "q10",
+      "question": "Does nimbutrel help adults with hollow cough?",
+      "qrels": {
+        "study-e81291db7d": 2
+      }
+    },
+    {
+      "query_id": "q11",
+      "question": "Does veltrixamine help adults with hollow cough?",
+      "qrels": {
+        "study-0b6de25712": 2
+      }
+    },
+    {
+      "query_id": "q12",
+      "question": "Does tessarine help adults with marble rash?",
+      "qrels": {
+        "study-7406b9803d": 2
+      }
+    },
+    {
+      "query_id": "q13",
+      "question": "Does pexadone help adults with marble rash?",
+      "qrels": {
+        "study-ccc891d25d": 2
+      }
+    },
+    {
+      "query_id": "q14",
+      "question": "Does orbalin help adults with marble rash?",
+      "qrels": {
+        "study-c320779a90": 1,
+        "study-d9a8c086fc": 2
+      }
+    },
+    {
+      "query_id": "q15",
+      "question": "Does orbalin help children with marble rash?",
+      "qrels": {
+        "study-c320779a90": 2,
+        "study-d9a8c086fc": 1
+      }
+    },
+    {
+      "query_id": "q16",
+      "question": "Does calvoride help adults with quiet tremor?",
+      "qrels": {
+        "study-efcfafc144": 2
+      }
+    },
+    {
+      "query_id": "q17",
+      "question": "Does sorvane help adults with quiet tremor?",
+      "qrels": {
+        "study-0bc817a3d7": 2
+      }
+    },
+    {
+      "query_id": "q18",
+      "question": "Does quenzil help adults with quiet tremor?",
+      "qrels": {
+        "study-3c8a7c22b1": 2,
+        "study-a01adb8bef": 1
+      }
+    },
+    {
+      "query_id": "q19",
+      "question": "Does quenzil help children with quiet tremor?",
+      "qrels": {
+        "study-3c8a7c22b1": 1,
+        "study-a01adb8bef": 2
+      }
+    },
+    {
+      "query_id": "q20",
+      "question": "Does nimbutrel help adults with amber gait?",
+      "qrels": {
+        "study-5c9264c359": 2
+      }
+    },
+    {
+      "query_id": "q21",
+      "question": "Does veltrixamine help adults with amber gait?",
+      "qrels": {
+        "study-2dda76a79a": 2,
+        "study-991493cf45": 1
+      }
+    },
+    {
+      "query_id": "q22",
+      "question": "Does veltrixamine help children with amber gait?",
+      "qrels": {
+        "study-2dda76a79a": 1,
+        "study-991493cf45": 2
+      }
+    },
+    {
+      "query_id": "q23",
+      "question": "Does tessarine help adults with amber gait?",
+      "qrels": {
+        "study-b690516d0e": 2
+      }
+    },
+    {
+      "query_id": "q24",
+      "question": "Does pexadone help adults with lumen fever?",
+      "qrels": {
+        "study-74377fa470": 2
+      }
+    },
+    {
+      "query_id": "q25",
+      "question": "Does orbalin help adults with lumen fever?",
+      "qrels": {
+        "study-9a4dfb5522": 2
+      }
+    },
+    {
+      "query_id": "q26",
+      "question": "Does calvoride help adults with lumen fever?",
+      "qrels": {
+        "study-3775be2011": 2
+      }
+    },
+    {
+      "query_id": "q27",
+      "question": "Does sorvane help adults with drift palsy?",
+      "qrels": {
+        "study-1c60b03789": 2
+      }
+    },
+    {
+      "query_id": "q28",
+      "question": "Does quenzil help adults with drift palsy?",
+      "qrels": {
+        "study-b4a03f12d7": 2
+      }
+    },
+    {
+      "query_id": "q29",
+      "question": "Does nimbutrel help adults with drift palsy?",
+      "qrels": {
+        "study-885534f0ea": 1,
+        "study-b25f705b82": 2
+      }
+    },
+    {
+      "query_id": "q30",
+      "question": "Does nimbutrel help children with drift palsy?",
+      "qrels": {
+        "study-885534f0ea": 2,
+        "study-b25f705b82": 1
+      }
+    }
+  ]
+}
