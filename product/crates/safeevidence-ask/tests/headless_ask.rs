@@ -99,8 +99,9 @@ fn mismatched_population_is_excluded_with_a_reason() {
     assert!(!result.brief.unwrap().contains("did not improve"));
 }
 
-/// TA-11, modelled on R-CO-2: a tool counted studies of another population towards the question.
-/// Children's evidence points the other way here, so counting it would change the answer.
+/// TA-11, modelled on the population half of R-CO-2, where a tool counted studies of another
+/// population towards the question. Its overlapping reviews belong to TA-07 and WP-05. Children's
+/// evidence points the other way here, so counting it would change the answer.
 #[test]
 fn another_populations_evidence_is_never_counted_towards_the_question() {
     let result = ask(ADULT, &corpus());
@@ -123,35 +124,109 @@ fn another_populations_evidence_is_never_counted_towards_the_question() {
     );
 }
 
+/// In R-CO-2 the mismatched sources agreed, so counting them inflated the evidence instead.
+#[test]
+fn another_populations_agreeing_evidence_is_not_counted_either() {
+    let value = with_doc("doc-veltrix-peds", |d| {
+        d.text = "Children with synthetic glimmer syndrome received veltrixamine 10 mg daily. The glimmer score improved by 9 points compared with placebo at 12 weeks.".to_owned();
+        d.finding =
+            "The glimmer score improved by 9 points compared with placebo at 12 weeks.".to_owned();
+        d.direction = Direction::Benefit;
+    });
+    let result = ask(ADULT, &value);
+    assert_eq!(result.funnel.independent_studies, 1);
+    assert!(!result.brief.unwrap().contains("9 points"));
+    assert_eq!(
+        result.excluded[0].reason,
+        ReasonCode::ApplicabilityUnresolved
+    );
+}
+
+/// Near and overlapping populations are still not the question's population.
+#[test]
+fn near_and_overlapping_populations_are_excluded_with_a_reason() {
+    for population in [
+        "older adults",
+        "adults without diabetes",
+        "adults and children",
+        "adult",
+    ] {
+        let value = with_doc("doc-veltrix-a-followup", |d| {
+            d.population = population.to_owned();
+        });
+        let result = ask(ADULT, &value);
+        let exclusion = result
+            .excluded
+            .iter()
+            .find(|e| e.doc_id == "doc-veltrix-a-followup")
+            .unwrap_or_else(|| panic!("{population} must be excluded"));
+        assert_eq!(
+            exclusion.reason,
+            ReasonCode::ApplicabilityUnresolved,
+            "{population}"
+        );
+        assert!(!result.brief.unwrap().contains("11 points"), "{population}");
+    }
+}
+
+#[test]
+fn a_non_citable_source_is_excluded_with_a_code_that_names_its_state() {
+    for state in [
+        PublicationState::Unknown,
+        PublicationState::Corrected,
+        PublicationState::ExpressionOfConcern,
+        PublicationState::Superseded,
+    ] {
+        let value = with_doc("doc-veltrix-a-followup", |d| d.publication_state = state);
+        let result = ask(ADULT, &value);
+        let exclusion = result
+            .excluded
+            .iter()
+            .find(|e| e.doc_id == "doc-veltrix-a-followup")
+            .unwrap_or_else(|| panic!("{state:?} must be excluded"));
+        assert_eq!(
+            exclusion.reason,
+            ReasonCode::CurrentnessUnknown,
+            "{state:?}"
+        );
+        assert!(
+            exclusion.detail.contains(&format!("{state:?}")),
+            "{state:?}"
+        );
+    }
+}
+
 #[test]
 fn a_retrieved_source_on_another_intervention_is_excluded_with_a_reason() {
-    let value = with_doc("doc-veltrix-peds", |d| {
+    let value = with_doc("doc-veltrix-a-followup", |d| {
         d.intervention = "orbalin".to_owned();
     });
     let result = ask(ADULT, &value);
     let exclusion = result
         .excluded
         .iter()
-        .find(|e| e.doc_id == "doc-veltrix-peds")
+        .find(|e| e.doc_id == "doc-veltrix-a-followup")
         .expect("retrieved, so it must be accounted for");
     assert_eq!(exclusion.reason, ReasonCode::ApplicabilityUnresolved);
     assert_eq!(exclusion.detail, "different condition or intervention");
-    assert!(!result.brief.unwrap().contains("did not improve"));
+    assert!(!result.brief.unwrap().contains("11 points"));
 }
 
+/// An adult source, so the population check cannot hide a missing condition check.
 #[test]
 fn a_retrieved_source_on_another_condition_is_excluded_with_a_reason() {
-    let value = with_doc("doc-veltrix-peds", |d| {
+    let value = with_doc("doc-veltrix-a-followup", |d| {
         d.condition = "ember fatigue".to_owned();
     });
     let result = ask(ADULT, &value);
     let exclusion = result
         .excluded
         .iter()
-        .find(|e| e.doc_id == "doc-veltrix-peds")
+        .find(|e| e.doc_id == "doc-veltrix-a-followup")
         .expect("retrieved, so it must be accounted for");
     assert_eq!(exclusion.reason, ReasonCode::ApplicabilityUnresolved);
-    assert!(!result.brief.unwrap().contains("did not improve"));
+    assert_eq!(exclusion.detail, "different condition or intervention");
+    assert!(!result.brief.unwrap().contains("11 points"));
 }
 
 /// Every source retrieved and not cited must be accounted for, across each fixture question.

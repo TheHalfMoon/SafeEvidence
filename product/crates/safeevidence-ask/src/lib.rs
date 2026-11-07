@@ -9,6 +9,7 @@
 //! the grammar, no matching evidence, tool failures, an invalid corpus, and failed verification.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use rusqlite::{Connection, params};
 use safeevidence_assurance::{Cause, FiredRule, Requirement, Resolution, evaluate_precedence};
@@ -398,6 +399,14 @@ fn render_brief(claims: &[(&Document, EvidenceSpan)]) -> String {
 /// # Errors
 /// Returns the first line that fails, and why.
 pub fn verify_brief(brief: &str, corpus: &Corpus) -> Result<Vec<String>, String> {
+    Ok(verified_citations(brief, corpus)?
+        .into_iter()
+        .map(|(doc_id, _, _)| doc_id)
+        .collect())
+}
+
+/// `verify_brief`, keeping each citation's span as scalar offsets.
+fn verified_citations(brief: &str, corpus: &Corpus) -> Result<Vec<(String, u64, u64)>, String> {
     let lines: Vec<&str> = brief.split('\n').collect();
     if lines.len() <= BRIEF_HEADER.len() || lines[..BRIEF_HEADER.len()] != BRIEF_HEADER {
         return Err("header differs or no claims".to_owned());
@@ -446,10 +455,13 @@ pub fn verify_brief(brief: &str, corpus: &Corpus) -> Result<Vec<String>, String>
         if let Some(defect) = claim_defect(claim, &document.text) {
             return Err(format!("{defect} defect: {line}"));
         }
-        if cited.iter().any(|id: &String| id == doc_id) {
+        if cited
+            .iter()
+            .any(|(id, _, _): &(String, u64, u64)| id == doc_id)
+        {
             return Err(format!("cited twice: {doc_id}"));
         }
-        cited.push(doc_id.to_owned());
+        cited.push((doc_id.to_owned(), start as u64, end as u64));
     }
     Ok(cited)
 }
@@ -510,7 +522,8 @@ impl StepFailure {
     }
 }
 
-/// The boundaries where an answer's steps can fail. Each step's output is still verified.
+/// The boundaries where an answer's steps can fail. Text a step hands on is verified, and must cite
+/// exactly the claims Ask admitted, with their spans, in order. A panic in a step is a crash.
 pub trait AnswerSeams {
     fn after_render(&self, brief: String) -> Result<String, StepFailure> {
         Ok(brief)
@@ -658,8 +671,12 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
         } else {
             excluded.push(Exclusion {
                 doc_id: document.doc_id.clone(),
+                // The nearest code: some of these states are known, and the detail names which.
                 reason: ReasonCode::CurrentnessUnknown,
-                detail: "publication state is not citable".to_owned(),
+                detail: format!(
+                    "publication state {:?} is not citable",
+                    document.publication_state
+                ),
             });
         }
     }
@@ -796,21 +813,33 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
         let (outcome, reason) = failure.refusal();
         refuse(outcome, reason, funnel, excluded)
     };
-    let brief = match seams.after_render(render_brief(&claims)) {
-        Ok(brief) => brief,
-        Err(failure) => return failed(failure, &funnel, &excluded),
+    let rendered = render_brief(&claims);
+    let brief = match catch_unwind(AssertUnwindSafe(|| seams.after_render(rendered))) {
+        Ok(Ok(brief)) => brief,
+        Ok(Err(failure)) => return failed(failure, &funnel, &excluded),
+        Err(_) => return failed(StepFailure::Crashed, &funnel, &excluded),
     };
-    if let Err(failure) = seams.before_verify() {
-        return failed(failure, &funnel, &excluded);
+    match catch_unwind(AssertUnwindSafe(|| seams.before_verify())) {
+        Ok(Ok(())) => {}
+        Ok(Err(failure)) => return failed(failure, &funnel, &excluded),
+        Err(_) => return failed(StepFailure::Crashed, &funnel, &excluded),
     }
-    // The frozen text is read back and checked against the sources, not against its inputs.
-    let Ok(cited) = verify_brief(&brief, corpus) else {
-        return refuse(
-            TerminalOutcome::Abstain,
-            ReasonCode::PostVerificationFailed,
-            &funnel,
-            &excluded,
-        );
+    // The frozen text is read back and checked against the sources, not against its inputs. It must
+    // cite exactly the admitted claims: a line reproducing some other source is not this evidence.
+    let admitted: Vec<(String, u64, u64)> = claims
+        .iter()
+        .map(|(document, span)| (document.doc_id.clone(), span.start_scalar, span.end_scalar))
+        .collect();
+    let cited = match verified_citations(&brief, corpus) {
+        Ok(cited) if cited == admitted => cited,
+        _ => {
+            return refuse(
+                TerminalOutcome::Abstain,
+                ReasonCode::PostVerificationFailed,
+                &funnel,
+                &excluded,
+            );
+        }
     };
     funnel.verified_claims = cited.len();
 

@@ -120,6 +120,9 @@ pub struct AskSession {
     store: ProofStore,
     corpus: Corpus,
     _lease: VaultLease,
+    /// A failure the next commit returns instead of committing, for TA-14's commit boundary.
+    #[cfg(test)]
+    commit_fault: Option<StoreError>,
 }
 
 type Withheld = (TerminalOutcome, ReasonCode);
@@ -133,6 +136,10 @@ fn denied(error: StoreError) -> Withheld {
             ReasonCode::ProofRaceInvalidated
         }
         StoreError::SourceNotAdmitted(_) => ReasonCode::SourceUnavailable,
+        // Nothing was written and the store did not answer in time: the same outcome as a step that timed out.
+        StoreError::Busy => {
+            return (TerminalOutcome::Abstain, ReasonCode::TimeBudgetExhausted);
+        }
         _ => ReasonCode::ToolFailure,
     };
     (TerminalOutcome::Blocked, reason)
@@ -184,6 +191,8 @@ impl AskSession {
             store,
             corpus,
             _lease: lease,
+            #[cfg(test)]
+            commit_fault: None,
         })
     }
 
@@ -214,6 +223,10 @@ impl AskSession {
         let (Some(manifest), Some(brief)) = (&result.manifest, &result.brief) else {
             return Ok(None);
         };
+        #[cfg(test)]
+        if let Some(fault) = self.commit_fault.take() {
+            return Err(denied(fault));
+        }
         let receipt = self
             .store
             .commit(manifest, brief.as_bytes())
@@ -426,10 +439,11 @@ mod tests {
         );
     }
 
-    /// P00's "after DB commit before UI notification": the first request's view is lost, and the
-    /// next launch must find that proof, not commit a second one.
+    /// P00's "after DB commit before UI notification", in part: the first request's view is lost
+    /// and the next launch must find that proof, not commit a second one. The session closes
+    /// cleanly here. `proof_commit.rs` kills a process during commits, at store level.
     #[test]
-    fn a_crash_after_commit_before_the_view_recovers_the_same_proof() {
+    fn a_lost_view_after_commit_recovers_the_same_proof() {
         let dir = TempDir::new();
         let (proof_id, text) = {
             let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
@@ -453,19 +467,39 @@ mod tests {
         );
     }
 
-    /// A failure at the commit boundary reaches the person as a refusal with no text.
+    /// TA-14's commit boundary: a commit that fails reaches the person as a refusal with no text,
+    /// and nothing is stored. `CommitUnknown` needs a `rusqlite` error to build, so it is not here.
     #[test]
-    fn a_failed_commit_is_a_block_with_a_reason() {
-        for error in [
-            StoreError::Busy,
-            StoreError::TransactionLost,
-            StoreError::NotDurable,
-            StoreError::Corrupt("synthetic".to_owned()),
-        ] {
-            assert_eq!(
-                denied(error),
-                (TerminalOutcome::Blocked, ReasonCode::ToolFailure)
-            );
+    fn a_failed_commit_is_a_refusal_with_a_reason_and_no_text() {
+        let cases = [
+            (
+                StoreError::Busy,
+                TerminalOutcome::Abstain,
+                ReasonCode::TimeBudgetExhausted,
+            ),
+            (
+                StoreError::TransactionLost,
+                TerminalOutcome::Blocked,
+                ReasonCode::ToolFailure,
+            ),
+            (
+                StoreError::NotDurable,
+                TerminalOutcome::Blocked,
+                ReasonCode::ToolFailure,
+            ),
+            (
+                StoreError::Corrupt("synthetic".to_owned()),
+                TerminalOutcome::Blocked,
+                ReasonCode::ToolFailure,
+            ),
+        ];
+        for (fault, outcome, reason) in cases {
+            let dir = TempDir::new();
+            let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
+            session.commit_fault = Some(fault);
+            assert_withheld(&session.ask(ANSWERED), outcome, reason);
+            let next = session.ask(ANSWERED);
+            assert!(!next.already_committed, "the failed commit stored nothing");
         }
     }
 
