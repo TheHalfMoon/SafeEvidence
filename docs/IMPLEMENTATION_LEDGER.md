@@ -54,9 +54,9 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 
 **TA-05 for VS-1** `TESTED_PASSED` under `plan-v1.5`'s reading (an engineering reading the founder can overrule), on invented data:
 - Kills just after each of eight acknowledged commits, through the vault open API, lose no acknowledged answer and leave nothing partial.
-- The plaintext scan covers every file a killed store left, its WAL included, before anything reopens it. It also covers a live store and a closed one.
-- Two corrected donor tests are listed in the vault's `PROVENANCE.md`.
-- A kill inside SQLite's own commit is not targeted, and power loss is not tested.
+- A plaintext scan looks for answer text in every file a killed store left, its WAL included, before anything reopens it. The live and closed scans also cover sources, the brief and identifiers.
+- Every donor test changed since admission is named in the vault's `PROVENANCE.md`. A redaction check the move to the helper dropped is restored.
+- Not covered: a kill inside SQLite's own commit or before the first acknowledged commit, a crash during a checkpoint, recovery to `COMMIT_UNKNOWN`, lock contention between processes, power loss, and a restart through `open_existing`, which the app uses.
 - Disk-full, restore into a clean directory and key loss stay owed at WP-03's full TA-05.
 
 **VS-1 scope is set by `plan-v1.5`** (founder rulings, 2026-11-07): `plan-v1.1` is in force with no independent human review, TA-20 is the Ask flow, a labelled synthetic set serves TA-09, and the M1 exit review is AI-only. EXT-06 stays open. TA-21 and T05 are unchanged and still owed before VS-1 is done.
