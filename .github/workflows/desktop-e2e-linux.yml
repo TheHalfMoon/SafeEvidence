@@ -52,7 +52,7 @@ jobs:
             test "$attempt" != 3
           done
           for attempt in 1 2 3; do
-            sudo timeout 240 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y libwebkit2gtk-4.1-dev libgtk-3-dev webkit2gtk-driver xvfb dbus gnome-keyring libglib2.0-bin && break
+            sudo timeout 240 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y libwebkit2gtk-4.1-dev libgtk-3-dev webkit2gtk-driver xvfb dbus gnome-keyring libglib2.0-bin strace && break
             test "$attempt" != 3
           done
       - name: Build the frontend
@@ -83,5 +83,34 @@ jobs:
         run: |
           dbus-run-session -- bash -c '
             printf "synthetic-test-only\n" | gnome-keyring-daemon --unlock --components=secrets
-            xvfb-run -a node e2e/ask_e2e_linux.mjs "$PWD/src-tauri/target/debug/safeevidence-desktop"
+            # Every process the test starts is traced, so the capture covers the app and WebKit's own processes.
+            strace -f -qq -e trace=execve,connect,sendto,sendmsg -o "$RUNNER_TEMP/network.trace" \
+              xvfb-run -a node e2e/ask_e2e_linux.mjs "$PWD/src-tauri/target/debug/safeevidence-desktop"
           '
+      # Evidence for VS-1a, not a NETWORK_LOCKED run or a TA-21 pass (plan-v1.1 section C). It reports and does not fail.
+      - name: Report network calls during the run
+        if: always()
+        run: |
+          python3 - "$RUNNER_TEMP/network.trace" <<'PY'
+          import collections, re, sys
+          programs, calls = {}, collections.Counter()
+          loopback = re.compile(r'"(127\.[0-9.]+|::1|::ffff:127\.[0-9.]+)"')
+          for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+              pid, _, rest = line.strip().partition(" ")
+              rest = rest.strip()
+              if rest.startswith("execve(") and rest.endswith("= 0"):
+                  programs[pid] = rest.split('"')[1]
+                  continue
+              if "AF_INET" not in rest:
+                  continue
+              port = re.search(r"htons\((\d+)\)", rest)
+              where = "loopback" if loopback.search(rest) else "NOT LOOPBACK"
+              lookup = " (name lookup)" if port and port.group(1) == "53" else ""
+              calls[(programs.get(pid, "pid " + pid), rest.split("(")[0], where + lookup)] += 1
+          print("Internet-family network calls by program, during the end-to-end run:")
+          for (program, call, where), count in sorted(calls.items()):
+              print(f"  {count:5d}  {where:30s} {call:8s} {program}")
+          outside = sum(c for (_, _, w), c in calls.items() if w.startswith("NOT"))
+          lookups = sum(c for (_, _, w), c in calls.items() if "name lookup" in w)
+          print(f"Not loopback: {outside}. Name lookups: {lookups}.")
+          PY
