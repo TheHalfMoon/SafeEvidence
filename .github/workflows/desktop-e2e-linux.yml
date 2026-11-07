@@ -83,7 +83,8 @@ jobs:
         run: |
           dbus-run-session -- bash -c '
             printf "synthetic-test-only\n" | gnome-keyring-daemon --unlock --components=secrets
-            # The driver starts the app under strace, so the capture covers the app and WebKit's own processes.
+            # The driver starts the app under strace, which also traces the web view processes. No apostrophes in
+            # this block: it sits inside single quotes.
             SAFEEVIDENCE_NETWORK_TRACE="$RUNNER_TEMP/network.trace" \
               xvfb-run -a node e2e/ask_e2e_linux.mjs "$PWD/src-tauri/target/debug/safeevidence-desktop"
           '

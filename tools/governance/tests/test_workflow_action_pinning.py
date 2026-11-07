@@ -32,7 +32,7 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/product-ci.yml": "2fd5dd9537e2c2886e8dc7663d3afc2f19c3e9280a56681ebb6ad8a230c6ced8",
     ".github/workflows/desktop-ci.yml": "9ccfee4b7e4e04eaf20022f1e9964cdbc8bae5b3128b0e5ea668c53dbf521af9",
     ".github/workflows/desktop-e2e.yml": "4fbfd43f9ada63bfdaa02076aac92aa836206dffdde13317eb43b70c1597d089",
-    ".github/workflows/desktop-e2e-linux.yml": "15ff0961c6fe63b97291760dd43de15cade263b784b9cc626ead0bcdec7cc065",
+    ".github/workflows/desktop-e2e-linux.yml": "5dd12d4feec7182c54d1e8d2220cc54adab3822273259e2cd285421c0abcf1b6",
 }
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.
