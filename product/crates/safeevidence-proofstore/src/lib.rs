@@ -11,7 +11,7 @@ use std::path::Path;
 
 use rusqlite::params;
 use safeevidence_contracts::assurance::ProofState;
-use safeevidence_contracts::objects::DigestSha256;
+use safeevidence_contracts::objects::{AmendmentRecord, DigestSha256};
 use safeevidence_contracts::proof::{AnswerProofManifest, ManifestDefect, commit_defects};
 use safeevidence_vault::vault_keys::{KeyDerivationContext, OwnedKeyMaterial};
 use safeevidence_vault::vault_lease::KeyedHandleLease;
@@ -34,8 +34,8 @@ const SCHEMA: &[&str] = &[
     "CREATE TABLE sources (
     source_id TEXT PRIMARY KEY, digest TEXT NOT NULL, bytes BLOB NOT NULL)",
     "CREATE TABLE amendments (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT, prior_id TEXT NOT NULL, superseding_id TEXT NOT NULL,
-    reason TEXT NOT NULL)",
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, record_id TEXT NOT NULL UNIQUE, prior_id TEXT NOT NULL,
+    superseding_id TEXT NOT NULL, record TEXT NOT NULL)",
     "CREATE TABLE rights_grants (version TEXT PRIMARY KEY)",
     "CREATE TABLE store_events (
     seq INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT NOT NULL, subject TEXT NOT NULL)",
@@ -74,10 +74,11 @@ const SCHEMA: &[&str] = &[
 ];
 
 /// SHA-256 of the stored names and text of every schema object. A store whose triggers or tables
-/// differ is refused before its schema or data changes. There are no migrations yet. Change this
+/// differ is refused before its schema or data changes. There are no migrations yet, so a caller
+/// that keys its store's location on this gets a new store when the schema changes. Change this
 /// only together with `SCHEMA`.
-const SCHEMA_OBJECTS_SHA256: &str =
-    "7e67770f3aeccf9bc4387ba0203b31698303ce9289636c9a4b559bb06a545918";
+pub const SCHEMA_OBJECTS_SHA256: &str =
+    "986cbbd50456a9a0a3092948d99957ddddd6906c622a38238ccf3610a7ddd290";
 
 #[derive(Debug)]
 pub enum StoreError {
@@ -661,17 +662,26 @@ impl ProofStore {
         )
     }
 
-    /// Appends an amendment: a new source superseding a stored one. Both stay stored, and answers
-    /// citing the prior source stop being assured.
+    /// Appends an amendment record: a new source superseding or retracting a stored one. Both stay
+    /// stored with their bytes unchanged, the record is kept exactly as given, and answers citing
+    /// the prior source stop being assured.
     ///
     /// # Errors
-    /// Returns `InvalidAmendment` unless both exist and differ.
-    pub fn amend(
-        &mut self,
-        prior_id: &str,
-        superseding_id: &str,
-        reason: &str,
-    ) -> Result<(), StoreError> {
+    /// Returns `InvalidAmendment` unless both sources exist and differ, the rationale and author are
+    /// not empty, and the record's id is new.
+    pub fn amend(&mut self, record: &AmendmentRecord) -> Result<(), StoreError> {
+        let prior_id = record.prior_assertion_id.as_str();
+        let superseding_id = record.superseding_assertion_id.as_str();
+        let record_id = record.header.id.as_str();
+        if prior_id == superseding_id
+            || record_id.trim().is_empty()
+            || record.rationale.trim().is_empty()
+            || record.authorized_by.as_str().trim().is_empty()
+        {
+            return Err(StoreError::InvalidAmendment);
+        }
+        let encoded = serde_json::to_string(record)
+            .map_err(|error| StoreError::Corrupt(error.to_string()))?;
         flatten(
             self.handle
                 .immediate_transaction(|tx| -> Result<(), StoreError> {
@@ -680,16 +690,47 @@ impl ProofStore {
                         params![prior_id, superseding_id],
                         |row| row.get::<_, String>(0),
                     )?;
-                    if prior_id == superseding_id || found.len() != 2 {
+                    let reused = tx.query(
+                        "SELECT 1 FROM amendments WHERE record_id = ?1",
+                        params![record_id],
+                        |row| row.get::<_, i64>(0),
+                    )?;
+                    if found.len() != 2 || !reused.is_empty() {
                         return Err(StoreError::InvalidAmendment);
                     }
                     tx.execute(
-                "INSERT INTO amendments (prior_id, superseding_id, reason) VALUES (?1, ?2, ?3)",
-                params![prior_id, superseding_id, reason],
-            )?;
+                        "INSERT INTO amendments (record_id, prior_id, superseding_id, record)
+                 VALUES (?1, ?2, ?3, ?4)",
+                        params![record_id, prior_id, superseding_id, encoded],
+                    )?;
                     record_store_event(tx, "SOURCE_AMENDED", prior_id)
                 }),
         )
+    }
+
+    /// The amendment records for a source, oldest first, exactly as they were appended.
+    ///
+    /// # Errors
+    /// Fails on a lease or provider failure, or `Corrupt` if a stored record does not parse.
+    pub fn amendment_records(
+        &mut self,
+        prior_id: &str,
+    ) -> Result<Vec<AmendmentRecord>, StoreError> {
+        let stored = flatten(self.handle.deferred_transaction(
+            |tx| -> Result<Vec<String>, StoreError> {
+                Ok(tx.query(
+                    "SELECT record FROM amendments WHERE prior_id = ?1 ORDER BY seq",
+                    params![prior_id],
+                    |row| row.get(0),
+                )?)
+            },
+        ))?;
+        stored
+            .iter()
+            .map(|text| {
+                serde_json::from_str(text).map_err(|error| StoreError::Corrupt(error.to_string()))
+            })
+            .collect()
     }
 
     /// Store-wide events as (event, subject), oldest first. Per-proof events are `audit_events`.
@@ -752,6 +793,27 @@ mod tests {
     use safeevidence_vault::vault_lease::VaultLease;
 
     const FIXTURE: &[u8] = include_bytes!("../../safeevidence-ask/fixtures/vs1a_corpus.json");
+
+    fn synthetic_amendment(prior: &str, next: &str) -> AmendmentRecord {
+        use safeevidence_contracts::objects::{
+            AmendmentKind, AuthorityScopeId, MedicalTime, ObjectHeader, OpaqueId, RealmId,
+            TimePrecision,
+        };
+        AmendmentRecord {
+            header: ObjectHeader {
+                id: OpaqueId::new(format!("am-{prior}-{next}")),
+                schema_version: 1,
+                realm_id: RealmId::new("realm-synthetic"),
+                authority_scope_id: AuthorityScopeId::new("scope-synthetic"),
+            },
+            prior_assertion_id: OpaqueId::new(prior),
+            superseding_assertion_id: OpaqueId::new(next),
+            kind: AmendmentKind::Supersession,
+            rationale: "synthetic".to_owned(),
+            authorized_by: OpaqueId::new("synthetic-actor"),
+            recorded_time: MedicalTime::new("1970-01-01T00:00:00Z", TimePrecision::Instant, false),
+        }
+    }
 
     struct TempDb(std::path::PathBuf);
 
@@ -828,7 +890,9 @@ mod tests {
         store.commit(&manifest, &text).expect("commit");
         store.put_source("s1", b"original").expect("source");
         store.put_source("s2", b"newer").expect("source");
-        store.amend("s1", "s2", "synthetic").expect("amend");
+        store
+            .amend(&synthetic_amendment("s1", "s2"))
+            .expect("amend");
         store
             .invalidate(&manifest.proof_id, "reason")
             .expect("invalidate");
@@ -842,11 +906,12 @@ mod tests {
             "DELETE FROM invalidations",
             "UPDATE sources SET bytes = x'00'",
             "DELETE FROM sources",
-            "UPDATE amendments SET reason = 'X'",
+            "UPDATE amendments SET record = 'X'",
+            "UPDATE amendments SET record_id = 'X'",
             "DELETE FROM amendments",
             "INSERT OR REPLACE INTO answers (proof_id, final_text, final_text_digest, manifest) SELECT proof_id, x'00', final_text_digest, manifest FROM answers",
             "INSERT OR REPLACE INTO sources (source_id, digest, bytes) VALUES ('s1', 'x', x'00')",
-            "INSERT OR REPLACE INTO amendments (seq, prior_id, superseding_id, reason) VALUES (1, 'x', 'y', 'z')",
+            "INSERT OR REPLACE INTO amendments (seq, record_id, prior_id, superseding_id, record) VALUES (1, 'r', 'x', 'y', 'z')",
             "DELETE FROM authority",
             "DELETE FROM store_events",
             "UPDATE store_events SET event = 'X'",

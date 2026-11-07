@@ -11,7 +11,7 @@ use std::sync::Mutex;
 use safeevidence_ask::{AskResult, Corpus, Funnel, ask, load_corpus};
 use safeevidence_contracts::assurance::{ProofState, ReasonCode, TerminalOutcome};
 use safeevidence_contracts::objects::DigestSha256;
-use safeevidence_proofstore::{ProofStore, StoreError};
+use safeevidence_proofstore::{ProofStore, SCHEMA_OBJECTS_SHA256, StoreError};
 use safeevidence_vault::vault_keys::{KeyDerivationContext, KeyPurpose};
 use safeevidence_vault::vault_lease::VaultLease;
 use serde::Serialize;
@@ -92,11 +92,17 @@ struct CommittedAnswer {
     citations: Vec<CitationView>,
 }
 
-/// The store for this fixture. A store is bound to its fixture's sources, epoch and grant, so a changed
-/// fixture gets its own store rather than being refused by the old one, and the old store stays.
+/// The store for this fixture and store schema. A store is bound to its fixture's sources, epoch and
+/// grant, and the store refuses a schema it does not match, with no migrations yet. So a changed fixture
+/// or schema gets its own store rather than being refused by the old one, and the old store stays.
 fn store_dir(data_dir: &Path) -> PathBuf {
-    let digest = DigestSha256::of(FIXTURE).to_hex();
-    data_dir.join(format!("{STORE_DIR_PREFIX}{}", &digest[..16]))
+    data_dir.join(format!("{STORE_DIR_PREFIX}{}", store_key()))
+}
+
+fn store_key() -> String {
+    let mut basis = DigestSha256::of(FIXTURE).to_hex();
+    basis.push_str(SCHEMA_OBJECTS_SHA256);
+    DigestSha256::of(basis.as_bytes()).to_hex()[..16].to_owned()
 }
 
 /// Takes this data directory for one running instance. The lock lasts as long as the returned file.
@@ -648,14 +654,18 @@ mod tests {
     }
 
     #[test]
-    fn the_store_directory_is_bound_to_the_fixture() {
+    fn the_store_directory_is_bound_to_the_fixture_and_the_schema() {
         let name = store_dir(Path::new("x"))
             .file_name()
             .expect("name")
             .to_string_lossy()
             .into_owned();
-        let digest = DigestSha256::of(FIXTURE).to_hex();
-        assert_eq!(name, format!("{STORE_DIR_PREFIX}{}", &digest[..16]));
+        let mut basis = DigestSha256::of(FIXTURE).to_hex();
+        basis.push_str(SCHEMA_OBJECTS_SHA256);
+        let expected = DigestSha256::of(basis.as_bytes()).to_hex();
+        assert_eq!(name, format!("{STORE_DIR_PREFIX}{}", &expected[..16]));
+        let fixture_only = DigestSha256::of(FIXTURE).to_hex();
+        assert_ne!(name, format!("{STORE_DIR_PREFIX}{}", &fixture_only[..16]));
     }
 
     #[test]

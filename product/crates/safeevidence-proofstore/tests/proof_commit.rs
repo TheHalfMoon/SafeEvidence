@@ -10,6 +10,10 @@ use std::time::{Duration, Instant};
 use safeevidence_ask::{ask, load_corpus};
 use safeevidence_contracts::assurance::{ProofState, TerminalOutcome};
 use safeevidence_contracts::objects::DigestSha256;
+use safeevidence_contracts::objects::{
+    AmendmentKind, AmendmentRecord, AuthorityScopeId, MedicalTime, ObjectHeader, OpaqueId, RealmId,
+    TimePrecision,
+};
 use safeevidence_contracts::proof::{AnswerProofManifest, ManifestDefect};
 use safeevidence_proofstore::{ProofStore, StoreError};
 use safeevidence_vault::vault::{KeyGeneration, VAULT_ID_BYTES, VaultId, VaultLeaseIdentity};
@@ -73,6 +77,24 @@ fn answer() -> (AnswerProofManifest, Vec<u8>) {
     let result = ask(QUESTION, &corpus);
     assert_eq!(result.outcome, TerminalOutcome::AnswerWithCaution);
     (result.manifest.unwrap(), result.brief.unwrap().into_bytes())
+}
+
+/// A synthetic amendment record from `prior` to `next`.
+fn amendment(id: &str, prior: &str, next: &str, kind: AmendmentKind) -> AmendmentRecord {
+    AmendmentRecord {
+        header: ObjectHeader {
+            id: OpaqueId::new(id),
+            schema_version: 1,
+            realm_id: RealmId::new("realm-synthetic"),
+            authority_scope_id: AuthorityScopeId::new("scope-synthetic"),
+        },
+        prior_assertion_id: OpaqueId::new(prior),
+        superseding_assertion_id: OpaqueId::new(next),
+        kind,
+        rationale: "synthetic correction".to_owned(),
+        authorized_by: OpaqueId::new("synthetic-actor"),
+        recorded_time: MedicalTime::new("1970-01-01T00:00:00Z", TimePrecision::Instant, false),
+    }
 }
 
 fn admit_fixture(store: &mut ProofStore) {
@@ -275,17 +297,64 @@ fn amendment_appends_and_leaves_the_prior_bytes_unchanged() {
     store.put_source("a1", b"first").unwrap();
     store.put_source("a2", b"second").unwrap();
     store.put_source("a3", b"third").unwrap();
-    store.amend("a1", "a2", "synthetic correction").unwrap();
-    store.amend("a1", "a3", "synthetic correction").unwrap();
+    let mut first = amendment("am-1", "a1", "a2", AmendmentKind::Supersession);
+    // Every field must come back, including the optional offset `MedicalTime::new` leaves out.
+    first.recorded_time.timezone_offset_minutes = Some(-330);
+    let second = amendment("am-2", "a1", "a3", AmendmentKind::Retraction);
+    store.amend(&first).unwrap();
+    store.amend(&second).unwrap();
     assert_eq!(store.amendments("a1").unwrap(), ["a2", "a3"]);
-    assert_eq!(store.source("a1").unwrap().as_deref(), Some(&b"first"[..]));
-    for (prior, next) in [("a1", "a1"), ("a1", "missing"), ("missing", "a1")] {
-        assert!(matches!(
-            store.amend(prior, next, "x"),
-            Err(StoreError::InvalidAmendment)
-        ));
+    // `plan-v1.3`: the record is appended as given, and the prior assertion's bytes stay as they were.
+    assert_eq!(
+        store.amendment_records("a1").unwrap(),
+        [first.clone(), second]
+    );
+    for (id, bytes) in [("a1", &b"first"[..]), ("a2", b"second"), ("a3", b"third")] {
+        assert_eq!(store.source(id).unwrap().as_deref(), Some(bytes), "{id}");
     }
+    let mut reused = amendment("am-1", "a2", "a3", AmendmentKind::Supersession);
+    let mut empty_rationale = amendment("am-3", "a2", "a3", AmendmentKind::Supersession);
+    empty_rationale.rationale = " ".to_owned();
+    let mut no_author = amendment("am-4", "a2", "a3", AmendmentKind::Supersession);
+    no_author.authorized_by = OpaqueId::new("");
+    let blank_id = amendment(" ", "a2", "a3", AmendmentKind::Supersession);
+    let refused = [
+        amendment("am-5", "a1", "a1", AmendmentKind::Supersession),
+        amendment("am-6", "a1", "missing", AmendmentKind::Supersession),
+        amendment("am-7", "missing", "a1", AmendmentKind::Supersession),
+        reused.clone(),
+        empty_rationale,
+        no_author,
+        blank_id,
+    ];
+    for record in refused {
+        assert!(
+            matches!(store.amend(&record), Err(StoreError::InvalidAmendment)),
+            "{}",
+            record.header.id.as_str()
+        );
+    }
+    reused.rationale = "a record id is never reused".to_owned();
+    assert!(store.amend(&reused).is_err());
     assert_eq!(store.amendments("a1").unwrap().len(), 2);
+    assert!(store.amendments("a2").unwrap().is_empty());
+}
+
+/// The lineage survives a reopen: what was appended reads back the same from the stored file.
+#[test]
+fn amendment_records_survive_a_reopen() {
+    let db = TempDb::new();
+    let mut record = amendment("am-1", "a1", "a2", AmendmentKind::Supersession);
+    record.recorded_time.timezone_offset_minutes = Some(60);
+    {
+        let mut store = open(&db.path());
+        store.put_source("a1", b"first").unwrap();
+        store.put_source("a2", b"second").unwrap();
+        store.amend(&record).unwrap();
+    }
+    let mut store = open(&db.path());
+    assert_eq!(store.amendment_records("a1").unwrap(), [record]);
+    assert_eq!(store.source("a1").unwrap().as_deref(), Some(&b"first"[..]));
 }
 
 #[test]
@@ -565,7 +634,14 @@ fn a_source_amended_before_commit_refuses_the_answer() {
     let mut store = at_fixture_epoch(&db.path());
     let cited = manifest.claims[0].spans[0].source_id.clone();
     store.put_source("correction", b"corrected").unwrap();
-    store.amend(&cited, "correction", "synthetic").unwrap();
+    store
+        .amend(&amendment(
+            "am-cited",
+            &cited,
+            "correction",
+            AmendmentKind::Supersession,
+        ))
+        .unwrap();
     assert!(matches!(
         store.commit(&manifest, &text),
         Err(StoreError::SourceAmended(id)) if id == cited
@@ -629,7 +705,12 @@ fn amending_a_cited_source_invalidates_the_answer_and_keeps_its_bytes() {
     let cited = manifest.claims[0].spans[0].source_id.clone();
     store.put_source("correction", b"corrected").unwrap();
     store
-        .amend(&cited, "correction", "synthetic correction")
+        .amend(&amendment(
+            "am-cited",
+            &cited,
+            "correction",
+            AmendmentKind::Supersession,
+        ))
         .unwrap();
     let stored = store.read(&manifest.proof_id).unwrap();
     assert_eq!(stored.state, ProofState::CurrentlyInvalidated);
