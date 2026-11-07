@@ -1,5 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// The feature opens a debugging port and moves the data directory, so it must never reach a release.
+#[cfg(all(feature = "e2e", not(debug_assertions)))]
+compile_error!("the e2e feature is for debug builds only");
+
 use tauri::Manager;
 
 mod ask_command;
@@ -54,11 +58,11 @@ fn main() {
                 })
                 .incognito(true)
                 .data_directory(webview_dir);
-            // Setting these replaces wry's default, so its default stays in the list. A shipped build does not
-            // set a debugging port.
+            // Setting these replaces wry's defaults, so they stay in the list. A shipped build does not set a
+            // debugging port.
             #[cfg(all(feature = "e2e", windows))]
             let window = window.additional_browser_args(
-                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9333",
+                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --remote-debugging-port=9333",
             );
             window.build()?;
             Ok(())

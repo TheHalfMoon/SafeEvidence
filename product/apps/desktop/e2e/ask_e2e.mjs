@@ -179,7 +179,12 @@ async function diagnose() {
   console.log("--- app output\n" + (appOutput.join("") || "(none)"));
   const host = spawnSync("powershell", ["-NoProfile", "-Command", HOST_REPORT], { encoding: "utf8", timeout: 60_000 });
   console.log("--- host\n" + (host.stdout || "(none)") + (host.stderr ?? ""));
-  console.log("--- data directory\n" + readdirSync(dataDir, { recursive: true }).slice(0, 40).join("\n"));
+  // WebView2 is still running, so a directory can vanish during the walk. That must not hide the real failure.
+  try {
+    console.log("--- data directory\n" + readdirSync(dataDir, { recursive: true }).slice(0, 40).join("\n"));
+  } catch (error) {
+    console.log(`--- data directory unreadable: ${error.message}`);
+  }
   try {
     console.log("--- debugging targets\n" + (await (await fetch(`http://127.0.0.1:${PORT}/json`)).text()));
   } catch (error) {

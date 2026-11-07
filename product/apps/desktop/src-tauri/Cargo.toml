@@ -13,7 +13,7 @@ build = "build.rs"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
-# Lets the end-to-end test choose its own data directory. Never enabled in a shipped build.
+# For the end-to-end test: chooses its data directory and opens a debugging port. A release build refuses it.
 e2e = []
 
 [dependencies]

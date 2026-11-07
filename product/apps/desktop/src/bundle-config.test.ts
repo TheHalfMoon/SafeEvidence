@@ -1,7 +1,7 @@
 // The shell configuration stays inside its authorized scope.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const conf = JSON.parse(read("../src-tauri/tauri.conf.json"));
@@ -31,7 +31,7 @@ test("production CSP allows no remote origin and no inline style or script", () 
   assert.match(csp, /frame-ancestors 'none'/);
 });
 
-test("the end-to-end data directory override exists only behind its own feature", () => {
+test("the end-to-end data directory and debugging port exist only behind their own feature", () => {
   const manifest = read("../src-tauri/Cargo.toml");
   assert.doesNotMatch(manifest, /^default\s*=/m);
   assert.match(manifest, /^e2e = \[\]$/m, "the feature enables nothing else");
@@ -41,10 +41,15 @@ test("the end-to-end data directory override exists only behind its own feature"
   assert.equal(main.split(name).length, 2, "read in exactly one place");
   const use = main.indexOf(name);
   assert.match(main.slice(Math.max(0, use - 100), use), /#\[cfg\(feature = "e2e"\)\]/);
+  assert.match(main, /#\[cfg\(all\(feature = "e2e", not\(debug_assertions\)\)\)\]\ncompile_error!/, "a release build refuses it");
   const port = "--remote-debugging-port";
   assert.equal(main.split(port).length, 2, "opened in exactly one place");
-  assert.match(main.slice(Math.max(0, main.indexOf(port) - 220), main.indexOf(port)), /#\[cfg\(all\(feature = "e2e", windows\)\)\]/);
+  assert.match(main.slice(Math.max(0, main.indexOf(port) - 300), main.indexOf(port)), /#\[cfg\(all\(feature = "e2e", windows\)\)\]/);
   const conf = read("../src-tauri/tauri.conf.json");
+  assert.doesNotMatch(conf, /remote-debugging|additionalBrowserArgs/, "the config reaches shipped builds");
+  for (const file of readdirSync(new URL("../src-tauri/src/", import.meta.url))) {
+    if (file !== "main.rs") assert.doesNotMatch(read(`../src-tauri/src/${file}`), /remote-debugging|additional_browser_args/, file);
+  }
   const scripts = read("../package.json");
   assert.doesNotMatch(conf + scripts, /\be2e\b/);
 });

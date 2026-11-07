@@ -10,7 +10,7 @@ Admission `ADM-0006` (T36) in `docs/evidence/source_admissions.json`.
 - SafeEvidence-written (GREENFIELD_JUSTIFIED, product-specific view; the shell is the copied part): the rest of `src/ask-view.ts`,
   `src/App.tsx`, `src/styles.css`, `src-tauri/src/ask_command.rs`. The icons are generated plain squares.
 
-The Ask command commits through `safeevidence-proofstore` first, and shows the stored text only if the stored proof reads `COMMITTED`. No test can tell that read from Ask's own text, because the commit binds the text's digest: a mutant that removes only the read passes every test.
+The Ask command commits through `safeevidence-proofstore` first, and shows the stored text only if the stored proof reads `COMMITTED`. No existing test tells that read from Ask's own text, because the commit binds the text's digest: a mutant that removes only the read passes every test.
 
 ## Limits
 
@@ -25,7 +25,7 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
 - The store has no migrations, so a schema change would refuse an existing store. `vault-identity.bin` is not secret and not protected: changing it only stops the key from being found.
 - The P00 states such as `KEY_UNAVAILABLE` are not shown. Every failure to open the store reaches the view as the same `BLOCKED` with `TOOL_FAILURE`: a lost or wrong key, a damaged identity or store, a missing helper, and a second instance look alike.
 - A lock file gives one running instance per data directory. A second instance refuses every question it would answer with `BLOCKED`.
-- `TA-20` is not claimed. `e2e/ask_e2e.mjs` runs the Ask flow in a real WebView2 window, with real DPAPI and a real kill and restart, as the Ask subset. It has passed on a developer machine and on a hosted Windows runner (run 42330781667, at `436208c`). The hosted WebView2 ignored `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, for a reason not known, so the `e2e` feature sets the debugging port itself. Ubuntu has no equivalent yet, and VS-1 needs both. Of the shell checklist, it covers only CSP and the capability.
+- `TA-20` is not claimed. `e2e/ask_e2e.mjs` runs the Ask flow in a real WebView2 window, with real DPAPI and a real kill and restart, as the Ask subset. It has passed on a developer machine and on hosted Windows runners (first in run 42330781667, at `436208c`). In run 42328363734, on runtime 156, the browser's command line did not carry `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, though the variable works on a developer machine with runtime 157. The cause is not known, so the `e2e` feature sets the debugging port itself. A release build refuses that feature, and nothing covers a debug build given it by hand. Ubuntu has no equivalent yet, and VS-1 needs both. Of the shell checklist, it covers only CSP and the capability.
   `TA-21` is not claimed: the test's network log covers this page, not the process, and T05 is not back. Native tests also use Tauri's mock runtime, which establishes no WebView privacy, OS isolation or network behaviour.
 - `TA-22` is not claimed. The view is keyboard-operable with `dir="auto"` text, but has no axe or RTL snapshot run. The donor's contrast test was
   not carried over, and the new palette has no contrast check.
@@ -40,5 +40,5 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
 - Tauri pulls `reqwest` and `hyper` on Android and iOS, so this shell cannot pass TA-29 on mobile as it stands.
 - Native tests check CSP as configuration only. `e2e/ask_e2e.mjs` observes it in a running WebView2, and nothing observes it in WebKitGTK or WKWebView.
 - Nothing in `product/crates` sets `fullfsync`, so on macOS the durable claim has not been shown to survive power loss.
-- On Windows the WebView2 profile is in `webview/` under the data directory, not the default location. WKWebView has no such setting, and wry ignores it there.
+- On Windows the WebView2 profile is in `webview/` under the data directory, not the default location. WKWebView has no such setting, and wry ignores it there. On Linux, Tauri uses the directory as the web context's key, and that behaviour has not been checked.
 - WebView2 can honour `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` in any build, as it did on a developer machine, so anyone who can set the user's environment could open a debugging port on the window. They already run as that user. It is noted here because no test covers it.
