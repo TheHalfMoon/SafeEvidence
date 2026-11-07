@@ -25,7 +25,7 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 | Milestone | Status | Blocked by |
 |---|---|---|
 | M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED`; TA-02 `TESTED_PASSED` | Exit review, including crate closures; open defects below |
-| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4's Ask flow has passed end to end on one Windows developer machine, and not yet on a hosted runner or Ubuntu, so TA-20 is not claimed | M0 exit review; desktop; helper packaging; open defects below |
+| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4's Ask flow has passed end to end on Windows, on a developer machine and a hosted runner, and not on Ubuntu, so TA-20 is not claimed | M0 exit review; desktop; helper packaging; open defects below |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
 | M4 Desktop V1 | `NOT_STARTED` | M3 |

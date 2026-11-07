@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  # A real WebView2 window, driven over its debugging protocol. It is not a required check yet, because hosted
-  # runners have not shown they can hold a WebView2 window. Ubuntu has no equivalent here.
+  # A real WebView2 window, driven over its debugging protocol. It is not a required check: it has passed on a
+  # hosted runner only once so far, which does not show it is reliable there. Ubuntu has no equivalent here.
   desktop-e2e:
     name: desktop end-to-end (windows-latest)
     runs-on: windows-latest
