@@ -42,7 +42,7 @@ fn main() {
                 .windows
                 .first()
                 .ok_or("missing main window")?;
-            tauri::WebviewWindowBuilder::from_config(app, config)?
+            let window = tauri::WebviewWindowBuilder::from_config(app, config)?
                 .on_navigation(|url| {
                     navigation_policy::is_local_application_url(url, cfg!(debug_assertions))
                 })
@@ -53,8 +53,14 @@ fn main() {
                     }
                 })
                 .incognito(true)
-                .data_directory(webview_dir)
-                .build()?;
+                .data_directory(webview_dir);
+            // Setting these replaces wry's default, so its default stays in the list. A shipped build does not
+            // set a debugging port.
+            #[cfg(all(feature = "e2e", windows))]
+            let window = window.additional_browser_args(
+                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9333",
+            );
+            window.build()?;
             Ok(())
         })
         .build(app_context())

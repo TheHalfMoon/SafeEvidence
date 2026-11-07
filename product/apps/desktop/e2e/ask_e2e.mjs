@@ -19,6 +19,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 const ANSWERED = "Does veltrixamine help adults with glimmer syndrome?";
 const ASK_MORE = "Does veltrixamine help with glimmer syndrome?";
 const OUTSIDE_GRAMMAR = "What should I take?";
+// The port the app's `e2e` feature opens. See `main.rs`.
 const PORT = 9333;
 const APP_ORIGIN = "http://tauri.localhost";
 const executable = process.argv[2];
@@ -141,7 +142,6 @@ function launch(dataDir) {
     env: {
       ...process.env,
       SAFEEVIDENCE_E2E_DATA_DIR: dataDir,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
     },
   });
   for (const stream of [app.stdout, app.stderr]) {

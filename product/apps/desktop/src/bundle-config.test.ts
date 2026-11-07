@@ -41,6 +41,9 @@ test("the end-to-end data directory override exists only behind its own feature"
   assert.equal(main.split(name).length, 2, "read in exactly one place");
   const use = main.indexOf(name);
   assert.match(main.slice(Math.max(0, use - 100), use), /#\[cfg\(feature = "e2e"\)\]/);
+  const port = "--remote-debugging-port";
+  assert.equal(main.split(port).length, 2, "opened in exactly one place");
+  assert.match(main.slice(Math.max(0, main.indexOf(port) - 220), main.indexOf(port)), /#\[cfg\(all\(feature = "e2e", windows\)\)\]/);
   const conf = read("../src-tauri/tauri.conf.json");
   const scripts = read("../package.json");
   assert.doesNotMatch(conf + scripts, /\be2e\b/);
