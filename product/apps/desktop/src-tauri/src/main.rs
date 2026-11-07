@@ -56,8 +56,11 @@ fn main() {
                         startup_failure::mark_ready();
                     }
                 })
-                .incognito(true)
                 .data_directory(webview_dir);
+            // On Linux, wry replaces the web context for an incognito window, with automation off, so WebKitWebDriver
+            // could not attach. This is the only build that is not incognito, and a release build refuses the feature.
+            #[cfg(not(all(feature = "e2e", target_os = "linux")))]
+            let window = window.incognito(true);
             // Setting these replaces wry's defaults, so they stay in the list. A shipped build does not set a
             // debugging port.
             #[cfg(all(feature = "e2e", windows))]

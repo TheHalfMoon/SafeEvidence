@@ -42,6 +42,8 @@ test("the end-to-end data directory and debugging port exist only behind their o
   const use = main.indexOf(name);
   assert.match(main.slice(Math.max(0, use - 100), use), /#\[cfg\(feature = "e2e"\)\]/);
   assert.match(main, /#\[cfg\(all\(feature = "e2e", not\(debug_assertions\)\)\)\]\ncompile_error!/, "a release build refuses it");
+  assert.match(main, /#\[cfg\(not\(all\(feature = "e2e", target_os = "linux"\)\)\)\]\n\s*let window = window\.incognito\(true\);/, "only the Linux test build leaves incognito off");
+  assert.equal(main.split("incognito(").length, 2);
   const port = "--remote-debugging-port";
   assert.equal(main.split(port).length, 2, "opened in exactly one place");
   assert.match(main.slice(Math.max(0, main.indexOf(port) - 300), main.indexOf(port)), /#\[cfg\(all\(feature = "e2e", windows\)\)\]/);
