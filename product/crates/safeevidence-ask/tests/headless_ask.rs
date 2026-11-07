@@ -137,7 +137,7 @@ fn nothing_retrieved_to_cite_is_an_abstention() {
 
 /// The guards still see the whole corpus: a contradiction retrieval misses still stops the answer.
 #[test]
-fn a_contradiction_retrieval_missed_still_stops_the_answer() {
+fn a_disagreeing_report_of_the_same_study_retrieval_missed_still_stops_the_answer() {
     let value = with_doc("doc-veltrix-a-followup", |d| {
         d.text = "A report on synthetic GS. The glimmer score did not improve compared with placebo at 24 weeks.".to_owned();
         d.title = "A report on synthetic GS".to_owned();
@@ -146,11 +146,27 @@ fn a_contradiction_retrieval_missed_still_stops_the_answer() {
         d.direction = Direction::NoBenefit;
     });
     let result = ask(ADULT, &value);
-    assert_ne!(
-        result.outcome,
-        TerminalOutcome::AnswerWithCaution,
-        "{:?}",
-        result.reason
+    assert_eq!(result.funnel.retrieved, 2, "retrieval missed the follow-up");
+    assert_eq!(
+        (result.outcome, result.reason),
+        (TerminalOutcome::Abstain, ReasonCode::EvidenceInsufficient)
+    );
+    assert!(result.brief.is_none() && result.manifest.is_none());
+}
+
+/// The rights guard also sees the whole corpus: a source without rights that retrieval missed
+/// still blocks, rather than being quietly left out.
+#[test]
+fn a_source_without_rights_retrieval_missed_still_blocks() {
+    let value = with_doc("doc-veltrix-a-followup", |d| {
+        unretrievable(d);
+        d.rights = safeevidence_contracts::evidence::EvidenceCorpusRights::Unknown;
+    });
+    let result = ask(ADULT, &value);
+    assert_eq!(result.funnel.retrieved, 2, "retrieval missed the follow-up");
+    assert_eq!(
+        (result.outcome, result.reason),
+        (TerminalOutcome::Blocked, ReasonCode::RightsUnresolved)
     );
     assert!(result.brief.is_none() && result.manifest.is_none());
 }

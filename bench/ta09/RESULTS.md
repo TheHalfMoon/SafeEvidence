@@ -38,4 +38,4 @@ Checked by an independent recompute in Python's own SQLite FTS5, which matched e
 ## What this does not show
 
 - Real abstracts, a real vocabulary, or any dense or rerank method. Those stay owed before any promotion under TA-09.
-- Answers: when these were measured, retrieval only fed Ask's funnel count. Since `plan-v1.6` it decides which reports an answer can cite, so its misses now remove reports from answers.
+- Answers: when these were measured, retrieval only fed Ask's funnel count. Since `plan-v1.6` it decides which reports an answer can cite, so its misses now remove reports from answers. On this set, 6 of 30 questions change: four cite one report instead of two, and two abstain where they answered.
