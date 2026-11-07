@@ -186,6 +186,7 @@ export async function runAskChecks(driver) {
     page.close();
     failed = false;
   } catch (error) {
+    console.log(`--- failed: ${error.stack ?? error}`);
     await driver.diagnose();
     // The web view is still running, so a directory can vanish during the walk. That must not hide the real failure.
     try {

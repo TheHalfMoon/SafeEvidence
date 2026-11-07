@@ -13,6 +13,8 @@ const PORT = 4444;
 const ROOT = `http://127.0.0.1:${PORT}`;
 const executable = process.argv[2];
 assert.ok(executable, "pass the app's path");
+// The app's whole command line. The path alone would also match this test and everything that started it.
+const APP_PROCESS = `^${executable}$`;
 
 async function request(method, path, body) {
   const response = await fetch(`${ROOT}${path}`, {
@@ -79,13 +81,13 @@ await runAskChecks({
 
   // A real kill, so nothing gets a chance to close cleanly.
   async stop() {
-    spawnSync("pkill", ["-KILL", "-f", executable]);
+    spawnSync("pkill", ["-KILL", "-f", APP_PROCESS]);
     if (driver && driver.exitCode === null && driver.signalCode === null) {
       const exited = new Promise((resolve) => driver.once("exit", resolve));
       driver.kill("SIGKILL");
       await exited;
     }
-    await waitFor(() => spawnSync("pgrep", ["-f", executable]).status !== 0, "the app to exit", 30_000);
+    await waitFor(() => spawnSync("pgrep", ["-f", APP_PROCESS]).status !== 0, "the app to exit", 30_000);
   },
 
   async diagnose() {
