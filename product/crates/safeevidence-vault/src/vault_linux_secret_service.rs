@@ -806,6 +806,18 @@ mod tests {
         );
     }
 
+    /// Kept from the donor's `provider_metadata_is_fixed_plus_one_opaque_identifier`, which moved to the helper
+    /// without this assertion: the identifier never appears in debug output.
+    #[test]
+    fn the_protector_id_is_opaque_in_debug_output() {
+        let id = LinuxProtectorId::from_bytes([0x5a; 16]);
+        assert_eq!(format!("{id:?}"), "LinuxProtectorId([OPAQUE; 16 bytes])");
+        assert_eq!(
+            format!("{:?}", LinuxSecretServiceConfig::new(id)),
+            format!("LinuxSecretServiceConfig {{ protector_id: {id:?} }}")
+        );
+    }
+
     #[test]
     fn baseline_policy_is_same_user_session_without_presence_or_hardware_claim() {
         assert!(

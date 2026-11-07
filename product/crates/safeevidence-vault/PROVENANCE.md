@@ -29,10 +29,29 @@ Admission `ADM-0003` (T03) in `docs/evidence/source_admissions.json`.
   turns recursive triggers on for every connection. Guarded calls run under a SQLite authorizer, using rusqlite's `hooks` feature,
   which adds no dependency. They limit statements to guard against bugs, not malicious
   in-process code.
-- One donor test is corrected: `staged_byte_identity_mismatch_fails_before_sqlcipher_acceptance` wrote a fixed `0xff`
-  over a random salt byte, so it failed about 1 run in 256 when the byte already held that value. It now inverts the byte.
-- **TA-05 is not claimed.** Disk-full, restore-to-clean, key-loss and WAL/temp residue campaigns against
-  `P00_VAULT_DURABILITY_CONTRACT.md` are not done.
+- Two donor tests are corrected, for the same reason. `staged_byte_identity_mismatch_fails_before_sqlcipher_acceptance`
+  and `staging_mutation_after_b505q_fails_before_local_copy_or_anchor` each wrote a fixed `0xff` over a random salt
+  byte, so each failed about 1 run in 256 when the byte already held that value. Both now invert the byte.
+- Donor tests changed after admission, when the Secret Service calls moved to the helper (see below):
+  - `baseline_policy_is_same_user_session_without_presence_or_hardware_claim` stays here, now built through a
+    `protector()` helper. Its assertions are unchanged.
+  - `provider_errors_are_mapped_fail_closed`, `provider_metadata_is_fixed_plus_one_opaque_identifier` and
+    `secret_service_transport_is_always_diffie_hellman_encrypted` moved to the helper's `src/secret_service_backend.rs`.
+    The first now expects `WireError` where it expected `ProtectorError`. The second lost its assertion that the
+    protector id prints as `LinuxProtectorId([OPAQUE; 16 bytes])`, which is kept here instead as
+    `the_protector_id_is_opaque_in_debug_output`. The third is unchanged.
+  - The real-provider tests `native_gnome_keyring_phase_1_store_and_inspect` and
+    `native_gnome_keyring_phase_2_restart_unlock_delete_and_lock` became the helper's
+    `tests/native_keyring.rs`, as `native_keyring_phase_1_store_and_inspect` and
+    `native_keyring_phase_2_restart_unlock_delete_and_lock`, with a new phase 1b between them.
+  - `src/lib.rs` dropped the donor's `build_identity_is_deterministic` at admission, with the identity it tested.
+- **TA-05 for VS-1, under `plan-v1.5`'s reading:** kills just after each of eight acknowledged commits, through the
+  vault open API, in `safeevidence-proofstore`'s `kill_during_commits_loses_no_acknowledged_answer`. That test also
+  scans every file a killed store left, its WAL included, for answer text before anything reopens it. Not covered:
+  a kill inside SQLite's own commit or before the first acknowledged commit, a crash during a checkpoint (none happens
+  in the test), recovery to `COMMIT_UNKNOWN`, lock contention between processes, and power loss. The restart uses
+  `ProofStore::open`, while the app reopens with `open_existing`. Disk-full, restore-to-clean and key loss are not
+  carried, and stay owed at WP-03's full TA-05.
 
 SafeEvidence change to `src/vault_linux_secret_service.rs`: the founder chose a separate helper process (2026-11-06), so that the core stays socket-free. The record format, binding and policy
 checks stay here, and now compile on every OS. The Secret Service calls moved to `safeevidence-linux-keyring-helper`, reached over stdin and stdout through `safeevidence-keyring-wire`. Its tests

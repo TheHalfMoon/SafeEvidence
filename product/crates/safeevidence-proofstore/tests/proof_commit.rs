@@ -370,6 +370,9 @@ fn spawn_writer(root: &Path) -> Child {
         .expect("spawn writer")
 }
 
+/// Every answer the writer commits contains this, so a killed store's files must not.
+const KILLED_MARKER: &[u8] = b"synthetic answer";
+
 #[test]
 fn kill_during_commits_loses_no_acknowledged_answer() {
     for kill_at in 1..=8 {
@@ -388,6 +391,26 @@ fn kill_during_commits_loses_no_acknowledged_answer() {
         child.kill().expect("kill");
         let _ = child.wait();
         let acked = acknowledged(&db.0);
+
+        // TA-05's residue clause on a killed store, before anything reopens it: every file the store
+        // left, its WAL included, holds no answer text. `ack` is this test's own counter.
+        let mut scanned = Vec::new();
+        for entry in fs::read_dir(&db.0).unwrap() {
+            let entry = entry.unwrap();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with("ack") {
+                continue;
+            }
+            let bytes = fs::read(entry.path()).unwrap();
+            assert!(
+                !bytes
+                    .windows(KILLED_MARKER.len())
+                    .any(|w| w == KILLED_MARKER),
+                "answer text in {name} after a kill at {kill_at}"
+            );
+            scanned.push(name);
+        }
+        assert!(scanned.iter().any(|name| name == "vault.db"), "{scanned:?}");
 
         let mut store = open(&db.path());
         for index in 0..acked {
