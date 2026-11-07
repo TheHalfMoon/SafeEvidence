@@ -70,7 +70,6 @@ await runAskChecks({
     const { sessionId } = await request("POST", "/session", {
       capabilities: {
         alwaysMatch: {
-          browserName: "wry",
           "webkitgtk:browserOptions": { binary: executable, args: [] },
         },
       },
