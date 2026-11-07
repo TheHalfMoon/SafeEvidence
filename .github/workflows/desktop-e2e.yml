@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   # A real WebView2 window, driven over its debugging protocol. It is not a required check, because a few passes
-  # on hosted runners do not show it is reliable there. Ubuntu has no equivalent here.
+  # on hosted runners do not show it is reliable there. `desktop-e2e-linux.yml` runs the same checks on Ubuntu.
   desktop-e2e:
     name: desktop end-to-end (windows-latest)
     runs-on: windows-latest
