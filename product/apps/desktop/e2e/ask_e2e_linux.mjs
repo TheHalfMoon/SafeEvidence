@@ -19,15 +19,16 @@ assert.ok(executable, "pass the app's path");
 // The app's whole command line. The path alone would also match this test and everything that started it.
 const APP_PROCESS = `^${executable}$`;
 
-// With SAFEEVIDENCE_NETWORK_TRACE set, the app starts under strace, so its network calls and those of
-// WebKit's own processes are recorded, and nothing else the test runs is. Each launch appends.
+// With SAFEEVIDENCE_NETWORK_TRACE set to a directory, the app starts under strace, so its network calls and
+// those of WebKit's own processes are recorded, and nothing else the test runs is. One file per process
+// keeps a call on one line, and each launch's processes get files of their own.
 const trace = process.env.SAFEEVIDENCE_NETWORK_TRACE;
 let binary = executable;
 if (trace) {
   binary = join(mkdtempSync(join(tmpdir(), "se-trace-")), "traced-app");
   writeFileSync(
     binary,
-    `#!/bin/sh\nexec strace -f -qq -A -e trace=execve,connect,sendto,sendmsg -o '${trace}' '${executable}' "$@"\n`,
+    `#!/bin/sh\nexec strace -ff -qq -e trace=execve,socket,bind,listen,accept,accept4,connect,sendto,sendmsg,sendmmsg -o '${trace}/trace' '${executable}' "$@"\n`,
   );
   chmodSync(binary, 0o755);
 }
