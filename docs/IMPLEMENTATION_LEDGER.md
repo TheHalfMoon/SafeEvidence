@@ -15,7 +15,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | Active packet | WP-00 and WP-01 rows; WP-18a Ask view |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30), ADM-0009 (T03's Linux helper); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
-| Next executable task | VS-1a under `plan-v1.5`: TA-11 and TA-14 gaps; TA-09 synthetic harness; TA-05 subset and the `plan-v1.3` lineage test; helper packaging; WebView storage check; no-socket capture; resource values; M0 and M1 exit reviews |
+| Next executable task | VS-1a under `plan-v1.5`: TA-11 and TA-14 gaps; TA-09 synthetic harness; TA-05 subset and the `plan-v1.3` lineage test; retrieval selecting the evidence, or a founder ruling; helper packaging; WebView storage check; no-socket capture; resource values; all VS-1a rows on one commit. Then VS-1: the T05 row (founder) and TA-21. M0 and M1 exit reviews follow those |
 
 Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `foundation-documents`, `preentry structure`,
 `synthetic-only`, `product` and `desktop`, the last four on Ubuntu, Windows and macOS.
@@ -25,7 +25,7 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 | Milestone | Status | Blocked by |
 |---|---|---|
 | M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED`; TA-02 `TESTED_PASSED` | Exit review, including crate closures; open defects below |
-| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4's Ask flow has passed end to end on hosted Windows and Ubuntu runners, in checks that are not yet required. TA-20 is not claimed: its shell checklist is covered only for CSP and the capability. On Linux the helper is placed by hand, the window is not the shipped incognito one, and there is no network log | M0 exit review; desktop; helper packaging; open defects below |
+| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4's Ask flow has passed end to end on hosted Windows and Ubuntu runners, in checks that are not yet required. TA-20 is not claimed: `plan-v1.5` moves the shell checklist to M4, and what remains is the helper, placed by hand on Linux, and these checks passing on one commit with the other VS-1 rows. The Linux window is not the shipped incognito one, and it has no network log | M0 exit review; desktop; helper packaging; open defects below |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
 | M4 Desktop V1 | `NOT_STARTED` | M3 |
@@ -47,7 +47,7 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 
 ## Known defects
 
-**VS-1 scope is set by `plan-v1.5`** (founder rulings, 2026-11-07): `plan-v1.1` is in force with no independent human review, TA-20 is the Ask flow, a labelled synthetic set serves TA-09, and the M1 exit review is AI-only. EXT-06 stays open.
+**VS-1 scope is set by `plan-v1.5`** (founder rulings, 2026-11-07): `plan-v1.1` is in force with no independent human review, TA-20 is the Ask flow, a labelled synthetic set serves TA-09, and the M1 exit review is AI-only. EXT-06 stays open. TA-21 and T05 are unchanged and still owed before VS-1 is done.
 
 **TA-13 for VS-1 is narrowed by `plan-v1.4`** (founder decisions, 2026-11-06). Its VS-1 clauses have tests: 1,329 mechanics vectors, 12 of 17 donor fixture cases at resolution level, all 17 questions
 through `ask`, and the lexical-emergency test. This shows little beyond the vectors, because no case runs through V1 to a matching outcome, and the amendment states that. TA-13 as a whole is not met: its DAL vectors are
@@ -96,7 +96,7 @@ All are inert today (no consumer or UI). They must be gated against the P00 cont
 (no V1 clinical confidence percentage) before anything uses them.
 
 See `docs/reviews/EGM_PLAN_CHALLENGE_2026-11-05.md`. Six P0 plan and tooling defects
-are verified. `product/`, `product-ci.yml` and `plan-v1.1` A3, B1, B2 and B6 address them. Whether each is fully corrected is for M0's exit review.
+are verified. `product/`, `product-ci.yml` and `plan-v1.1` A3, B1, B2 and B6 address most of them. **One half is still open:** A3 covers recording an admission, and `tools/governance/p01_preentry_check.py` still requires each gate to read "OPEN — owner unassigned", so naming an owner still fails CI. Whether the rest are fully corrected is for M0's exit review.
 
 ## Source imports
 
