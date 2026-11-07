@@ -59,7 +59,7 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 - Not covered: a kill inside SQLite's own commit or before the first acknowledged commit, a crash during a checkpoint, recovery to `COMMIT_UNKNOWN`, lock contention between processes, power loss, and a restart through `open_existing`, which the app uses.
 - Disk-full, restore into a clean directory and key loss stay owed at WP-03's full TA-05.
 
-**WebView storage, before M1 exit** (`plan-v1.5`): on Windows the shipped incognito window leaves none of the question, answer, span or proof id in the web view's files, even when the page writes them to `localStorage`. With incognito off, the same scan finds them, so it can detect real storage. Linux's test window is not incognito, so its run covers a configuration that does not ship.
+**WebView storage, before M1 exit** (`plan-v1.5`): on Windows the shipped incognito window leaves none of the answer, cited span or proof id in the web view's data directory. The page writes no web storage today, so the test is a tripwire, not proof that incognito prevents storage. One-off manual runs showed incognito keeping a page's `localStorage` write off disk, and the scan finding it with incognito off. Linux's test window is not incognito, and its scan reads only the data directory.
 
 **Retrieval selects the cited evidence, under `plan-v1.6`** (founder decision, 2026-11-07). Only reports lexical retrieval found can be cited. The guards still see the whole corpus, so a contradiction retrieval misses still stops the answer. A missed applicable report is listed with `EVIDENCE_INSUFFICIENT`.
 

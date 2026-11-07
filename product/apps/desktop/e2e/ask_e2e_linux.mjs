@@ -111,6 +111,15 @@ await runAskChecks({
     await waitFor(() => spawnSync("pgrep", ["-f", APP_PROCESS]).status !== 0, "the app to exit", 30_000);
   },
 
+  // WebKit's own web and network processes, which `stop` does not wait for.
+  async webViewExited() {
+    await waitFor(
+      () => spawnSync("pgrep", ["-f", "webkit2gtk-4.1/WebKit(Web|Network)Process"]).status !== 0,
+      "the web view's processes to exit",
+      30_000,
+    );
+  },
+
   async diagnose() {
     console.log("--- driver and app output\n" + (output.join("") || "(none)"));
     const host = spawnSync("sh", ["-c", "ps -eo pid,args | grep -E 'safeevidence|WebKit|gnome-keyring' | grep -v grep"], { encoding: "utf8" });
