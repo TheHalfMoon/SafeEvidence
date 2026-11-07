@@ -260,6 +260,22 @@ fn build_index(corpus: &Corpus) -> rusqlite::Result<Connection> {
     Ok(connection)
 }
 
+/// The document ids Ask retrieves for a question, best first: FTS5 over title and body, matching
+/// the condition and intervention, ordered by `bm25()` and then document id. TA-09 measures this.
+///
+/// # Errors
+/// Returns SQLite's error if the index cannot be built or searched.
+pub fn retrieve_for_question(
+    corpus: &Corpus,
+    question: &Question,
+) -> rusqlite::Result<Vec<String>> {
+    let connection = build_index(corpus)?;
+    retrieve(
+        &connection,
+        &[question.condition.as_str(), question.intervention.as_str()],
+    )
+}
+
 fn retrieve(connection: &Connection, terms: &[&str]) -> rusqlite::Result<Vec<String>> {
     let quoted: Vec<String> = terms
         .iter()
@@ -583,11 +599,7 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
         );
     };
 
-    let Ok(connection) = build_index(corpus) else {
-        return AskResult::refuse(TerminalOutcome::Blocked, ReasonCode::ToolFailure, funnel);
-    };
-    let terms = [question.condition.as_str(), question.intervention.as_str()];
-    let Ok(retrieved) = retrieve(&connection, &terms) else {
+    let Ok(retrieved) = retrieve_for_question(corpus, &question) else {
         return AskResult::refuse(TerminalOutcome::Blocked, ReasonCode::ToolFailure, funnel);
     };
     funnel.retrieved = retrieved.len();
