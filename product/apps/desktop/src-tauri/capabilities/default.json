@@ -6,6 +6,6 @@
     "main"
   ],
   "permissions": [
-    "allow-ask-question"
+    "allow-ask-question", "core:default"
   ]
 }
