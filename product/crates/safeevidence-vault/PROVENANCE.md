@@ -29,10 +29,13 @@ Admission `ADM-0003` (T03) in `docs/evidence/source_admissions.json`.
   turns recursive triggers on for every connection. Guarded calls run under a SQLite authorizer, using rusqlite's `hooks` feature,
   which adds no dependency. They limit statements to guard against bugs, not malicious
   in-process code.
-- One donor test is corrected: `staged_byte_identity_mismatch_fails_before_sqlcipher_acceptance` wrote a fixed `0xff`
-  over a random salt byte, so it failed about 1 run in 256 when the byte already held that value. It now inverts the byte.
-- **TA-05 is not claimed.** Disk-full, restore-to-clean, key-loss and WAL/temp residue campaigns against
-  `P00_VAULT_DURABILITY_CONTRACT.md` are not done.
+- Two donor tests are corrected, for the same reason. `staged_byte_identity_mismatch_fails_before_sqlcipher_acceptance`
+  and `staging_mutation_after_b505q_fails_before_local_copy_or_anchor` each wrote a fixed `0xff` over a random salt
+  byte, so each failed about 1 run in 256 when the byte already held that value. Both now invert the byte.
+- **TA-05 for VS-1, under `plan-v1.5`'s reading:** kills just after each of eight acknowledged commits, through the
+  vault open API, in `safeevidence-proofstore`'s `kill_during_commits_loses_no_acknowledged_answer`. That test also
+  scans every file a killed store left, its WAL included, before anything reopens it. A kill inside SQLite's own commit
+  is not targeted. Disk-full, restore-to-clean and key loss are not carried, and stay owed at WP-03's full TA-05.
 
 SafeEvidence change to `src/vault_linux_secret_service.rs`: the founder chose a separate helper process (2026-11-06), so that the core stays socket-free. The record format, binding and policy
 checks stay here, and now compile on every OS. The Secret Service calls moved to `safeevidence-linux-keyring-helper`, reached over stdin and stdout through `safeevidence-keyring-wire`. Its tests
