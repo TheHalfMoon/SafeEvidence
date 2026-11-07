@@ -494,9 +494,46 @@ fn studies_conflict(documents: &[&Document]) -> bool {
     all.len() > 1 && studies.len() > 1
 }
 
+/// How a step of building an answer failed. `plan-v1.1` §C has these injected until a real worker exists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StepFailure {
+    Crashed,
+    TimedOut,
+}
+
+impl StepFailure {
+    fn refusal(self) -> (TerminalOutcome, ReasonCode) {
+        match self {
+            Self::Crashed => (TerminalOutcome::Blocked, ReasonCode::ToolFailure),
+            Self::TimedOut => (TerminalOutcome::Abstain, ReasonCode::TimeBudgetExhausted),
+        }
+    }
+}
+
+/// The boundaries where an answer's steps can fail. Each step's output is still verified.
+pub trait AnswerSeams {
+    fn after_render(&self, brief: String) -> Result<String, StepFailure> {
+        Ok(brief)
+    }
+
+    fn before_verify(&self) -> Result<(), StepFailure> {
+        Ok(())
+    }
+}
+
+struct NoFaults;
+
+impl AnswerSeams for NoFaults {}
+
 /// Runs one question through the guards, returning exactly one outcome, reason and funnel.
 #[must_use]
 pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
+    ask_with_seams(text, corpus, &NoFaults)
+}
+
+/// `ask`, with faults injected at the boundaries of the steps that build the answer.
+#[must_use]
+pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> AskResult {
     let mut funnel = Funnel {
         indexed: corpus.documents.len(),
         ..Funnel::default()
@@ -755,7 +792,17 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         };
         claims.push((*document, span));
     }
-    let brief = render_brief(&claims);
+    let failed = |failure: StepFailure, funnel: &Funnel, excluded: &[Exclusion]| {
+        let (outcome, reason) = failure.refusal();
+        refuse(outcome, reason, funnel, excluded)
+    };
+    let brief = match seams.after_render(render_brief(&claims)) {
+        Ok(brief) => brief,
+        Err(failure) => return failed(failure, &funnel, &excluded),
+    };
+    if let Err(failure) = seams.before_verify() {
+        return failed(failure, &funnel, &excluded);
+    }
     // The frozen text is read back and checked against the sources, not against its inputs.
     let Ok(cited) = verify_brief(&brief, corpus) else {
         return refuse(

@@ -426,6 +426,49 @@ mod tests {
         );
     }
 
+    /// P00's "after DB commit before UI notification": the first request's view is lost, and the
+    /// next launch must find that proof, not commit a second one.
+    #[test]
+    fn a_crash_after_commit_before_the_view_recovers_the_same_proof() {
+        let dir = TempDir::new();
+        let (proof_id, text) = {
+            let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
+            let result = ask(ANSWERED, &session.corpus);
+            let manifest = result.manifest.expect("manifest");
+            let text = result.brief.expect("brief");
+            session
+                .store
+                .commit(&manifest, text.as_bytes())
+                .expect("commit");
+            (manifest.proof_id, text)
+        };
+        let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session after crash");
+        let view = session.ask(ANSWERED);
+        assert!(view.already_committed, "it was committed before the crash");
+        assert_eq!(view.proof_id.as_deref(), Some(proof_id.as_str()));
+        assert_eq!(view.brief.as_deref(), Some(text.as_str()));
+        assert_eq!(
+            session.store.audit_events(&proof_id).expect("audit"),
+            ["COMMITTED"]
+        );
+    }
+
+    /// A failure at the commit boundary reaches the person as a refusal with no text.
+    #[test]
+    fn a_failed_commit_is_a_block_with_a_reason() {
+        for error in [
+            StoreError::Busy,
+            StoreError::TransactionLost,
+            StoreError::NotDurable,
+            StoreError::Corrupt("synthetic".to_owned()),
+        ] {
+            assert_eq!(
+                denied(error),
+                (TerminalOutcome::Blocked, ReasonCode::ToolFailure)
+            );
+        }
+    }
+
     #[test]
     fn a_refusal_shows_its_trace_and_no_text() {
         let dir = TempDir::new();
