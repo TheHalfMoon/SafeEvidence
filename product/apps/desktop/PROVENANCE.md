@@ -43,3 +43,12 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
 - On Windows the WebView2 profile is in `webview/` under the data directory, not the default location. WKWebView has no such setting, and wry ignores it there. On Linux an incognito window uses wry's own ephemeral context, while Tauri still creates a context on that directory. Run 42344969326, incognito with automation on, left `hsts-storage.sqlite`, `WebKitCache`, `mediakeys` and `storage/salt` there. What a shipped build writes has not been checked, and it bears on TA-20's WebView storage item.
 - WebView2 can honour `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` in any build, as it did on a developer machine, so anyone who can set the user's environment could open a debugging port on the window. They already run as that user. It is noted here because no test covers it.
 - On Linux, `TAURI_WEBVIEW_AUTOMATION=true` enables WebKit automation only in a build that is not incognito, which today means the `e2e` build. Run 42344969326 shows an incognito build refusing the session.
+- On Linux, `tauri.linux.conf.json` names the keyring helper as an external binary, so every Linux build of the app copies it beside the executable, where the vault looks for it. The build needs `src-tauri/binaries/safeevidence-linux-keyring-helper-<target triple>` first. CI builds it, and on x86-64 Linux a developer runs, from `product/`:
+
+  ```
+  cargo build --locked -p safeevidence-linux-keyring-helper
+  mkdir -p apps/desktop/src-tauri/binaries
+  cp target/debug/safeevidence-linux-keyring-helper apps/desktop/src-tauri/binaries/safeevidence-linux-keyring-helper-x86_64-unknown-linux-gnu
+  ```
+
+  Copy it again after rebuilding the helper: the app's build only notices a change to the copied file, so an old copy stays beside the app. Bundles stay off, so no installer carries the helper yet. That waits for signed releases under EXT-05.
