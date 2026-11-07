@@ -15,7 +15,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | Active packet | WP-00 and WP-01 rows; WP-18a Ask view |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30), ADM-0009 (T03's Linux helper); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
-| Next executable task | VS-1a under `plan-v1.5`: `plan-v1.3` lineage for assertions, once an assertion store exists; helper packaging; WebView storage check; no-socket capture; resource values; all VS-1a rows on one commit. Then VS-1: the T05 row (founder) and TA-21. M0 and M1 exit reviews follow those |
+| Next executable task | VS-1a under `plan-v1.5`: `plan-v1.3` lineage for assertions, once an assertion store exists; helper in installers (with signed releases, EXT-05); WebView storage check; no-socket capture; resource values; all VS-1a rows on one commit. Then VS-1: the T05 row (founder) and TA-21. M0 and M1 exit reviews follow those |
 
 Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `foundation-documents`, `preentry structure`,
 `synthetic-only`, `product` and `desktop`, the last four on Ubuntu, Windows and macOS.
@@ -25,7 +25,7 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 | Milestone | Status | Blocked by |
 |---|---|---|
 | M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED`; TA-02 `TESTED_PASSED` | Exit review, including crate closures; open defects below |
-| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4's Ask flow has passed end to end on hosted Windows and Ubuntu runners, in checks that are not yet required. TA-20 is not claimed: `plan-v1.5` moves the shell checklist to M4, and what remains is the helper, placed by hand on Linux, and these checks passing on one commit with the other VS-1 rows. The Linux window is not the shipped incognito one, and it has no network log | M0 exit review; desktop; helper packaging; open defects below |
+| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4's Ask flow has passed end to end on hosted Windows and Ubuntu runners, in checks that are not yet required. TA-20 is not claimed: `plan-v1.5` moves the shell checklist to M4, and what remains is the helper, placed by hand on Linux, and these checks passing on one commit with the other VS-1 rows. The Linux window is not the shipped incognito one, and it has no network log | M0 exit review; desktop; helper in installers (with signed releases, EXT-05); open defects below |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
 | M4 Desktop V1 | `NOT_STARTED` | M3 |

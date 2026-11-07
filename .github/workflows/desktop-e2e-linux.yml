@@ -11,8 +11,8 @@ permissions:
 
 jobs:
   # A real WebKitGTK window with a real Secret Service, driven by WebKitWebDriver. It is not a required check yet,
-  # because it has not shown it is reliable on hosted runners. The app refuses every question without the keyring
-  # helper, and nothing installs it yet, so this job places it beside the app itself.
+  # because it has not shown it is reliable on hosted runners. The Linux build places the keyring helper beside
+  # the app, from `src-tauri/binaries`, which this job fills first.
   desktop-e2e-linux:
     name: desktop end-to-end (ubuntu-latest)
     runs-on: ubuntu-latest
@@ -60,14 +60,21 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           npm run build
+      - name: Build the keyring helper the Linux app needs beside it
+        shell: bash
+        working-directory: product
+        run: |
+          # The Linux build copies this beside the app, so tauri-build needs it before any build of the app.
+          cargo build --locked -p safeevidence-linux-keyring-helper
+          mkdir -p apps/desktop/src-tauri/binaries
+          cp target/debug/safeevidence-linux-keyring-helper \
+            apps/desktop/src-tauri/binaries/safeevidence-linux-keyring-helper-x86_64-unknown-linux-gnu
       - name: Build the app for the end-to-end test
         working-directory: product/apps/desktop/src-tauri
         run: cargo build --locked --features custom-protocol,e2e
-      - name: Place the keyring helper beside the app
-        working-directory: product
-        run: |
-          cargo build --locked -p safeevidence-linux-keyring-helper
-          cp target/debug/safeevidence-linux-keyring-helper apps/desktop/src-tauri/target/debug/
+      - name: Check the build placed the helper beside the app
+        working-directory: product/apps/desktop/src-tauri
+        run: test -x target/debug/safeevidence-linux-keyring-helper
       - name: Run the Ask flow in a real window
         working-directory: product/apps/desktop
         timeout-minutes: 10

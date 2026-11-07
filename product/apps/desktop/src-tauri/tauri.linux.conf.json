@@ -1,0 +1,5 @@
+{
+  "bundle": {
+    "externalBin": ["binaries/safeevidence-linux-keyring-helper"]
+  }
+}

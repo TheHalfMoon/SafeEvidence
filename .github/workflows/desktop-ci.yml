@@ -89,6 +89,16 @@ jobs:
         shell: bash
         working-directory: product/apps/desktop/src-tauri
         run: cargo fmt --check
+      - name: Build the keyring helper the Linux app needs beside it
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        working-directory: product
+        run: |
+          # The Linux build copies this beside the app, so tauri-build needs it before any build of the app.
+          cargo build --locked -p safeevidence-linux-keyring-helper
+          mkdir -p apps/desktop/src-tauri/binaries
+          cp target/debug/safeevidence-linux-keyring-helper \
+            apps/desktop/src-tauri/binaries/safeevidence-linux-keyring-helper-x86_64-unknown-linux-gnu
       - name: Run clippy
         shell: bash
         working-directory: product/apps/desktop/src-tauri

@@ -7,6 +7,11 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
 const conf = JSON.parse(read("../src-tauri/tauri.conf.json"));
 const capability = JSON.parse(read("../src-tauri/capabilities/default.json"));
 
+test("Linux places only the keyring helper beside the app, and packages nothing", () => {
+  const linux = JSON.parse(read("../src-tauri/tauri.linux.conf.json"));
+  assert.deepEqual(linux, { bundle: { externalBin: ["binaries/safeevidence-linux-keyring-helper"] } });
+});
+
 test("this build packages nothing and adds no updater or plugin", () => {
   assert.equal(conf.bundle.active, false);
   assert.equal(conf.plugins, undefined);
