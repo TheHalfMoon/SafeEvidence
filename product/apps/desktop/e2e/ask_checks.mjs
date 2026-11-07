@@ -14,7 +14,7 @@
 // - `expectedChecks`, so that a check a driver skips cannot vanish unnoticed.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,6 +36,29 @@ export async function waitFor(check, what, timeoutMs = 60_000) {
     assert.ok(Date.now() < deadline, `timed out waiting for ${what}`);
     await sleep(100);
   }
+}
+
+/// Every file under `root` that holds a marker, in UTF-8 or UTF-16LE, which Chromium uses for some
+/// stored strings. A file that cannot be read is reported, never skipped.
+function scanForMarkers(root, markers) {
+  const needles = markers.flatMap((marker) => [Buffer.from(marker, "utf8"), Buffer.from(marker, "utf16le")]);
+  const found = [];
+  const unreadable = [];
+  let scanned = 0;
+  for (const name of readdirSync(root, { recursive: true })) {
+    const path = join(root, name);
+    let bytes;
+    try {
+      bytes = readFileSync(path);
+    } catch (error) {
+      // A directory is walked, not read, and a file the web view removed while it exited holds nothing.
+      if (error.code !== "EISDIR" && error.code !== "ENOENT") unreadable.push(`${name}: ${error.code}`);
+      continue;
+    }
+    scanned += 1;
+    if (needles.some((needle) => bytes.includes(needle))) found.push(name);
+  }
+  return { scanned, found, unreadable };
 }
 
 // As React sees a person typing: its value tracker needs the native setter and a real input event.
@@ -185,6 +208,24 @@ export async function runAskChecks(driver) {
     assert.match(view.proofLine, /^Already committed as proof /);
     passed("after a kill and restart, the proof is still in the store");
     page.close();
+
+    // WebView storage: what the page saw must not be left in the web view's own files. The store is
+    // encrypted and has its own residue tests, so this reads only the web view's profile.
+    await driver.stop({ mustBeRunning: true });
+    // The web view's own processes can outlive the app briefly, and still be writing.
+    await driver.webViewExited?.();
+    await sleep(3000);
+    // Not the question: it is also the view's example text, so the bundle's own code cache holds it.
+    const markers = [answered.brief, answered.proof, span];
+    const control = mkdtempSync(join(tmpdir(), "se-e2e-control-"));
+    writeFileSync(join(control, "planted"), Buffer.from(span, "utf16le"));
+    assert.deepEqual(scanForMarkers(control, markers).found, ["planted"], "the scan finds a UTF-16 marker");
+    rmSync(control, { recursive: true, force: true });
+    const webview = scanForMarkers(join(dataDir, "webview"), markers);
+    assert.deepEqual(webview.unreadable, []);
+    assert.ok(webview.scanned > 0, "the web view left files to scan");
+    assert.deepEqual(webview.found, [], `the answer is in ${webview.found.join(", ")}`);
+    passed(`the web view's ${webview.scanned} files hold none of the answer, cited span or proof id`);
     assert.equal(checks.length, driver.expectedChecks, "every check this driver should run has run");
     failed = false;
   } catch (error) {
