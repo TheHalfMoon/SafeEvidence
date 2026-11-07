@@ -604,8 +604,8 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
     };
     funnel.retrieved = retrieved.len();
 
-    // Metadata decides relevance, across the whole corpus: a contradicting document must count
-    // even if lexical retrieval missed it. Retrieval supplies only the funnel count here.
+    // The guards decide on metadata across the whole corpus: a contradicting document must count
+    // even if lexical retrieval missed it. Retrieval decides which reports can be cited, below.
     let relevant = |document: &&Document| {
         normalized(&document.condition) == question.condition
             && normalized(&document.intervention) == question.intervention
@@ -811,8 +811,30 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
         return refuse(outcome, reason, &funnel, &excluded);
     }
 
+    // `plan-v1.6`: only reports lexical retrieval found can be cited. The guards above saw the whole
+    // corpus, so a contradiction or retraction retrieval missed has already blocked or abstained.
+    let (citable_now, unretrieved): (Vec<&Document>, Vec<&Document>) = applicable
+        .iter()
+        .copied()
+        .partition(|document| retrieved.contains(&document.doc_id));
+    for document in &unretrieved {
+        excluded.push(Exclusion {
+            doc_id: document.doc_id.clone(),
+            reason: ReasonCode::EvidenceInsufficient,
+            detail: "applicable, but lexical retrieval did not find it".to_owned(),
+        });
+    }
+    if citable_now.is_empty() {
+        return refuse(
+            TerminalOutcome::Abstain,
+            ReasonCode::EvidenceInsufficient,
+            &funnel,
+            &excluded,
+        );
+    }
+
     let mut claims = Vec::new();
-    for document in &applicable {
+    for document in &citable_now {
         let Some(span) = span_of(document) else {
             return refuse(
                 TerminalOutcome::Abstain,

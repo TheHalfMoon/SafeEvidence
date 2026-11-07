@@ -88,6 +88,89 @@ fn two_reports_of_one_study_count_as_one_study() {
     assert_eq!(result.funnel.independent_studies, 1);
 }
 
+/// Rewrites a report so lexical retrieval cannot find it for its condition, keeping its finding.
+fn unretrievable(document: &mut safeevidence_ask::Document) {
+    let opening = document.text.split(". ").next().unwrap().to_owned();
+    document.text = document
+        .text
+        .replacen(&opening, "A report on synthetic GS", 1);
+    document.title = "A report on synthetic GS".to_owned();
+}
+
+/// `plan-v1.6`: only reports lexical retrieval found can be cited.
+#[test]
+fn a_report_retrieval_missed_is_not_cited_and_says_why() {
+    let value = with_doc("doc-veltrix-a-followup", unretrievable);
+    let result = ask(ADULT, &value);
+    assert_eq!(result.outcome, TerminalOutcome::AnswerWithCaution);
+    let manifest = result.manifest.expect("manifest");
+    let cited: Vec<&str> = manifest
+        .claims
+        .iter()
+        .map(|c| c.claim_id.as_str())
+        .collect();
+    assert_eq!(cited, ["doc-veltrix-a"]);
+    let exclusion = result
+        .excluded
+        .iter()
+        .find(|e| e.doc_id == "doc-veltrix-a-followup")
+        .expect("listed");
+    assert_eq!(exclusion.reason, ReasonCode::EvidenceInsufficient);
+    assert!(!result.brief.unwrap().contains("11 points"));
+}
+
+#[test]
+fn nothing_retrieved_to_cite_is_an_abstention() {
+    let mut value = with_doc("doc-veltrix-a-followup", unretrievable);
+    unretrievable(
+        value
+            .documents
+            .iter_mut()
+            .find(|d| d.doc_id == "doc-veltrix-a")
+            .unwrap(),
+    );
+    let result = ask(ADULT, &value);
+    assert_eq!(result.outcome, TerminalOutcome::Abstain);
+    assert_eq!(result.reason, ReasonCode::EvidenceInsufficient);
+    assert!(result.brief.is_none() && result.manifest.is_none());
+}
+
+/// The guards still see the whole corpus: a contradiction retrieval misses still stops the answer.
+#[test]
+fn a_disagreeing_report_of_the_same_study_retrieval_missed_still_stops_the_answer() {
+    let value = with_doc("doc-veltrix-a-followup", |d| {
+        d.text = "A report on synthetic GS. The glimmer score did not improve compared with placebo at 24 weeks.".to_owned();
+        d.title = "A report on synthetic GS".to_owned();
+        d.finding =
+            "The glimmer score did not improve compared with placebo at 24 weeks.".to_owned();
+        d.direction = Direction::NoBenefit;
+    });
+    let result = ask(ADULT, &value);
+    assert_eq!(result.funnel.retrieved, 2, "retrieval missed the follow-up");
+    assert_eq!(
+        (result.outcome, result.reason),
+        (TerminalOutcome::Abstain, ReasonCode::EvidenceInsufficient)
+    );
+    assert!(result.brief.is_none() && result.manifest.is_none());
+}
+
+/// The rights guard also sees the whole corpus: a source without rights that retrieval missed
+/// still blocks, rather than being quietly left out.
+#[test]
+fn a_source_without_rights_retrieval_missed_still_blocks() {
+    let value = with_doc("doc-veltrix-a-followup", |d| {
+        unretrievable(d);
+        d.rights = safeevidence_contracts::evidence::EvidenceCorpusRights::Unknown;
+    });
+    let result = ask(ADULT, &value);
+    assert_eq!(result.funnel.retrieved, 2, "retrieval missed the follow-up");
+    assert_eq!(
+        (result.outcome, result.reason),
+        (TerminalOutcome::Blocked, ReasonCode::RightsUnresolved)
+    );
+    assert!(result.brief.is_none() && result.manifest.is_none());
+}
+
 #[test]
 fn mismatched_population_is_excluded_with_a_reason() {
     let result = ask(ADULT, &corpus());
