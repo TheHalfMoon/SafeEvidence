@@ -15,7 +15,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | Active packet | WP-00 and WP-01 rows; WP-18a Ask view |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30), ADM-0009 (T03's Linux helper); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
-| Next executable task | VS-1 done list: TA-20 shell checklist, TA-21 with T05, TA-09, TA-05 and TA-14 remainders; helper packaging |
+| Next executable task | VS-1 done list: TA-20 shell checklist, the shipped incognito window on Linux, TA-21 with T05, TA-09, TA-05 and TA-14 remainders; helper packaging |
 
 Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `foundation-documents`, `preentry structure`,
 `synthetic-only`, `product` and `desktop`, the last four on Ubuntu, Windows and macOS.
@@ -25,7 +25,7 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 | Milestone | Status | Blocked by |
 |---|---|---|
 | M0 Admission | In progress: TA-01 `TESTED_PASSED` in CI; TA-03 `TESTED_PASSED` under `plan-v1.2`; TA-04 `TESTED_PASSED` as narrowed by `plan-v1.3`; TA-29 HTTP-client clause `TESTED_PASSED`; TA-02 `TESTED_PASSED` | Exit review, including crate closures; open defects below |
-| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4's Ask flow has passed end to end on hosted Windows and Ubuntu runners, in checks that are not yet required. TA-20 is not claimed: its shell checklist is covered only for CSP and the capability, and Linux leaves the shipped incognito setting untested | M0 exit review; desktop; helper packaging; open defects below |
+| M1 VS-1 (synthetic) | Steps 1 and 3 of `plan-v1.1` §C `TESTED_PASSED` at their own scope; step 2 partial; step 4's Ask flow has passed end to end on hosted Windows and Ubuntu runners, in checks that are not yet required. TA-20 is not claimed: its shell checklist is covered only for CSP and the capability. On Linux the helper is placed by hand, the window is not the shipped incognito one, and there is no network log | M0 exit review; desktop; helper packaging; open defects below |
 | M2 Evidence V1 | `NOT_STARTED` | M1; EXT-07 for model work |
 | M3 Deep Review | `NOT_STARTED` | M2 |
 | M4 Desktop V1 | `NOT_STARTED` | M3 |

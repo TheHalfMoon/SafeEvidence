@@ -47,23 +47,33 @@ class Page {
   close() {}
 }
 
+// The app's items in the keyring, asked of the Secret Service itself.
+function keyringItems() {
+  const search = spawnSync("gdbus", [
+    "call", "--session",
+    "--dest", "org.freedesktop.secrets",
+    "--object-path", "/org/freedesktop/secrets",
+    "--method", "org.freedesktop.Secret.Service.SearchItems",
+    "{'application': 'com.thehalfmoon.safeevidence'}",
+  ], { encoding: "utf8" });
+  assert.equal(search.status, 0, search.stderr);
+  return search.stdout.match(/\/org\/freedesktop\/secrets\/collection\/[^']+\/\d+/g) ?? [];
+}
+
+// Run this in a throwaway session: an item already there would make the key check prove nothing.
+assert.deepEqual(keyringItems(), [], "the keyring must start with none of the app's items");
+
 const output = [];
 let driver = null;
 
 await runAskChecks({
-  // Asks the keyring itself, which started empty, whether it now holds an item.
+  expectedChecks: 10,
+  // The network log is the one check missing here: WebDriver does not expose one.
   keyStore: {
     name: "the real Secret Service",
     check(stored) {
       assert.ok(!stored.includes("dpapi"), stored.join());
-      const items = spawnSync("gdbus", [
-        "call", "--session",
-        "--dest", "org.freedesktop.secrets",
-        "--object-path", "/org/freedesktop/secrets/aliases/default",
-        "--method", "org.freedesktop.DBus.Properties.Get",
-        "org.freedesktop.Secret.Collection", "Items",
-      ], { encoding: "utf8" });
-      assert.match(items.stdout, /'\/org\/freedesktop\/secrets\/collection\/[^']+\/\d+'/, items.stdout + items.stderr);
+      assert.equal(keyringItems().length, 1, "the app stored exactly one item");
     },
   },
 
@@ -89,8 +99,10 @@ await runAskChecks({
   },
 
   // A real kill, so nothing gets a chance to close cleanly.
-  async stop() {
-    spawnSync("pkill", ["-KILL", "-f", APP_PROCESS]);
+  async stop({ mustBeRunning = false } = {}) {
+    const killed = spawnSync("pkill", ["-KILL", "-f", APP_PROCESS]);
+    // Otherwise a wrong pattern would match nothing, and the wait below would pass trivially.
+    if (mustBeRunning) assert.equal(killed.status, 0, "the kill found the app");
     if (driver && driver.exitCode === null && driver.signalCode === null) {
       const exited = new Promise((resolve) => driver.once("exit", resolve));
       driver.kill("SIGKILL");

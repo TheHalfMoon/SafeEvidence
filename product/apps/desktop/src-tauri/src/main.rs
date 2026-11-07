@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// The feature opens a debugging port and moves the data directory, so it must never reach a release.
+// The feature opens a debugging port, moves the data directory and, on Linux, leaves incognito off, so it must
+// never reach a release.
 #[cfg(all(feature = "e2e", not(debug_assertions)))]
 compile_error!("the e2e feature is for debug builds only");
 

@@ -8,9 +8,10 @@
 // A driver has:
 // - `launch(dataDir)`, which starts the app and returns a page with `eval(expression)` and `close()`.
 //   A page may have `requests` and `isAppRequest(url)`, if the driver can see the page's network.
-// - `stop()`, which kills the app and waits until it has gone.
+// - `stop({ mustBeRunning })`, which kills the app and waits until it has gone.
 // - `diagnose()`, which reports what it can after a failure.
-// - `keyStore`, which names the OS protector and checks the store's files for it.
+// - `keyStore`, which names the OS protector and checks that the key is under it.
+// - `expectedChecks`, so that a check a driver skips cannot vanish unnoticed.
 
 import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -173,7 +174,7 @@ export async function runAskChecks(driver) {
     passed("the capability refuses a real core command the page was not granted");
 
     page.close();
-    await driver.stop();
+    await driver.stop({ mustBeRunning: true });
     page = await driver.launch(dataDir);
     await waitFor(() => page.eval(`!!document.querySelector("#question")`), "the view after restart");
     await ask(page, ANSWERED);
@@ -184,6 +185,7 @@ export async function runAskChecks(driver) {
     assert.match(view.proofLine, /^Already committed as proof /);
     passed("after a kill and restart, the proof is still in the store");
     page.close();
+    assert.equal(checks.length, driver.expectedChecks, "every check this driver should run has run");
     failed = false;
   } catch (error) {
     console.log(`--- failed: ${error.stack ?? error}`);

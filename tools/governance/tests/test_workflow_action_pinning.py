@@ -31,8 +31,8 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
     ".github/workflows/product-ci.yml": "2fd5dd9537e2c2886e8dc7663d3afc2f19c3e9280a56681ebb6ad8a230c6ced8",
     ".github/workflows/desktop-ci.yml": "2512d2c5c2d843a90640f8a2da15990396d7ac3a7634506bc28f8e83c9729de1",
-    ".github/workflows/desktop-e2e.yml": "a15644dd77fd63f1c2e3eeddb352087ed15814ae6f9982882361292b954d7426",
-    ".github/workflows/desktop-e2e-linux.yml": "fa86bbc6e661312076a7c5392a84f73b1eb8347d6f10197e775a68c2afba9c2b",
+    ".github/workflows/desktop-e2e.yml": "4fbfd43f9ada63bfdaa02076aac92aa836206dffdde13317eb43b70c1597d089",
+    ".github/workflows/desktop-e2e-linux.yml": "dd371c99ad40a9bf1cd6ccd6dbf24a0644c10223f5ce3f0134536b2fbba77d75",
 }
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.

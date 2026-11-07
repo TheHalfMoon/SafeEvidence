@@ -98,6 +98,7 @@ const appOutput = [];
 let app = null;
 
 await runAskChecks({
+  expectedChecks: 11,
   keyStore: {
     name: "real DPAPI",
     check: (stored) => assert.ok(stored.includes("dpapi"), stored.join()),
