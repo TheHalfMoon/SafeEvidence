@@ -16,8 +16,10 @@ WORKFLOWS = (
     ".github/workflows/product-ci.yml",
     ".github/workflows/desktop-ci.yml",
     ".github/workflows/desktop-e2e.yml",
+    ".github/workflows/desktop-e2e-linux.yml",
 )
 WINDOWS_ONLY_WORKFLOW = ".github/workflows/desktop-e2e.yml"
+LINUX_ONLY_WORKFLOW = ".github/workflows/desktop-e2e-linux.yml"
 EXPECTED_CHECKOUT_SHA = "d23441a48e516b6c34aea4fa41551a30e30af803"
 # Exact reviewed workflow snapshots. Normalize checkout newlines through
 # read_text() so Windows CRLF checkouts retain the same audited content hash.
@@ -29,7 +31,8 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
     ".github/workflows/product-ci.yml": "2fd5dd9537e2c2886e8dc7663d3afc2f19c3e9280a56681ebb6ad8a230c6ced8",
     ".github/workflows/desktop-ci.yml": "2512d2c5c2d843a90640f8a2da15990396d7ac3a7634506bc28f8e83c9729de1",
-    ".github/workflows/desktop-e2e.yml": "d4205cb78635dc8107a1c1f4b40ad3e33d79fd5f324324e8ceeb04bd31a82779",
+    ".github/workflows/desktop-e2e.yml": "4fbfd43f9ada63bfdaa02076aac92aa836206dffdde13317eb43b70c1597d089",
+    ".github/workflows/desktop-e2e-linux.yml": "dd371c99ad40a9bf1cd6ccd6dbf24a0644c10223f5ce3f0134536b2fbba77d75",
 }
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.
@@ -314,8 +317,15 @@ class WorkflowCheckoutPinTests(unittest.TestCase):
         self.assertNotIn("matrix.os", source)
         self.assertIn('test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"', source)
 
+    def test_the_linux_end_to_end_workflow_runs_only_where_its_driver_exists(self):
+        # WebKitWebDriver exists only on Linux, so this workflow is an exception below too.
+        source = (ROOT / LINUX_ONLY_WORKFLOW).read_text(encoding="utf-8")
+        self.assertIn("runs-on: ubuntu-latest", source)
+        self.assertNotIn("matrix.os", source)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"', source)
+
     def test_synthetic_and_preentry_ci_include_macos(self):
-        for workflow in [item for item in WORKFLOWS[1:] if item != WINDOWS_ONLY_WORKFLOW]:
+        for workflow in [item for item in WORKFLOWS[1:] if item not in (WINDOWS_ONLY_WORKFLOW, LINUX_ONLY_WORKFLOW)]:
             with self.subTest(workflow=workflow):
                 source = (ROOT / workflow).read_text(encoding="utf-8")
                 self.assertIn(

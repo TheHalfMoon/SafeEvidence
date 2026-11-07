@@ -1,0 +1,78 @@
+name: Desktop End-to-End Linux
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # A real WebKitGTK window with a real Secret Service, driven by WebKitWebDriver. It is not a required check yet,
+  # because it has not shown it is reliable on hosted runners. The app refuses every question without the keyring
+  # helper, and nothing installs it yet, so this job places it beside the app itself.
+  desktop-e2e-linux:
+    name: desktop end-to-end (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - name: Checkout exact reviewed revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Check exact Git HEAD
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Select the runner's Node from its tool cache
+        run: |
+          # The trailing slash keeps directories only: each version also holds an `x64.complete` marker file.
+          node_dir=$(ls -d "$RUNNER_TOOL_CACHE"/node/2[24].*/*/ | sort -V | tail -n 1)
+          node_dir=${node_dir%/}
+          test -n "$node_dir"
+          echo "$node_dir/bin" >> "$GITHUB_PATH"
+      - name: Check Node comes from the tool cache
+        run: |
+          command -v node
+          node --version
+          case "$(command -v node)" in *hostedtoolcache*) ;; *) exit 1 ;; esac
+      - name: Install pinned toolchain
+        working-directory: product
+        run: rustup toolchain install 1.98.1 --profile minimal --no-self-update
+      - name: Install the WebView, driver, display and keyring
+        timeout-minutes: 25
+        run: |
+          for attempt in 1 2 3; do
+            sudo timeout 120 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && break
+            test "$attempt" != 3
+          done
+          for attempt in 1 2 3; do
+            sudo timeout 240 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y libwebkit2gtk-4.1-dev libgtk-3-dev webkit2gtk-driver xvfb dbus gnome-keyring libglib2.0-bin && break
+            test "$attempt" != 3
+          done
+      - name: Build the frontend
+        working-directory: product/apps/desktop
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+      - name: Build the app for the end-to-end test
+        working-directory: product/apps/desktop/src-tauri
+        run: cargo build --locked --features custom-protocol,e2e
+      - name: Place the keyring helper beside the app
+        working-directory: product
+        run: |
+          cargo build --locked -p safeevidence-linux-keyring-helper
+          cp target/debug/safeevidence-linux-keyring-helper apps/desktop/src-tauri/target/debug/
+      - name: Run the Ask flow in a real window
+        working-directory: product/apps/desktop
+        timeout-minutes: 10
+        run: |
+          dbus-run-session -- bash -c '
+            printf "synthetic-test-only\n" | gnome-keyring-daemon --unlock --components=secrets
+            xvfb-run -a node e2e/ask_e2e_linux.mjs "$PWD/src-tauri/target/debug/safeevidence-desktop"
+          '

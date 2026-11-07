@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// The feature opens a debugging port and moves the data directory, so it must never reach a release.
+// The feature opens a debugging port, moves the data directory and, on Linux, leaves incognito off, so it must
+// never reach a release.
 #[cfg(all(feature = "e2e", not(debug_assertions)))]
 compile_error!("the e2e feature is for debug builds only");
 
@@ -56,8 +57,11 @@ fn main() {
                         startup_failure::mark_ready();
                     }
                 })
-                .incognito(true)
                 .data_directory(webview_dir);
+            // On Linux, wry replaces the web context for an incognito window, with automation off, so WebKitWebDriver
+            // could not attach. This is the only build that is not incognito, and a release build refuses the feature.
+            #[cfg(not(all(feature = "e2e", target_os = "linux")))]
+            let window = window.incognito(true);
             // Setting these replaces wry's defaults, so they stay in the list. A shipped build does not set a
             // debugging port.
             #[cfg(all(feature = "e2e", windows))]
