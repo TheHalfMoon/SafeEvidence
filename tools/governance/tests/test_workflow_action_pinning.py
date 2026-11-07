@@ -27,9 +27,9 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/p00-foundation-docs.yml": "ffc5b4246ee09dad96caed7cf759e8565fe0e80b2e6ffe8642cfa6ad2d1b8db6",
     ".github/workflows/p01-preentry-governance.yml": "efe37c703ed5c24ec230e355ef2579070507d626b00f6f17f93a418ebe6dbfab",
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
-    ".github/workflows/product-ci.yml": "bb8eab1f0952d47cb1d82ea68b72858d95da4308fb4306ce4c84d12a293ca432",
-    ".github/workflows/desktop-ci.yml": "a3d802950d6ac0100d4b60c2b76b04c31fee7658ec6146dd5e6fafb3fdcc6b43",
-    ".github/workflows/desktop-e2e.yml": "ed958b13984a78113fd36c4ede1229fbf8ab16dc14321171597fec3b74f7e3d4",
+    ".github/workflows/product-ci.yml": "2d350ca242dae0fc98b4191405919c13c5b5d54f765d458df4e9ad184db01a11",
+    ".github/workflows/desktop-ci.yml": "f34f6c54248956c44a181d64a9082daa091e948361faefc2d3897b75cd8151be",
+    ".github/workflows/desktop-e2e.yml": "4cb6177b900d5022fe99af9cbad3a2add68daf85efc8d74cfa06ad487848d05f",
 }
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.

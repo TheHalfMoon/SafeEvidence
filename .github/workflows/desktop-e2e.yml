@@ -38,6 +38,12 @@ jobs:
           node_dir=${node_dir%/}
           test -n "$node_dir"
           cygpath -w "$node_dir" >> "$GITHUB_PATH"
+      - name: Check Node comes from the tool cache
+        shell: bash
+        run: |
+          command -v node
+          node --version
+          case "$(command -v node)" in *hostedtoolcache*) ;; *) exit 1 ;; esac
       - name: Install pinned toolchain
         shell: bash
         working-directory: product

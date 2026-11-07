@@ -25,7 +25,7 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
 - The store has no migrations, so a schema change would refuse an existing store. `vault-identity.bin` is not secret and not protected: changing it only stops the key from being found.
 - The P00 states such as `KEY_UNAVAILABLE` are not shown. Every failure to open the store reaches the view as the same `BLOCKED` with `TOOL_FAILURE`: a lost or wrong key, a damaged identity or store, a missing helper, and a second instance look alike.
 - A lock file gives one running instance per data directory. A second instance refuses every question it would answer with `BLOCKED`.
-- `TA-20` is not claimed. `e2e/ask_e2e.mjs` runs the Ask flow in a real WebView2 window on Windows, with real DPAPI and a real kill and restart, as the Ask subset. Ubuntu has no equivalent yet, and VS-1 needs both. The shell checklist is covered only for CSP and the capability.
+- `TA-20` is not claimed. `e2e/ask_e2e.mjs` runs the Ask flow in a real WebView2 window, with real DPAPI and a real kill and restart, as the Ask subset. It has passed on a developer machine, and its first hosted-runner run could not open the window. Ubuntu has no equivalent yet, and VS-1 needs both. Of the shell checklist, it covers only CSP and the capability.
   `TA-21` is not claimed: the test's network log covers this page, not the process, and T05 is not back. Native tests also use Tauri's mock runtime, which establishes no WebView privacy, OS isolation or network behaviour.
 - `TA-22` is not claimed. The view is keyboard-operable with `dir="auto"` text, but has no axe or RTL snapshot run. The donor's contrast test was
   not carried over, and the new palette has no contrast check.
@@ -39,3 +39,5 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
   as the ledger's sockets defect records.
 - Tauri pulls `reqwest` and `hyper` on Android and iOS, so this shell cannot pass TA-29 on mobile as it stands.
 - CSP behaviour is checked as configuration only, not observed in a running WebView.
+- The WebView2 profile is in `webview/` under the data directory, not the default location, on every platform.
+- WebView2 honours `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` in any build, so anyone who can set the user's environment could open a debugging port on the window. They already run as that user. It is noted here because no test covers it.

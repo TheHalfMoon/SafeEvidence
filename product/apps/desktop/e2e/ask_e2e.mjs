@@ -3,12 +3,14 @@
 //
 // Usage: node e2e/ask_e2e.mjs <path to an app built with --features custom-protocol,e2e>
 //
-// It proves what a person would see, on the real native command and the real OS protector. It is the Ask
+// It checks what a person would see, on the real native command and the real OS protector. It is the Ask
 // subset of TA-20 on Windows. It says nothing about Ubuntu, Deep Review, pack import or TA-21: the network log
-// here covers this page only, not the process.
+// here covers this page only, not the process. Mutants should be able to fail each check, so a probe that would
+// pass with the protection removed does not belong here.
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -54,6 +56,11 @@ class Page {
       page.#socket.onerror = reject;
     });
     page.#socket.onmessage = (event) => page.#receive(JSON.parse(event.data));
+    // A crash must fail the test now, not leave a call waiting forever.
+    page.#socket.onclose = () => {
+      for (const pending of page.#pending.values()) pending.reject(new Error("the page's connection closed"));
+      page.#pending.clear();
+    };
     await page.#send("Network.enable");
     await page.#send("Runtime.enable");
     return page;
@@ -111,6 +118,7 @@ class Page {
       outcome: document.querySelector("#outcome-heading")?.textContent ?? null,
       brief: document.querySelector(".brief")?.textContent ?? null,
       proof: document.querySelector(".proof code")?.textContent ?? null,
+      proofLine: document.querySelector(".proof")?.textContent ?? null,
       citations: document.querySelectorAll(".citations button").length,
       funnel: document.querySelectorAll(".funnel li").length,
       failure: document.querySelector('[role="alert"]')?.textContent ?? null,
@@ -119,21 +127,30 @@ class Page {
   }
 }
 
+const appOutput = [];
+
 function launch(dataDir) {
-  return spawn(executable, [], {
-    stdio: "ignore",
+  const app = spawn(executable, [], {
+    stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
       SAFEEVIDENCE_E2E_DATA_DIR: dataDir,
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${PORT}`,
     },
   });
+  for (const stream of [app.stdout, app.stderr]) {
+    stream.on("data", (chunk) => appOutput.push(String(chunk)));
+  }
+  app.once("exit", (code) => appOutput.push(`[app exited with ${code}]\n`));
+  return app;
 }
 
-async function stop(child) {
-  const exited = new Promise((resolve) => child.once("exit", resolve));
-  child.kill();
-  await exited;
+async function stop(app) {
+  if (app.exitCode === null && app.signalCode === null) {
+    const exited = new Promise((resolve) => app.once("exit", resolve));
+    app.kill();
+    await exited;
+  }
   await waitFor(async () => {
     try {
       await fetch(`http://127.0.0.1:${PORT}/json`);
@@ -142,6 +159,15 @@ async function stop(child) {
       return true;
     }
   }, "the debugging port to close", 30_000);
+}
+
+async function diagnose() {
+  console.log("--- app output\n" + (appOutput.join("") || "(none)"));
+  try {
+    console.log("--- debugging targets\n" + (await (await fetch(`http://127.0.0.1:${PORT}/json`)).text()));
+  } catch (error) {
+    console.log(`--- debugging port unreachable: ${error.message}`);
+  }
 }
 
 const checks = [];
@@ -167,6 +193,7 @@ try {
   assert.equal(view.outcome, "Answer, with caution");
   assert.ok(view.brief?.length > 0);
   assert.match(view.proof, /^vs1a-[0-9a-f]{64}$/);
+  assert.match(view.proofLine, /^Just committed as proof /);
   assert.ok(view.citations > 0);
   assert.equal(view.funnel, 7);
   assert.doesNotMatch(view.body, /\d\s*%|confidence/i);
@@ -177,7 +204,14 @@ try {
   assert.equal(stores.length, 1);
   const stored = readdirSync(join(dataDir, stores[0]));
   assert.ok(stored.includes("vault.db") && stored.includes("store-established") && stored.includes("dpapi"), stored.join());
-  passed("the answer was committed to a store in the test's own directory, under real DPAPI");
+  passed("the store is in the test's own directory, with its key under real DPAPI");
+
+  await page.ask(OUTSIDE_GRAMMAR);
+  await page.ask(ANSWERED);
+  view = await page.view();
+  assert.equal(view.proof, answered.proof);
+  assert.match(view.proofLine, /^Already committed as proof /);
+  passed("asking again finds the proof in the store, so the first request really committed it");
 
   await page.eval(`document.querySelector(".citations button").click()`);
   const span = await waitFor(
@@ -204,27 +238,40 @@ try {
   assert.equal(view.brief, null);
   passed("a question missing its population asks for more");
 
+  // A local listener, so a blocked fetch is told from one that simply could not resolve a name.
+  let probeHits = 0;
+  const probe = createServer((_request, response) => {
+    probeHits += 1;
+    response.end("reached");
+  });
+  await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const probeUrl = `http://127.0.0.1:${probe.address().port}/`;
   const csp = await page.eval(`(async () => {
     const style = document.createElement("style");
-    style.textContent = "#question { outline-width: 77px; }";
+    style.textContent = "#question { order: 77; }";
     document.head.append(style);
-    const inlineStyle = getComputedStyle(document.querySelector("#question")).outlineWidth === "77px";
+    const inlineStyle = getComputedStyle(document.querySelector("#question")).order === "77";
     let remoteFetch = true;
-    try { await fetch("https://example.invalid/"); } catch { remoteFetch = false; }
+    try { await fetch(${JSON.stringify(probeUrl)}, { mode: "no-cors" }); } catch { remoteFetch = false; }
     let inlineEval = true;
     try { new Function("return 1")(); } catch { inlineEval = false; }
     return { inlineStyle, remoteFetch, inlineEval };
   })()`);
+  await new Promise((resolve) => probe.close(resolve));
   assert.deepEqual(csp, { inlineStyle: false, remoteFetch: false, inlineEval: false });
-  passed("the running page's CSP blocks inline style, remote fetch and eval");
+  assert.equal(probeHits, 0, "the fetch never reached the listener");
+  passed("the running page's CSP blocks inline style, an off-app fetch and eval");
 
-  const remote = page.requests.filter((url) => !/^(http:\/\/(tauri|ipc)\.localhost|data:|blob:)/.test(url));
-  assert.deepEqual(remote.filter((url) => !url.startsWith("https://example.invalid")), []);
+  const remote = page.requests.filter(
+    (url) => !/^(http:\/\/(tauri|ipc)\.localhost(:\d+)?\/|data:|blob:)/.test(url) && url !== probeUrl,
+  );
+  assert.deepEqual(remote, []);
   passed("this page requested nothing outside the app, apart from the CSP probe");
 
-  const denied = await page.eval(`window.__TAURI_INTERNALS__.invoke("plugin:fs|read_file", { path: "x" }).then(() => "allowed", () => "refused")`);
-  assert.equal(denied, "refused");
-  passed("the real page cannot call a command outside the capability");
+  // A core command that exists but is not granted, so a refusal can only come from the capability.
+  const refusal = await page.eval(`window.__TAURI_INTERNALS__.invoke("plugin:app|version").then(() => "allowed", (error) => String(error))`);
+  assert.match(refusal, /not allowed/i, refusal);
+  passed("the capability refuses a real core command the page was not granted");
 
   page.close();
   await stop(child);
@@ -236,9 +283,13 @@ try {
   assert.equal(view.outcome, answered.outcome);
   assert.equal(view.proof, answered.proof);
   assert.equal(view.brief, answered.brief);
-  passed("after a kill and restart, the same question returns the same committed proof");
+  assert.match(view.proofLine, /^Already committed as proof /);
+  passed("after a kill and restart, the proof is still in the store");
   page.close();
   failed = false;
+} catch (error) {
+  await diagnose();
+  throw error;
 } finally {
   await stop(child).catch(() => {});
   console.log(`${checks.length} checks passed${failed ? ", then one failed" : ""}`);

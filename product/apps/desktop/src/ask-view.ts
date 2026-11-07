@@ -70,6 +70,7 @@ export type AskView = {
   excluded: Array<{ docId: string; reason: string }>;
   brief: string | null;
   proofId: string | null;
+  alreadyCommitted: boolean;
   citations: Citation[];
 };
 
@@ -92,10 +93,10 @@ export function parseAskView(value: unknown): AskView {
   if (!isRecord(value) || value.schemaVersion !== 1 || value.fixtureOnly !== true) {
     throw new Error("Unsupported ask response");
   }
-  const { outcome, reason, funnel, excluded, brief, proofId, citations } = value;
+  const { outcome, reason, funnel, excluded, brief, proofId, alreadyCommitted, citations } = value;
   if (typeof outcome !== "string" || !Object.hasOwn(OUTCOMES, outcome) ||
       typeof reason !== "string" || !Object.hasOwn(REASONS, reason) || !isRecord(funnel) ||
-      !Array.isArray(excluded) || !Array.isArray(citations)) {
+      !Array.isArray(excluded) || !Array.isArray(citations) || typeof alreadyCommitted !== "boolean") {
     throw new Error("Unsupported ask response");
   }
   if (!FUNNEL_STAGES.every(([stage]) => isCount(funnel[stage]))) throw new Error("Invalid funnel");
@@ -119,6 +120,7 @@ export function parseAskView(value: unknown): AskView {
     }),
     brief: brief as string | null,
     proofId: proofId as string | null,
+    alreadyCommitted,
     citations: citations.map(parseCitation),
   };
 }
