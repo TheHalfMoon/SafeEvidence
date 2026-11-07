@@ -83,8 +83,8 @@ jobs:
         run: |
           dbus-run-session -- bash -c '
             printf "synthetic-test-only\n" | gnome-keyring-daemon --unlock --components=secrets
-            # Every process the test starts is traced, so the capture covers the app and WebKit's own processes.
-            strace -f -qq -e trace=execve,connect,sendto,sendmsg -o "$RUNNER_TEMP/network.trace" \
+            # The driver starts the app under strace, so the capture covers the app and WebKit's own processes.
+            SAFEEVIDENCE_NETWORK_TRACE="$RUNNER_TEMP/network.trace" \
               xvfb-run -a node e2e/ask_e2e_linux.mjs "$PWD/src-tauri/target/debug/safeevidence-desktop"
           '
       # Evidence for VS-1a, not a NETWORK_LOCKED run or a TA-21 pass (plan-v1.1 section C). It reports and does not fail.
@@ -92,7 +92,9 @@ jobs:
         if: always()
         run: |
           python3 - "$RUNNER_TEMP/network.trace" <<'PY'
-          import collections, re, sys
+          import collections, os, re, sys
+          if not os.path.exists(sys.argv[1]):
+              sys.exit("no trace was written")
           programs, calls = {}, collections.Counter()
           loopback = re.compile(r'"(127\.[0-9.]+|::1|::ffff:127\.[0-9.]+)"')
           for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
@@ -113,4 +115,5 @@ jobs:
           outside = sum(c for (_, _, w), c in calls.items() if w.startswith("NOT"))
           lookups = sum(c for (_, _, w), c in calls.items() if "name lookup" in w)
           print(f"Not loopback: {outside}. Name lookups: {lookups}.")
+          print(f"Programs traced: {len(set(programs.values()))}: {sorted(set(programs.values()))}")
           PY

@@ -6,6 +6,9 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { runAskChecks, waitFor } from "./ask_checks.mjs";
 
@@ -15,6 +18,19 @@ const executable = process.argv[2];
 assert.ok(executable, "pass the app's path");
 // The app's whole command line. The path alone would also match this test and everything that started it.
 const APP_PROCESS = `^${executable}$`;
+
+// With SAFEEVIDENCE_NETWORK_TRACE set, the app starts under strace, so its network calls and those of
+// WebKit's own processes are recorded, and nothing else the test runs is. Each launch appends.
+const trace = process.env.SAFEEVIDENCE_NETWORK_TRACE;
+let binary = executable;
+if (trace) {
+  binary = join(mkdtempSync(join(tmpdir(), "se-trace-")), "traced-app");
+  writeFileSync(
+    binary,
+    `#!/bin/sh\nexec strace -f -qq -A -e trace=execve,connect,sendto,sendmsg -o '${trace}' '${executable}' "$@"\n`,
+  );
+  chmodSync(binary, 0o755);
+}
 
 async function request(method, path, body) {
   const response = await fetch(`${ROOT}${path}`, {
@@ -90,7 +106,7 @@ await runAskChecks({
     const { sessionId } = await request("POST", "/session", {
       capabilities: {
         alwaysMatch: {
-          "webkitgtk:browserOptions": { binary: executable, args: [] },
+          "webkitgtk:browserOptions": { binary, args: [] },
         },
       },
     });
