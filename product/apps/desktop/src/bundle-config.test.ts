@@ -10,6 +10,11 @@ const capability = JSON.parse(read("../src-tauri/capabilities/default.json"));
 test("Linux places only the keyring helper beside the app, and packages nothing", () => {
   const linux = JSON.parse(read("../src-tauri/tauri.linux.conf.json"));
   assert.deepEqual(linux, { bundle: { externalBin: ["binaries/safeevidence-linux-keyring-helper"] } });
+  // A platform file would override the base CSP and capabilities, which the other tests read.
+  const configs = readdirSync(new URL("../src-tauri/", import.meta.url)).filter((name) => /^tauri\..*conf/.test(name));
+  assert.deepEqual(configs.sort(), ["tauri.conf.json", "tauri.linux.conf.json"]);
+  assert.equal(conf.bundle.externalBin, undefined);
+  assert.equal(conf.bundle.resources, undefined);
 });
 
 test("this build packages nothing and adds no updater or plugin", () => {

@@ -74,7 +74,9 @@ jobs:
         run: cargo build --locked --features custom-protocol,e2e
       - name: Check the build placed the helper beside the app
         working-directory: product/apps/desktop/src-tauri
-        run: test -x target/debug/safeevidence-linux-keyring-helper
+        run: |
+          test -x target/debug/safeevidence-linux-keyring-helper
+          cmp target/debug/safeevidence-linux-keyring-helper ../../../target/debug/safeevidence-linux-keyring-helper
       - name: Run the Ask flow in a real window
         working-directory: product/apps/desktop
         timeout-minutes: 10
