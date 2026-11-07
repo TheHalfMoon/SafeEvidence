@@ -92,10 +92,168 @@ fn two_reports_of_one_study_count_as_one_study() {
 fn mismatched_population_is_excluded_with_a_reason() {
     let result = ask(ADULT, &corpus());
     assert_eq!(result.funnel.retrieved, 3);
-    let (doc, reason) = &result.excluded[0];
-    assert_eq!(doc, "doc-veltrix-peds");
-    assert!(reason.contains("children"));
+    let exclusion = &result.excluded[0];
+    assert_eq!(exclusion.doc_id, "doc-veltrix-peds");
+    assert_eq!(exclusion.reason, ReasonCode::ApplicabilityUnresolved);
+    assert!(exclusion.detail.contains("children"));
     assert!(!result.brief.unwrap().contains("did not improve"));
+}
+
+/// TA-11, modelled on the population half of R-CO-2, where a tool counted studies of another
+/// population towards the question. Its overlapping reviews belong to TA-07 and WP-05. Children's
+/// evidence points the other way here, so counting it would change the answer.
+#[test]
+fn another_populations_evidence_is_never_counted_towards_the_question() {
+    let result = ask(ADULT, &corpus());
+    assert_eq!(result.outcome, TerminalOutcome::AnswerWithCaution);
+    assert_eq!(result.funnel.independent_studies, 1);
+    let manifest = result.manifest.expect("manifest");
+    assert!(
+        manifest
+            .claims
+            .iter()
+            .all(|c| c.claim_id != "doc-veltrix-peds")
+    );
+    assert_eq!(
+        result
+            .excluded
+            .iter()
+            .map(|e| (e.doc_id.as_str(), e.reason))
+            .collect::<Vec<_>>(),
+        [("doc-veltrix-peds", ReasonCode::ApplicabilityUnresolved)]
+    );
+}
+
+/// In R-CO-2 the mismatched sources agreed, so counting them inflated the evidence instead.
+#[test]
+fn another_populations_agreeing_evidence_is_not_counted_either() {
+    let value = with_doc("doc-veltrix-peds", |d| {
+        d.text = "Children with synthetic glimmer syndrome received veltrixamine 10 mg daily. The glimmer score improved by 9 points compared with placebo at 12 weeks.".to_owned();
+        d.finding =
+            "The glimmer score improved by 9 points compared with placebo at 12 weeks.".to_owned();
+        d.direction = Direction::Benefit;
+    });
+    let result = ask(ADULT, &value);
+    assert_eq!(result.funnel.independent_studies, 1);
+    assert!(!result.brief.unwrap().contains("9 points"));
+    assert_eq!(
+        result.excluded[0].reason,
+        ReasonCode::ApplicabilityUnresolved
+    );
+}
+
+/// Near and overlapping populations are still not the question's population.
+#[test]
+fn near_and_overlapping_populations_are_excluded_with_a_reason() {
+    for population in [
+        "older adults",
+        "adults without diabetes",
+        "adults and children",
+        "adult",
+    ] {
+        let value = with_doc("doc-veltrix-a-followup", |d| {
+            d.population = population.to_owned();
+        });
+        let result = ask(ADULT, &value);
+        let exclusion = result
+            .excluded
+            .iter()
+            .find(|e| e.doc_id == "doc-veltrix-a-followup")
+            .unwrap_or_else(|| panic!("{population} must be excluded"));
+        assert_eq!(
+            exclusion.reason,
+            ReasonCode::ApplicabilityUnresolved,
+            "{population}"
+        );
+        assert!(!result.brief.unwrap().contains("11 points"), "{population}");
+    }
+}
+
+#[test]
+fn a_non_citable_source_is_excluded_with_a_code_that_names_its_state() {
+    for state in [
+        PublicationState::Unknown,
+        PublicationState::Corrected,
+        PublicationState::ExpressionOfConcern,
+        PublicationState::Superseded,
+    ] {
+        let value = with_doc("doc-veltrix-a-followup", |d| d.publication_state = state);
+        let result = ask(ADULT, &value);
+        let exclusion = result
+            .excluded
+            .iter()
+            .find(|e| e.doc_id == "doc-veltrix-a-followup")
+            .unwrap_or_else(|| panic!("{state:?} must be excluded"));
+        assert_eq!(
+            exclusion.reason,
+            ReasonCode::CurrentnessUnknown,
+            "{state:?}"
+        );
+        assert!(
+            exclusion.detail.contains(&format!("{state:?}")),
+            "{state:?}"
+        );
+    }
+}
+
+#[test]
+fn a_retrieved_source_on_another_intervention_is_excluded_with_a_reason() {
+    let value = with_doc("doc-veltrix-a-followup", |d| {
+        d.intervention = "orbalin".to_owned();
+    });
+    let result = ask(ADULT, &value);
+    let exclusion = result
+        .excluded
+        .iter()
+        .find(|e| e.doc_id == "doc-veltrix-a-followup")
+        .expect("retrieved, so it must be accounted for");
+    assert_eq!(exclusion.reason, ReasonCode::ApplicabilityUnresolved);
+    assert_eq!(exclusion.detail, "different condition or intervention");
+    assert!(!result.brief.unwrap().contains("11 points"));
+}
+
+/// An adult source, so the population check cannot hide a missing condition check.
+#[test]
+fn a_retrieved_source_on_another_condition_is_excluded_with_a_reason() {
+    let value = with_doc("doc-veltrix-a-followup", |d| {
+        d.condition = "ember fatigue".to_owned();
+    });
+    let result = ask(ADULT, &value);
+    let exclusion = result
+        .excluded
+        .iter()
+        .find(|e| e.doc_id == "doc-veltrix-a-followup")
+        .expect("retrieved, so it must be accounted for");
+    assert_eq!(exclusion.reason, ReasonCode::ApplicabilityUnresolved);
+    assert_eq!(exclusion.detail, "different condition or intervention");
+    assert!(!result.brief.unwrap().contains("11 points"));
+}
+
+/// Every source retrieved and not cited must be accounted for, across each fixture question.
+#[test]
+fn every_retrieved_source_is_cited_or_excluded_with_a_code() {
+    let corpus = corpus();
+    for question in [
+        ADULT,
+        "Does veltrixamine help children with glimmer syndrome?",
+        "Does orbalin help adults with ember fatigue?",
+        "Does quenzil help adults with hollow cough?",
+        "Does tessarine help adults with marble rash?",
+    ] {
+        let result = ask(question, &corpus);
+        if result.outcome == TerminalOutcome::AnswerWithCaution {
+            let cited = result.manifest.as_ref().expect("manifest").claims.len();
+            assert_eq!(
+                cited + result.excluded.len(),
+                result.funnel.retrieved,
+                "{question}"
+            );
+        }
+        for exclusion in &result.excluded {
+            assert_ne!(exclusion.reason, ReasonCode::None, "{question}");
+            assert!(!exclusion.detail.is_empty(), "{question}");
+        }
+    }
 }
 
 #[test]
@@ -223,7 +381,11 @@ fn retracted_only_evidence_abstains_and_does_not_look_like_no_evidence() {
     assert_eq!(result.outcome, TerminalOutcome::Abstain);
     assert_eq!(result.reason, ReasonCode::SourceInvalidOrRetracted);
     assert_eq!(result.funnel.retrieved, 1);
-    assert_eq!(result.excluded[0].0, "doc-quenzil-retracted");
+    assert_eq!(result.excluded[0].doc_id, "doc-quenzil-retracted");
+    assert_eq!(
+        result.excluded[0].reason,
+        ReasonCode::SourceInvalidOrRetracted
+    );
     assert!(result.brief.is_none());
 }
 
@@ -678,7 +840,8 @@ fn rights_refusal_trace_counts_no_denied_source_as_usable_and_lists_each_once() 
     assert_eq!(result.funnel.applicable, 0);
     assert_eq!(result.funnel.independent_studies, 0);
     assert_eq!(result.excluded.len(), 1);
-    assert_eq!(result.excluded[0].1, "rights not established");
+    assert_eq!(result.excluded[0].detail, "rights not established");
+    assert_eq!(result.excluded[0].reason, ReasonCode::RightsUnresolved);
     let denied_and_other_population = with_doc("doc-veltrix-peds", |d| {
         d.rights = safeevidence_contracts::evidence::EvidenceCorpusRights::Unknown;
     });

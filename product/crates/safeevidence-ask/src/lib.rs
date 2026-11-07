@@ -9,6 +9,7 @@
 //! the grammar, no matching evidence, tool failures, an invalid corpus, and failed verification.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use rusqlite::{Connection, params};
 use safeevidence_assurance::{Cause, FiredRule, Requirement, Resolution, evaluate_precedence};
@@ -157,13 +158,21 @@ pub struct Question {
     pub condition: String,
 }
 
+/// A source left out of an answer: the code is for checking, the detail is for reading.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Exclusion {
+    pub doc_id: String,
+    pub reason: ReasonCode,
+    pub detail: String,
+}
+
 #[derive(Debug)]
 pub struct AskResult {
     pub outcome: TerminalOutcome,
     pub reason: ReasonCode,
     pub brief: Option<String>,
     pub manifest: Option<AnswerProofManifest>,
-    pub excluded: Vec<(String, String)>,
+    pub excluded: Vec<Exclusion>,
     pub funnel: Funnel,
 }
 
@@ -390,6 +399,21 @@ fn render_brief(claims: &[(&Document, EvidenceSpan)]) -> String {
 /// # Errors
 /// Returns the first line that fails, and why.
 pub fn verify_brief(brief: &str, corpus: &Corpus) -> Result<Vec<String>, String> {
+    Ok(verified_citations(brief, corpus)?
+        .into_iter()
+        .map(|(doc_id, _, _)| doc_id)
+        .collect())
+}
+
+/// An offset written only as `render_brief` writes it, so one answer has one text: `+74` or `074`
+/// would otherwise read as 74.
+fn offset(text: &str) -> Option<usize> {
+    let value = text.parse::<usize>().ok()?;
+    (value.to_string() == text).then_some(value)
+}
+
+/// `verify_brief`, keeping each citation's span as scalar offsets.
+fn verified_citations(brief: &str, corpus: &Corpus) -> Result<Vec<(String, u64, u64)>, String> {
     let lines: Vec<&str> = brief.split('\n').collect();
     if lines.len() <= BRIEF_HEADER.len() || lines[..BRIEF_HEADER.len()] != BRIEF_HEADER {
         return Err("header differs or no claims".to_owned());
@@ -403,12 +427,7 @@ pub fn verify_brief(brief: &str, corpus: &Corpus) -> Result<Vec<String>, String>
             .and_then(|(claim, citation)| {
                 let (doc_id, range) = citation.split_once(' ')?;
                 let (start, end) = range.split_once("..")?;
-                Some((
-                    claim,
-                    doc_id,
-                    start.parse::<usize>().ok()?,
-                    end.parse::<usize>().ok()?,
-                ))
+                Some((claim, doc_id, offset(start)?, offset(end)?))
             });
         let Some((claim, doc_id, start, end)) = parsed else {
             return Err(format!("not a claim line: {line}"));
@@ -438,10 +457,13 @@ pub fn verify_brief(brief: &str, corpus: &Corpus) -> Result<Vec<String>, String>
         if let Some(defect) = claim_defect(claim, &document.text) {
             return Err(format!("{defect} defect: {line}"));
         }
-        if cited.iter().any(|id: &String| id == doc_id) {
+        if cited
+            .iter()
+            .any(|(id, _, _): &(String, u64, u64)| id == doc_id)
+        {
             return Err(format!("cited twice: {doc_id}"));
         }
-        cited.push(doc_id.to_owned());
+        cited.push((doc_id.to_owned(), start as u64, end as u64));
     }
     Ok(cited)
 }
@@ -486,14 +508,52 @@ fn studies_conflict(documents: &[&Document]) -> bool {
     all.len() > 1 && studies.len() > 1
 }
 
+/// How a step of building an answer failed. `plan-v1.1` §C has these injected until a real worker exists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StepFailure {
+    Crashed,
+    TimedOut,
+}
+
+impl StepFailure {
+    fn refusal(self) -> (TerminalOutcome, ReasonCode) {
+        match self {
+            Self::Crashed => (TerminalOutcome::Blocked, ReasonCode::ToolFailure),
+            Self::TimedOut => (TerminalOutcome::Abstain, ReasonCode::TimeBudgetExhausted),
+        }
+    }
+}
+
+/// The boundaries where an answer's steps can fail. Text a step hands on is verified, and must cite
+/// exactly the claims Ask admitted, with their spans, in order. A panic in a step is a crash.
+pub trait AnswerSeams {
+    fn after_render(&self, brief: String) -> Result<String, StepFailure> {
+        Ok(brief)
+    }
+
+    fn before_verify(&self) -> Result<(), StepFailure> {
+        Ok(())
+    }
+}
+
+struct NoFaults;
+
+impl AnswerSeams for NoFaults {}
+
 /// Runs one question through the guards, returning exactly one outcome, reason and funnel.
 #[must_use]
 pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
+    ask_with_seams(text, corpus, &NoFaults)
+}
+
+/// `ask`, with faults injected at the boundaries of the steps that build the answer.
+#[must_use]
+pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> AskResult {
     let mut funnel = Funnel {
         indexed: corpus.documents.len(),
         ..Funnel::default()
     };
-    let refuse = |outcome, reason, funnel: &Funnel, excluded: &[(String, String)]| {
+    let refuse = |outcome, reason, funnel: &Funnel, excluded: &[Exclusion]| {
         let mut result = AskResult::refuse(outcome, reason, funnel.clone());
         result.excluded = excluded.to_vec();
         result
@@ -538,15 +598,16 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         normalized(&document.condition) == question.condition
             && normalized(&document.intervention) == question.intervention
     };
-    let mut excluded: Vec<(String, String)> = Vec::new();
+    let mut excluded: Vec<Exclusion> = Vec::new();
     for id in &retrieved {
         if let Some(document) = corpus.documents.iter().find(|d| &d.doc_id == id)
             && !relevant(&document)
         {
-            excluded.push((
-                document.doc_id.clone(),
-                "different condition or intervention".to_owned(),
-            ));
+            excluded.push(Exclusion {
+                doc_id: document.doc_id.clone(),
+                reason: ReasonCode::ApplicabilityUnresolved,
+                detail: "different condition or intervention".to_owned(),
+            });
         }
     }
     let matching: Vec<&Document> = corpus.documents.iter().filter(relevant).collect();
@@ -574,7 +635,11 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
 
     let denied: Vec<&&Document> = matching.iter().filter(|d| !d.rights.admissible()).collect();
     for document in &denied {
-        excluded.push((document.doc_id.clone(), "rights not established".to_owned()));
+        excluded.push(Exclusion {
+            doc_id: document.doc_id.clone(),
+            reason: ReasonCode::RightsUnresolved,
+            detail: "rights not established".to_owned(),
+        });
     }
     if denied.is_empty() {
         funnel.rights_admissible = matching.len();
@@ -598,17 +663,23 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
     let mut citable = Vec::new();
     for document in &matching {
         if withdrawn.contains(document.study_id.as_str()) {
-            excluded.push((
-                document.doc_id.clone(),
-                "study has a retracted or withdrawn report".to_owned(),
-            ));
+            excluded.push(Exclusion {
+                doc_id: document.doc_id.clone(),
+                reason: ReasonCode::SourceInvalidOrRetracted,
+                detail: "study has a retracted or withdrawn report".to_owned(),
+            });
         } else if document.publication_state.citable() {
             citable.push(*document);
         } else {
-            excluded.push((
-                document.doc_id.clone(),
-                "publication state is not citable".to_owned(),
-            ));
+            excluded.push(Exclusion {
+                doc_id: document.doc_id.clone(),
+                // The nearest code: some of these states are known, and the detail names which.
+                reason: ReasonCode::CurrentnessUnknown,
+                detail: format!(
+                    "publication state {:?} is not citable",
+                    document.publication_state
+                ),
+            });
         }
     }
     funnel.citable = citable.len();
@@ -630,13 +701,14 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
             if normalized(&document.population) == *population {
                 applicable.push(*document);
             } else {
-                excluded.push((
-                    document.doc_id.clone(),
-                    format!(
+                excluded.push(Exclusion {
+                    doc_id: document.doc_id.clone(),
+                    reason: ReasonCode::ApplicabilityUnresolved,
+                    detail: format!(
                         "population {} does not match {population}",
                         document.population
                     ),
-                ));
+                });
             }
         }
         funnel.applicable = applicable.len();
@@ -702,7 +774,7 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         funnel.independent_studies = 0;
     }
     let mut seen = BTreeSet::new();
-    excluded.retain(|(doc_id, _)| seen.insert(doc_id.clone()));
+    excluded.retain(|exclusion| seen.insert(exclusion.doc_id.clone()));
 
     let rules: Vec<FiredRule> = fired.iter().map(|(rule, _)| rule.clone()).collect();
     if let Resolution::Decided {
@@ -739,15 +811,37 @@ pub fn ask(text: &str, corpus: &Corpus) -> AskResult {
         };
         claims.push((*document, span));
     }
-    let brief = render_brief(&claims);
-    // The frozen text is read back and checked against the sources, not against its inputs.
-    let Ok(cited) = verify_brief(&brief, corpus) else {
-        return refuse(
-            TerminalOutcome::Abstain,
-            ReasonCode::PostVerificationFailed,
-            &funnel,
-            &excluded,
-        );
+    let failed = |failure: StepFailure, funnel: &Funnel, excluded: &[Exclusion]| {
+        let (outcome, reason) = failure.refusal();
+        refuse(outcome, reason, funnel, excluded)
+    };
+    let rendered = render_brief(&claims);
+    let brief = match catch_unwind(AssertUnwindSafe(|| seams.after_render(rendered))) {
+        Ok(Ok(brief)) => brief,
+        Ok(Err(failure)) => return failed(failure, &funnel, &excluded),
+        Err(_) => return failed(StepFailure::Crashed, &funnel, &excluded),
+    };
+    match catch_unwind(AssertUnwindSafe(|| seams.before_verify())) {
+        Ok(Ok(())) => {}
+        Ok(Err(failure)) => return failed(failure, &funnel, &excluded),
+        Err(_) => return failed(StepFailure::Crashed, &funnel, &excluded),
+    }
+    // The frozen text is read back and checked against the sources, not against its inputs. It must
+    // cite exactly the admitted claims: a line reproducing some other source is not this evidence.
+    let admitted: Vec<(String, u64, u64)> = claims
+        .iter()
+        .map(|(document, span)| (document.doc_id.clone(), span.start_scalar, span.end_scalar))
+        .collect();
+    let cited = match verified_citations(&brief, corpus) {
+        Ok(cited) if cited == admitted => cited,
+        _ => {
+            return refuse(
+                TerminalOutcome::Abstain,
+                ReasonCode::PostVerificationFailed,
+                &funnel,
+                &excluded,
+            );
+        }
     };
     funnel.verified_claims = cited.len();
 

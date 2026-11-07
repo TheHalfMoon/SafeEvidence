@@ -120,6 +120,9 @@ pub struct AskSession {
     store: ProofStore,
     corpus: Corpus,
     _lease: VaultLease,
+    /// A failure the next commit returns instead of committing, for TA-14's commit boundary.
+    #[cfg(test)]
+    commit_fault: Option<StoreError>,
 }
 
 type Withheld = (TerminalOutcome, ReasonCode);
@@ -136,6 +139,13 @@ fn denied(error: StoreError) -> Withheld {
         _ => ReasonCode::ToolFailure,
     };
     (TerminalOutcome::Blocked, reason)
+}
+
+fn committing(error: StoreError) -> Withheld {
+    match error {
+        StoreError::Busy => (TerminalOutcome::Abstain, ReasonCode::TimeBudgetExhausted),
+        other => denied(other),
+    }
 }
 
 impl AskSession {
@@ -184,6 +194,8 @@ impl AskSession {
             store,
             corpus,
             _lease: lease,
+            #[cfg(test)]
+            commit_fault: None,
         })
     }
 
@@ -214,10 +226,16 @@ impl AskSession {
         let (Some(manifest), Some(brief)) = (&result.manifest, &result.brief) else {
             return Ok(None);
         };
+        #[cfg(test)]
+        if let Some(fault) = self.commit_fault.take() {
+            return Err(committing(fault));
+        }
+        // A busy store at commit wrote nothing and did not answer in time: the same outcome as a step
+        // that timed out. After a commit, the proof is stored, so `denied` keeps its usual mapping.
         let receipt = self
             .store
             .commit(manifest, brief.as_bytes())
-            .map_err(denied)?;
+            .map_err(committing)?;
         let stored = self.store.read(&manifest.proof_id).map_err(denied)?;
         match stored.state {
             ProofState::Committed => {}
@@ -269,9 +287,9 @@ fn view(
         excluded: result
             .excluded
             .iter()
-            .map(|(doc_id, reason)| ExcludedView {
-                doc_id: doc_id.clone(),
-                reason: reason.clone(),
+            .map(|exclusion| ExcludedView {
+                doc_id: exclusion.doc_id.clone(),
+                reason: exclusion.detail.clone(),
             })
             .collect(),
         brief,
@@ -423,6 +441,83 @@ mod tests {
         assert_eq!(
             session.store.audit_events(proof_id).expect("audit"),
             ["COMMITTED"]
+        );
+    }
+
+    /// P00's "after DB commit before UI notification", in part: the first request's view is lost
+    /// and the next launch must find that proof, not commit a second one. The session closes
+    /// cleanly here. `proof_commit.rs` kills a process during commits, at store level.
+    #[test]
+    fn a_lost_view_after_commit_recovers_the_same_proof() {
+        let dir = TempDir::new();
+        let (proof_id, text) = {
+            let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
+            let result = ask(ANSWERED, &session.corpus);
+            let manifest = result.manifest.expect("manifest");
+            let text = result.brief.expect("brief");
+            session
+                .store
+                .commit(&manifest, text.as_bytes())
+                .expect("commit");
+            (manifest.proof_id, text)
+        };
+        let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session after crash");
+        let view = session.ask(ANSWERED);
+        assert!(view.already_committed, "it was committed before the crash");
+        assert_eq!(view.proof_id.as_deref(), Some(proof_id.as_str()));
+        assert_eq!(view.brief.as_deref(), Some(text.as_str()));
+        assert_eq!(
+            session.store.audit_events(&proof_id).expect("audit"),
+            ["COMMITTED"]
+        );
+    }
+
+    /// TA-14's commit boundary: a commit that fails reaches the person as a refusal with no text.
+    /// The fault replaces the store's answer, so it does not show what the store itself would do on
+    /// that failure. `CommitUnknown` needs a `rusqlite` error to build, so it is not here.
+    #[test]
+    fn a_failed_commit_is_a_refusal_with_a_reason_and_no_text() {
+        let cases = [
+            (
+                StoreError::Busy,
+                TerminalOutcome::Abstain,
+                ReasonCode::TimeBudgetExhausted,
+            ),
+            (
+                StoreError::TransactionLost,
+                TerminalOutcome::Blocked,
+                ReasonCode::ToolFailure,
+            ),
+            (
+                StoreError::NotDurable,
+                TerminalOutcome::Blocked,
+                ReasonCode::ToolFailure,
+            ),
+            (
+                StoreError::Corrupt("synthetic".to_owned()),
+                TerminalOutcome::Blocked,
+                ReasonCode::ToolFailure,
+            ),
+        ];
+        for (fault, outcome, reason) in cases {
+            let dir = TempDir::new();
+            let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
+            session.commit_fault = Some(fault);
+            assert_withheld(&session.ask(ANSWERED), outcome, reason);
+            let next = session.ask(ANSWERED);
+            assert!(
+                !next.already_committed,
+                "the refused request left nothing behind"
+            );
+        }
+    }
+
+    /// After a commit the proof is stored, so a busy store there is not a timeout before writing.
+    #[test]
+    fn a_busy_store_after_commit_keeps_the_usual_mapping() {
+        assert_eq!(
+            denied(StoreError::Busy),
+            (TerminalOutcome::Blocked, ReasonCode::ToolFailure)
         );
     }
 
