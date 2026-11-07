@@ -15,7 +15,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | Active packet | WP-00 and WP-01 rows; WP-18a Ask view |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30), ADM-0009 (T03's Linux helper); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
-| Next executable task | VS-1a under `plan-v1.5`: `plan-v1.3` lineage for assertions, once an assertion store exists; WebView storage check; no-socket capture; resource values; all VS-1a rows on one commit. Then VS-1: the T05 row (founder) and TA-21. M0 and M1 exit reviews follow those |
+| Next executable task | VS-1a under `plan-v1.5`: `plan-v1.3` lineage for assertions, once an assertion store exists; no-socket capture; resource values; all VS-1a rows on one commit. Then VS-1: the T05 row (founder) and TA-21. M0 and M1 exit reviews follow those |
 
 Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `foundation-documents`, `preentry structure`,
 `synthetic-only`, `product` and `desktop`, the last four on Ubuntu, Windows and macOS.
@@ -58,6 +58,8 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 - Every donor test changed since admission is named in the vault's `PROVENANCE.md`. A redaction check the move to the helper dropped is restored.
 - Not covered: a kill inside SQLite's own commit or before the first acknowledged commit, a crash during a checkpoint, recovery to `COMMIT_UNKNOWN`, lock contention between processes, power loss, and a restart through `open_existing`, which the app uses.
 - Disk-full, restore into a clean directory and key loss stay owed at WP-03's full TA-05.
+
+**WebView storage, before M1 exit** (`plan-v1.5`): on Windows the shipped incognito window leaves none of the question, answer, span or proof id in the web view's files, even when the page writes them to `localStorage`. With incognito off, the same scan finds them, so it can detect real storage. Linux's test window is not incognito, so its run covers a configuration that does not ship.
 
 **Retrieval selects the cited evidence, under `plan-v1.6`** (founder decision, 2026-11-07). Only reports lexical retrieval found can be cited. The guards still see the whole corpus, so a contradiction retrieval misses still stops the answer. A missed applicable report is listed with `EVIDENCE_INSUFFICIENT`.
 
