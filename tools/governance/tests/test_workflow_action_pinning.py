@@ -27,8 +27,8 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/p00-foundation-docs.yml": "ffc5b4246ee09dad96caed7cf759e8565fe0e80b2e6ffe8642cfa6ad2d1b8db6",
     ".github/workflows/p01-preentry-governance.yml": "efe37c703ed5c24ec230e355ef2579070507d626b00f6f17f93a418ebe6dbfab",
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
-    ".github/workflows/product-ci.yml": "2d350ca242dae0fc98b4191405919c13c5b5d54f765d458df4e9ad184db01a11",
-    ".github/workflows/desktop-ci.yml": "f34f6c54248956c44a181d64a9082daa091e948361faefc2d3897b75cd8151be",
+    ".github/workflows/product-ci.yml": "2fd5dd9537e2c2886e8dc7663d3afc2f19c3e9280a56681ebb6ad8a230c6ced8",
+    ".github/workflows/desktop-ci.yml": "2512d2c5c2d843a90640f8a2da15990396d7ac3a7634506bc28f8e83c9729de1",
     ".github/workflows/desktop-e2e.yml": "4cb6177b900d5022fe99af9cbad3a2add68daf85efc8d74cfa06ad487848d05f",
 }
 

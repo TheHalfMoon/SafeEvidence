@@ -9,7 +9,7 @@
 // pass with the protection removed does not belong here.
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -48,7 +48,8 @@ class Page {
     const target = await waitFor(async () => {
       const targets = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
       return targets.find((item) => item.type === "page" && item.url.startsWith(APP_ORIGIN));
-    }, "the app's page");
+      // A cold hosted runner can take far longer than a developer machine to start WebView2.
+    }, "the app's page", 180_000);
     const page = new Page();
     page.#socket = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((resolve, reject) => {
@@ -78,6 +79,11 @@ class Page {
   #send(method, params = {}) {
     const id = this.#next++;
     return new Promise((resolve, reject) => {
+      // Sending on a closed socket is silently dropped, and the call would never settle.
+      if (this.#socket.readyState !== WebSocket.OPEN) {
+        reject(new Error("the page's connection is closed"));
+        return;
+      }
       this.#pending.set(id, { resolve, reject });
       this.#socket.send(JSON.stringify({ id, method, params }));
     });
@@ -161,8 +167,19 @@ async function stop(app) {
   }, "the debugging port to close", 30_000);
 }
 
+const HOST_REPORT = `
+  Get-CimInstance Win32_Process |
+    Where-Object Name -Match 'msedgewebview2|safeevidence' |
+    ForEach-Object { "$($_.ProcessId) $($_.Name) $($_.CommandLine)" }
+  Get-ItemProperty 'HKLM:/SOFTWARE/WOW6432Node/Microsoft/EdgeUpdate/Clients/{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue |
+    ForEach-Object { "WebView2 Runtime $($_.pv)" }
+`;
+
 async function diagnose() {
   console.log("--- app output\n" + (appOutput.join("") || "(none)"));
+  const host = spawnSync("powershell", ["-NoProfile", "-Command", HOST_REPORT], { encoding: "utf8", timeout: 60_000 });
+  console.log("--- host\n" + (host.stdout || "(none)") + (host.stderr ?? ""));
+  console.log("--- data directory\n" + readdirSync(dataDir, { recursive: true }).slice(0, 40).join("\n"));
   try {
     console.log("--- debugging targets\n" + (await (await fetch(`http://127.0.0.1:${PORT}/json`)).text()));
   } catch (error) {
@@ -247,6 +264,8 @@ try {
   await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
   const probeUrl = `http://127.0.0.1:${probe.address().port}/`;
   const csp = await page.eval(`(async () => {
+    const violated = [];
+    document.addEventListener("securitypolicyviolation", (event) => violated.push(event.effectiveDirective));
     const style = document.createElement("style");
     style.textContent = "#question { order: 77; }";
     document.head.append(style);
@@ -255,10 +274,12 @@ try {
     try { await fetch(${JSON.stringify(probeUrl)}, { mode: "no-cors" }); } catch { remoteFetch = false; }
     let inlineEval = true;
     try { new Function("return 1")(); } catch { inlineEval = false; }
-    return { inlineStyle, remoteFetch, inlineEval };
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return { inlineStyle, remoteFetch, inlineEval, blockedFetch: violated.includes("connect-src") };
   })()`);
   await new Promise((resolve) => probe.close(resolve));
-  assert.deepEqual(csp, { inlineStyle: false, remoteFetch: false, inlineEval: false });
+  // The event shows it was the CSP that stopped the fetch, not some other rule about loopback.
+  assert.deepEqual(csp, { inlineStyle: false, remoteFetch: false, inlineEval: false, blockedFetch: true });
   assert.equal(probeHits, 0, "the fetch never reached the listener");
   passed("the running page's CSP blocks inline style, an off-app fetch and eval");
 
@@ -266,11 +287,12 @@ try {
     (url) => !/^(http:\/\/(tauri|ipc)\.localhost(:\d+)?\/|data:|blob:)/.test(url) && url !== probeUrl,
   );
   assert.deepEqual(remote, []);
-  passed("this page requested nothing outside the app, apart from the CSP probe");
+  passed("once loaded, this page requested nothing outside the app, apart from the CSP probe");
 
   // A core command that exists but is not granted, so a refusal can only come from the capability.
   const refusal = await page.eval(`window.__TAURI_INTERNALS__.invoke("plugin:app|version").then(() => "allowed", (error) => String(error))`);
-  assert.match(refusal, /not allowed/i, refusal);
+  // Exact, because Tauri's "not found" errors for a renamed command also say "not allowed".
+  assert.match(refusal, /^app\.version not allowed\. Permissions associated with this command/, refusal);
   passed("the capability refuses a real core command the page was not granted");
 
   page.close();

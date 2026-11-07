@@ -63,7 +63,7 @@ jobs:
         run: cargo deny fetch
       - name: Run the Linux keyring helper against a real Secret Service
         if: matrix.os == 'ubuntu-latest'
-        timeout-minutes: 20
+        timeout-minutes: 25
         shell: bash
         working-directory: product
         run: |
