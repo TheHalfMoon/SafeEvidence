@@ -32,7 +32,7 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/product-ci.yml": "2fd5dd9537e2c2886e8dc7663d3afc2f19c3e9280a56681ebb6ad8a230c6ced8",
     ".github/workflows/desktop-ci.yml": "9ccfee4b7e4e04eaf20022f1e9964cdbc8bae5b3128b0e5ea668c53dbf521af9",
     ".github/workflows/desktop-e2e.yml": "4fbfd43f9ada63bfdaa02076aac92aa836206dffdde13317eb43b70c1597d089",
-    ".github/workflows/desktop-e2e-linux.yml": "e283ebe9e72ac0a3f00a331ad3529826ebd3c53b919b9f38610590300706709d",
+    ".github/workflows/desktop-e2e-linux.yml": "500ec98cc8cebe690d8568d6cf84a4f8ef928d4afaaa25df80901d00b8d9506d",
 }
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.
@@ -43,6 +43,8 @@ TA29_SCRIPT = "tools/ci/ta29_dependency_denial.py"
 TA29_SCRIPT_SHA256 = "b77022615499713081f2fd621a253d9be96bbb824363d947c1e07cb98a4fe768"
 TA29_DESKTOP_SCRIPT = "tools/ci/ta29_desktop_denial.py"
 TA29_DESKTOP_SCRIPT_SHA256 = "4acd672c1a495d7e4ff1149d58fc3c02636d2c76d64c3c92d4bb546fefcd4d54"
+NETWORK_TRACE_SCRIPT = "tools/ci/network_trace_report.py"
+NETWORK_TRACE_SCRIPT_SHA256 = "1626491e01a4284ce219111da1859c6d1c9e8b26fb247448bc98eb5ff66caf6f"
 TA03_SCRIPT_SHA256 = "fa83a8a0b1abc085d5cb8e3ca0be5dbd2ff401d5cdf3c1e707aa792fb230c22b"
 
 CHECKOUT_LINE = re.compile(r"^\s*uses:\s*actions/checkout@([^\s#]+)", re.MULTILINE)
@@ -113,6 +115,10 @@ class WorkflowCheckoutPinTests(unittest.TestCase):
     def test_ta29_gate_script_matches_pinned_revision(self):
         source = (ROOT / TA29_SCRIPT).read_text(encoding="utf-8")
         self.assertEqual(TA29_SCRIPT_SHA256, workflow_content_digest(source))
+
+    def test_network_trace_report_matches_pinned_revision(self):
+        source = (ROOT / NETWORK_TRACE_SCRIPT).read_text(encoding="utf-8")
+        self.assertEqual(hashlib.sha256(source.encode("utf-8")).hexdigest(), NETWORK_TRACE_SCRIPT_SHA256)
 
     def test_ta29_desktop_gate_script_matches_pinned_revision(self):
         source = (ROOT / TA29_DESKTOP_SCRIPT).read_text(encoding="utf-8")
