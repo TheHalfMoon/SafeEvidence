@@ -108,6 +108,7 @@ jobs:
                   continue
               port = re.search(r"htons\((\d+)\)", rest)
               where = "loopback" if loopback.search(rest) else "NOT LOOPBACK"
+              where += f" port {port.group(1)}" if port else ""
               lookup = " (name lookup)" if port and port.group(1) == "53" else ""
               calls[(programs.get(pid, "pid " + pid), rest.split("(")[0], where + lookup)] += 1
           print("Internet-family network calls by program, during the end-to-end run:")
