@@ -51,10 +51,20 @@ const output = [];
 let driver = null;
 
 await runAskChecks({
-  // On Linux the helper is the only way to the key, and a store dir that holds a wrapped key file would be wrong.
+  // Asks the keyring itself, which started empty, whether it now holds an item.
   keyStore: {
     name: "the real Secret Service",
-    check: (stored) => assert.ok(!stored.includes("dpapi"), stored.join()),
+    check(stored) {
+      assert.ok(!stored.includes("dpapi"), stored.join());
+      const items = spawnSync("gdbus", [
+        "call", "--session",
+        "--dest", "org.freedesktop.secrets",
+        "--object-path", "/org/freedesktop/secrets/aliases/default",
+        "--method", "org.freedesktop.DBus.Properties.Get",
+        "org.freedesktop.Secret.Collection", "Items",
+      ], { encoding: "utf8" });
+      assert.match(items.stdout, /'\/org\/freedesktop\/secrets\/collection\/[^']+\/\d+'/, items.stdout + items.stderr);
+    },
   },
 
   async launch(dataDir) {
