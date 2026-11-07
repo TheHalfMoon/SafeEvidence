@@ -7,7 +7,7 @@ const funnel = { indexed: 4, retrieved: 3, citable: 3, rightsAdmissible: 3, appl
 const citation = { claimId: "c", sourceId: "s", sourceVersion: "1", startScalar: 0, endScalar: 3, sourceText: "abcd" };
 const answer = {
   schemaVersion: 1, fixtureOnly: true, outcome: "ANSWER_WITH_CAUTION", reason: "NONE", funnel, excluded: [],
-  brief: "Synthetic brief", proofId: "vs1a-x", citations: [citation],
+  brief: "Synthetic brief", proofId: "vs1a-x", alreadyCommitted: false, citations: [citation],
 };
 const refusal = { ...answer, outcome: "ABSTAIN", reason: "EVIDENCE_INSUFFICIENT", brief: null, proofId: null, citations: [] };
 
@@ -25,6 +25,7 @@ test("mismatched or malformed responses are rejected, never assumed", () => {
     { ...answer, outcome: "MAYBE" },
     { ...answer, outcome: "toString" },
     { ...answer, reason: "UNKNOWN" },
+    { ...answer, alreadyCommitted: "no" },
     { ...answer, funnel: { ...funnel, indexed: -1 } },
     { ...answer, funnel: { ...funnel, verifiedClaims: "2" } },
     { ...answer, citations: [{ ...citation, endScalar: 5 }] },

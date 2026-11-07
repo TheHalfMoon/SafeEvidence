@@ -1,0 +1,65 @@
+name: Desktop End-to-End
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # A real WebView2 window, driven over its debugging protocol. It is not a required check, because a few passes
+  # on hosted runners do not show it is reliable there. Ubuntu has no equivalent here.
+  desktop-e2e:
+    name: desktop end-to-end (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: never
+      PERL: 'C:\Strawberry\perl\bin\perl.exe'
+    steps:
+      - name: Checkout exact reviewed revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Check exact Git HEAD
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Select the runner's Node from its tool cache
+        shell: bash
+        run: |
+          # The trailing slash keeps directories only: each version also holds an `x64.complete` marker file.
+          node_dir=$(ls -d "$RUNNER_TOOL_CACHE"/node/2[24].*/*/ | sort -V | tail -n 1)
+          node_dir=${node_dir%/}
+          test -n "$node_dir"
+          cygpath -w "$node_dir" >> "$GITHUB_PATH"
+      - name: Check Node comes from the tool cache
+        shell: bash
+        run: |
+          command -v node
+          node --version
+          case "$(command -v node)" in *hostedtoolcache*) ;; *) exit 1 ;; esac
+      - name: Install pinned toolchain
+        shell: bash
+        working-directory: product
+        run: rustup toolchain install 1.98.1 --profile minimal --no-self-update
+      - name: Build the frontend
+        shell: bash
+        working-directory: product/apps/desktop
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+      - name: Build the app for the end-to-end test
+        shell: bash
+        working-directory: product/apps/desktop/src-tauri
+        run: cargo build --locked --features custom-protocol,e2e
+      - name: Run the Ask flow in a real window
+        shell: bash
+        working-directory: product/apps/desktop
+        timeout-minutes: 10
+        run: node e2e/ask_e2e.mjs "$(cygpath -w "$PWD/src-tauri/target/debug/safeevidence-desktop.exe")"

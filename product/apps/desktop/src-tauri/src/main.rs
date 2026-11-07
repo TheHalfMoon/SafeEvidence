@@ -1,5 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// The feature opens a debugging port and moves the data directory, so it must never reach a release.
+#[cfg(all(feature = "e2e", not(debug_assertions)))]
+compile_error!("the e2e feature is for debug builds only");
+
 use tauri::Manager;
 
 mod ask_command;
@@ -30,6 +34,11 @@ fn main() {
     presentation_builder(tauri::Builder::default())
         .setup(|app| {
             let data_dir = app.path().app_local_data_dir()?;
+            // Without this feature the variable is never read, so a shipped build ignores it.
+            #[cfg(feature = "e2e")]
+            let data_dir = std::env::var_os("SAFEEVIDENCE_E2E_DATA_DIR")
+                .map_or(data_dir, std::path::PathBuf::from);
+            let webview_dir = data_dir.join("webview");
             app.state::<ask_command::AskState>().set_data_dir(data_dir);
             let config = app
                 .config()
@@ -37,7 +46,7 @@ fn main() {
                 .windows
                 .first()
                 .ok_or("missing main window")?;
-            tauri::WebviewWindowBuilder::from_config(app, config)?
+            let window = tauri::WebviewWindowBuilder::from_config(app, config)?
                 .on_navigation(|url| {
                     navigation_policy::is_local_application_url(url, cfg!(debug_assertions))
                 })
@@ -48,7 +57,14 @@ fn main() {
                     }
                 })
                 .incognito(true)
-                .build()?;
+                .data_directory(webview_dir);
+            // Setting these replaces wry's defaults, so they stay in the list. A shipped build does not set a
+            // debugging port.
+            #[cfg(all(feature = "e2e", windows))]
+            let window = window.additional_browser_args(
+                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --remote-debugging-port=9333",
+            );
+            window.build()?;
             Ok(())
         })
         .build(app_context())

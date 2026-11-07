@@ -1338,7 +1338,7 @@ mod tests {
     use std::collections::HashMap;
     use std::error::Error as StdError;
     use std::fmt::Write as _;
-    use std::io::{Seek, SeekFrom, Write};
+    use std::io::{Read, Seek, SeekFrom, Write};
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -2114,8 +2114,11 @@ mod tests {
             .write(true)
             .open(&staging)
             .unwrap();
+        // The file starts with a random salt, so writing a fixed value would change nothing one run in 256.
+        let mut first = [0u8; 1];
+        file.read_exact(&mut first).unwrap();
         file.seek(SeekFrom::Start(0)).unwrap();
-        file.write_all(&[0xff]).unwrap();
+        file.write_all(&[first[0] ^ 0xff]).unwrap();
         file.sync_all().unwrap();
         drop(file);
         let mut backend = TestPublicationBackend::new();

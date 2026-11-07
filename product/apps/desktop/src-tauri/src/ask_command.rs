@@ -79,6 +79,16 @@ pub struct AskView {
     excluded: Vec<ExcludedView>,
     brief: Option<String>,
     proof_id: Option<String>,
+    /// True if this proof was already in the store, so this request committed nothing new.
+    already_committed: bool,
+    citations: Vec<CitationView>,
+}
+
+/// An answer that reached `COMMITTED`.
+struct CommittedAnswer {
+    brief: String,
+    proof_id: String,
+    already_committed: bool,
     citations: Vec<CitationView>,
 }
 
@@ -180,9 +190,15 @@ impl AskSession {
     fn ask(&mut self, question: &str) -> AskView {
         let result = ask(question, &self.corpus);
         match self.committed(&result) {
-            Ok(Some((brief, proof_id, citations))) => {
-                view(&result, Some(brief), Some(proof_id), citations)
-            }
+            Ok(Some(answer)) => AskView {
+                already_committed: answer.already_committed,
+                ..view(
+                    &result,
+                    Some(answer.brief),
+                    Some(answer.proof_id),
+                    answer.citations,
+                )
+            },
             Ok(None) => view(&result, None, None, Vec::new()),
             Err((outcome, reason)) => AskView {
                 outcome,
@@ -194,14 +210,12 @@ impl AskSession {
 
     /// `Ok(None)` is a refusal from Ask. `Err` withholds an answer that did not reach `COMMITTED`.
     /// A denied proof admission is `BLOCKED`, the first guard in the decision contract.
-    fn committed(
-        &mut self,
-        result: &AskResult,
-    ) -> Result<Option<(String, String, Vec<CitationView>)>, Withheld> {
+    fn committed(&mut self, result: &AskResult) -> Result<Option<CommittedAnswer>, Withheld> {
         let (Some(manifest), Some(brief)) = (&result.manifest, &result.brief) else {
             return Ok(None);
         };
-        self.store
+        let receipt = self
+            .store
             .commit(manifest, brief.as_bytes())
             .map_err(denied)?;
         let stored = self.store.read(&manifest.proof_id).map_err(denied)?;
@@ -236,7 +250,12 @@ impl AskSession {
                 });
             }
         }
-        Ok(Some((text, stored.manifest.proof_id, citations)))
+        Ok(Some(CommittedAnswer {
+            brief: text,
+            proof_id: stored.manifest.proof_id,
+            already_committed: receipt.replayed,
+            citations,
+        }))
     }
 }
 
@@ -272,6 +291,7 @@ fn refusal(outcome: TerminalOutcome, reason: ReasonCode, funnel: &Funnel) -> Ask
         excluded: Vec::new(),
         brief: None,
         proof_id: None,
+        already_committed: false,
         citations: Vec::new(),
     }
 }
@@ -398,7 +418,7 @@ mod tests {
         let dir = TempDir::new();
         let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
         let first = session.ask(ANSWERED);
-        assert_eq!(session.ask(ANSWERED), first);
+        assert_replayed(&session.ask(ANSWERED), &first);
         let proof_id = first.proof_id.as_deref().expect("proof");
         assert_eq!(
             session.store.audit_events(proof_id).expect("audit"),
@@ -427,6 +447,15 @@ mod tests {
             );
             assert!(view.brief.is_none() && view.proof_id.is_none() && view.citations.is_empty());
         }
+    }
+
+    /// The same answer as `first`, found in the store rather than committed anew.
+    fn assert_replayed(view: &AskView, first: &AskView) {
+        assert!(!first.already_committed, "the first request commits it");
+        assert!(view.already_committed, "a later request finds it stored");
+        assert_eq!(view.proof_id, first.proof_id);
+        assert_eq!(view.brief, first.brief);
+        assert_eq!(view.citations, first.citations);
     }
 
     fn assert_withheld(view: &AskView, outcome: TerminalOutcome, reason: ReasonCode) {
@@ -499,7 +528,7 @@ mod tests {
             session.store.read(&proof_id).expect("still stored").state,
             ProofState::Committed
         );
-        assert_eq!(session.ask(ANSWERED), first);
+        assert_replayed(&session.ask(ANSWERED), &first);
         assert_eq!(
             session.store.audit_events(&proof_id).expect("audit"),
             ["COMMITTED"]
@@ -519,7 +548,7 @@ mod tests {
         let second = AskState::default();
         second.use_test_keys();
         second.set_data_dir(dir.0.clone());
-        assert_eq!(second.answer(ANSWERED), answered);
+        assert_replayed(&second.answer(ANSWERED), &answered);
         assert!(store_dir(&dir.0).join(DATABASE_FILE).exists());
     }
 
@@ -562,7 +591,7 @@ mod tests {
             session.store.read(&proof_id).expect("stored").state,
             ProofState::Committed
         );
-        assert_eq!(session.ask(ANSWERED), first);
+        assert_replayed(&session.ask(ANSWERED), &first);
     }
 
     #[test]

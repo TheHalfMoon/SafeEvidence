@@ -99,7 +99,12 @@ export function App() {
             <h2 id="outcome-heading" className={`outcome ${view.brief ? "answered" : "refused"}`}>{OUTCOMES[view.outcome]}</h2>
             {REASONS[view.reason] && <p>{REASONS[view.reason]}</p>}
             {view.brief && <p dir="auto" className="brief">{view.brief}</p>}
-            {view.proofId && <p className="proof">Committed proof <code dir="ltr">{view.proofId}</code></p>}
+            {view.proofId && (
+              <p className="proof">
+                {view.alreadyCommitted ? "Already committed as proof" : "Just committed as proof"}{" "}
+                <code dir="ltr">{view.proofId}</code>
+              </p>
+            )}
           </section>
         )}
       </div>

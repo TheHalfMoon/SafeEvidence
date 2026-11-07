@@ -13,6 +13,8 @@ build = "build.rs"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+# For the end-to-end test: chooses its data directory and opens a debugging port. A release build refuses it.
+e2e = []
 
 [dependencies]
 getrandom = { version = "=0.4.3", default-features = false }
