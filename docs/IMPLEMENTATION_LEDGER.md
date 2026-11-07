@@ -15,7 +15,7 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 | Active packet | WP-00 and WP-01 rows; WP-18a Ask view |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30), ADM-0009 (T03's Linux helper); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
-| Next executable task | VS-1a under `plan-v1.5`: TA-11 and TA-14 gaps; TA-09 synthetic harness; TA-05 subset and the `plan-v1.3` lineage test; retrieval selecting the evidence, or a founder ruling; helper packaging; WebView storage check; no-socket capture; resource values; all VS-1a rows on one commit. Then VS-1: the T05 row (founder) and TA-21. M0 and M1 exit reviews follow those |
+| Next executable task | VS-1a under `plan-v1.5`: TA-05 subset and the `plan-v1.3` lineage test; retrieval selecting the evidence, or a founder ruling; helper packaging; WebView storage check; no-socket capture; resource values; all VS-1a rows on one commit. Then VS-1: the T05 row (founder) and TA-21. M0 and M1 exit reviews follow those |
 
 Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `foundation-documents`, `preentry structure`,
 `synthetic-only`, `product` and `desktop`, the last four on Ubuntu, Windows and macOS.
@@ -46,6 +46,11 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 | `cargo fmt`, `cargo clippy` locally | **Not run.** Local 1.97.1 toolchain lacks `cargo-fmt.exe` and `cargo-clippy.exe`; hosted CI covers both |
 
 ## Known defects
+
+**TA-09, TA-11 and TA-14 for VS-1a** (2026-11-07), each at its own scope and on invented data only:
+- **TA-09** `TESTED_PASSED` as `plan-v1.5` scopes it. BM25 is measured on the synthetic set registered in `bench/ta09/REGISTRATION.md`, with results in `bench/ta09/RESULTS.md`: nDCG@10 0.8493, study-level recall@50 0.9333, funnel counts in 30 of 30 traces. Not a retrieval-quality claim. Measuring on rights-admitted data stays owed before any promotion.
+- **TA-11** `TESTED_PASSED` on the invented fixture (PR #74). Each excluded source carries a reason code. Population, condition and intervention mismatches are excluded, and so are near populations. It rests on metadata labels, not source text, and the desktop view shows the detail, not the code.
+- **TA-14** `TESTED_PASSED` with injected faults, as `plan-v1.1` §C allows while no worker exists (PR #74). Crash and timeout at the brief, verification and commit boundaries are reason-coded refusals with no text. Text must cite exactly the admitted claims. The real worker clauses return with WP-12's generator, and real process kills through the desktop session are untested.
 
 **VS-1 scope is set by `plan-v1.5`** (founder rulings, 2026-11-07): `plan-v1.1` is in force with no independent human review, TA-20 is the Ask flow, a labelled synthetic set serves TA-09, and the M1 exit review is AI-only. EXT-06 stays open. TA-21 and T05 are unchanged and still owed before VS-1 is done.
 
