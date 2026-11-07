@@ -35,8 +35,8 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
 - A release build must enable `custom-protocol`, or Tauri uses `devCsp` and `devUrl`. Nothing here builds a release yet.
 - The proof store's rule for two committed proofs on one question is still owed. It is unreachable here, with one epoch and one grant.
 - The app's Rust and npm trees are outside TA-02's SBOM, `product/deny.toml` and the TA-03 isolated run. `tools/ci/ta29_desktop_denial.py`
-  checks TA-29's named clients on the three desktop targets. On Linux the tree holds `mio`, `socket2` and `zbus` through the T03 protector,
-  as the ledger's sockets defect records.
+  checks TA-29's named clients on the three desktop targets. For the Linux target, `cargo tree -e normal` shows no `mio` or `socket2`, and the lockfile has no `zbus`,
+  which moved to the separate helper.
 - Tauri pulls `reqwest` and `hyper` on Android and iOS, so this shell cannot pass TA-29 on mobile as it stands.
 - Native tests check CSP as configuration only. `e2e/ask_e2e.mjs` observes it in a running WebView2, and nothing observes it in WebKitGTK or WKWebView.
 - Nothing in `product/crates` sets `fullfsync`, so on macOS the durable claim has not been shown to survive power loss.

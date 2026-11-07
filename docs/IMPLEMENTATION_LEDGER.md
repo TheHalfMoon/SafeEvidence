@@ -6,16 +6,16 @@ Nothing here implies clinical validation, regulatory status or product readiness
 Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASSED`,
 `BLOCKED_EXTERNAL`, `ENGINEERING_COMPLETE`, `CLINICALLY_EVALUATED`, `RELEASE_QUALIFIED`.
 
-## Current state (2026-11-06)
+## Current state (2026-11-07)
 
 | Field | Value |
 |---|---|
-| `main` at last update | `dd9461328b3a95f9f64883f1592e46b3ded9c8a0` |
+| `main` at last update | `dcbf3f3e425081e459a676ec5d085259c868e68c` |
 | Milestone | M0 open for its exit review; M1 VS-1 in progress, per the table below |
 | Active packet | WP-00 and WP-01 rows; WP-18a Ask view |
 | Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30), ADM-0009 (T03's Linux helper); G01a baseline holds `NO_ADMISSIONS` |
 | Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
-| Next executable task | VS-1 done list: TA-20 shell checklist, the shipped incognito window on Linux, TA-21 with T05, TA-09, TA-05 and TA-14 remainders; helper packaging |
+| Next executable task | VS-1a under `plan-v1.5`: TA-11 and TA-14 gaps; TA-09 synthetic harness; TA-05 subset and the `plan-v1.3` lineage test; helper packaging; WebView storage check; no-socket capture; resource values; M0 and M1 exit reviews |
 
 Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `foundation-documents`, `preentry structure`,
 `synthetic-only`, `product` and `desktop`, the last four on Ubuntu, Windows and macOS.
@@ -47,6 +47,8 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 
 ## Known defects
 
+**VS-1 scope is set by `plan-v1.5`** (founder rulings, 2026-11-07): `plan-v1.1` is in force with no independent human review, TA-20 is the Ask flow, a labelled synthetic set serves TA-09, and the M1 exit review is AI-only. EXT-06 stays open.
+
 **TA-13 for VS-1 is narrowed by `plan-v1.4`** (founder decisions, 2026-11-06). Its VS-1 clauses have tests: 1,329 mechanics vectors, 12 of 17 donor fixture cases at resolution level, all 17 questions
 through `ask`, and the lexical-emergency test. This shows little beyond the vectors, because no case runs through V1 to a matching outcome, and the amendment states that. TA-13 as a whole is not met: its DAL vectors are
 owed at WP-11. Ask also uses `EVIDENCE_INSUFFICIENT` for a question it could not parse, before retrieval runs, because no allowed code fits better.
@@ -66,7 +68,7 @@ and `cargo deny` enforces it. Whether that meets B6 is open for M0's exit review
 
 **T12:** the residue scan covers one store directory, live and closed, so `TA-05` is not claimed. Its MIME test returns at WP-13.
 
-**Desktop shell:** the Ask store's key is held by the OS protector, and answers survive a restart. Key loss is refused and has no recovery path yet, and only Windows runs its real protector in the desktop tests. Tests use Tauri's mock runtime, so TA-20, TA-21 and TA-22 are not claimed. The app's trees are outside TA-02's SBOM
+**Desktop shell:** the Ask store's key is held by the OS protector, and answers survive a restart. Key loss is refused and has no recovery path yet, and only Windows runs its real protector in the native desktop tests. Native tests use Tauri's mock runtime. The end-to-end tests use real windows and real protectors on Windows and Ubuntu. TA-20, TA-21 and TA-22 are not claimed. The app's trees are outside TA-02's SBOM
 and `product/deny.toml`. Tauri pulls `reqwest` and `hyper` on Android and iOS: resolve before M5.
 
 **`plan-v1.3` immutability:** tested against the keyed vault store in `safeevidence-proofstore`, with triggers and guarded SQL.
@@ -94,7 +96,7 @@ All are inert today (no consumer or UI). They must be gated against the P00 cont
 (no V1 clinical confidence percentage) before anything uses them.
 
 See `docs/reviews/EGM_PLAN_CHALLENGE_2026-11-05.md`. Six P0 plan and tooling defects
-are verified; none is corrected yet.
+are verified. `product/`, `product-ci.yml` and `plan-v1.1` A3, B1, B2 and B6 address them. Whether each is fully corrected is for M0's exit review.
 
 ## Source imports
 
