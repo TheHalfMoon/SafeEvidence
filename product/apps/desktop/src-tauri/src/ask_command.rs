@@ -136,13 +136,16 @@ fn denied(error: StoreError) -> Withheld {
             ReasonCode::ProofRaceInvalidated
         }
         StoreError::SourceNotAdmitted(_) => ReasonCode::SourceUnavailable,
-        // Nothing was written and the store did not answer in time: the same outcome as a step that timed out.
-        StoreError::Busy => {
-            return (TerminalOutcome::Abstain, ReasonCode::TimeBudgetExhausted);
-        }
         _ => ReasonCode::ToolFailure,
     };
     (TerminalOutcome::Blocked, reason)
+}
+
+fn committing(error: StoreError) -> Withheld {
+    match error {
+        StoreError::Busy => (TerminalOutcome::Abstain, ReasonCode::TimeBudgetExhausted),
+        other => denied(other),
+    }
 }
 
 impl AskSession {
@@ -225,12 +228,14 @@ impl AskSession {
         };
         #[cfg(test)]
         if let Some(fault) = self.commit_fault.take() {
-            return Err(denied(fault));
+            return Err(committing(fault));
         }
+        // A busy store at commit wrote nothing and did not answer in time: the same outcome as a step
+        // that timed out. After a commit, the proof is stored, so `denied` keeps its usual mapping.
         let receipt = self
             .store
             .commit(manifest, brief.as_bytes())
-            .map_err(denied)?;
+            .map_err(committing)?;
         let stored = self.store.read(&manifest.proof_id).map_err(denied)?;
         match stored.state {
             ProofState::Committed => {}
@@ -467,8 +472,9 @@ mod tests {
         );
     }
 
-    /// TA-14's commit boundary: a commit that fails reaches the person as a refusal with no text,
-    /// and nothing is stored. `CommitUnknown` needs a `rusqlite` error to build, so it is not here.
+    /// TA-14's commit boundary: a commit that fails reaches the person as a refusal with no text.
+    /// The fault replaces the store's answer, so it does not show what the store itself would do on
+    /// that failure. `CommitUnknown` needs a `rusqlite` error to build, so it is not here.
     #[test]
     fn a_failed_commit_is_a_refusal_with_a_reason_and_no_text() {
         let cases = [
@@ -499,8 +505,20 @@ mod tests {
             session.commit_fault = Some(fault);
             assert_withheld(&session.ask(ANSWERED), outcome, reason);
             let next = session.ask(ANSWERED);
-            assert!(!next.already_committed, "the failed commit stored nothing");
+            assert!(
+                !next.already_committed,
+                "the refused request left nothing behind"
+            );
         }
+    }
+
+    /// After a commit the proof is stored, so a busy store there is not a timeout before writing.
+    #[test]
+    fn a_busy_store_after_commit_keeps_the_usual_mapping() {
+        assert_eq!(
+            denied(StoreError::Busy),
+            (TerminalOutcome::Blocked, ReasonCode::ToolFailure)
+        );
     }
 
     #[test]

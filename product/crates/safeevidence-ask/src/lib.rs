@@ -405,6 +405,13 @@ pub fn verify_brief(brief: &str, corpus: &Corpus) -> Result<Vec<String>, String>
         .collect())
 }
 
+/// An offset written only as `render_brief` writes it, so one answer has one text: `+74` or `074`
+/// would otherwise read as 74.
+fn offset(text: &str) -> Option<usize> {
+    let value = text.parse::<usize>().ok()?;
+    (value.to_string() == text).then_some(value)
+}
+
 /// `verify_brief`, keeping each citation's span as scalar offsets.
 fn verified_citations(brief: &str, corpus: &Corpus) -> Result<Vec<(String, u64, u64)>, String> {
     let lines: Vec<&str> = brief.split('\n').collect();
@@ -420,12 +427,7 @@ fn verified_citations(brief: &str, corpus: &Corpus) -> Result<Vec<(String, u64, 
             .and_then(|(claim, citation)| {
                 let (doc_id, range) = citation.split_once(' ')?;
                 let (start, end) = range.split_once("..")?;
-                Some((
-                    claim,
-                    doc_id,
-                    start.parse::<usize>().ok()?,
-                    end.parse::<usize>().ok()?,
-                ))
+                Some((claim, doc_id, offset(start)?, offset(end)?))
             });
         let Some((claim, doc_id, start, end)) = parsed else {
             return Err(format!("not a claim line: {line}"));

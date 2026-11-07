@@ -48,10 +48,18 @@ impl AnswerSeams for ReplacesTheText {
     }
 }
 
-struct Panics;
+struct PanicsBeforeVerifying;
 
-impl AnswerSeams for Panics {
+impl AnswerSeams for PanicsBeforeVerifying {
     fn before_verify(&self) -> Result<(), StepFailure> {
+        panic!("a step that panics");
+    }
+}
+
+struct PanicsRendering;
+
+impl AnswerSeams for PanicsRendering {
+    fn after_render(&self, _brief: String) -> Result<String, StepFailure> {
         panic!("a step that panics");
     }
 }
@@ -121,10 +129,13 @@ fn a_timeout_at_either_boundary_is_a_reason_coded_abstention() {
 #[test]
 fn text_changed_after_rendering_never_becomes_a_proof() {
     let corpus = corpus();
-    let changes: [fn(String) -> String; 3] = [
+    let changes: [fn(String) -> String; 5] = [
         |brief| brief.replace("12 points", "21 points"),
         |brief| brief + "\nThis treatment is safe.",
         |_| String::new(),
+        // The same claims with offsets written another way, which would be a second text and proof.
+        |brief| brief.replacen(" 74..", " +74..", 1),
+        |brief| brief.replacen("..148]", "..0148]", 1),
     ];
     for change in changes {
         assert_refused(
@@ -157,6 +168,11 @@ fn verified_text_that_cites_other_evidence_never_becomes_a_proof() {
             "{brief}\n{}",
             line_for(&corpus, "doc-tessarine-unknown-rights")
         ),
+        // An admitted source, cited at its other sentence, in the admitted order.
+        format!(
+            "{header}\n- Adults with synthetic glimmer syndrome received veltrixamine 40 mg daily. [doc-veltrix-a 0..73]\n{}",
+            claims[1]
+        ),
         // One of the admitted claims dropped, and the two swapped.
         format!("{header}\n{}", claims[0]),
         format!("{header}\n{}\n{}", claims[1], claims[0]),
@@ -173,8 +189,14 @@ fn verified_text_that_cites_other_evidence_never_becomes_a_proof() {
 
 #[test]
 fn a_panicking_step_is_a_crash_not_an_escape() {
+    let corpus = corpus();
     assert_refused(
-        &ask_with_seams(ANSWERED, &corpus(), &Panics),
+        &ask_with_seams(ANSWERED, &corpus, &PanicsRendering),
+        TerminalOutcome::Blocked,
+        ReasonCode::ToolFailure,
+    );
+    assert_refused(
+        &ask_with_seams(ANSWERED, &corpus, &PanicsBeforeVerifying),
         TerminalOutcome::Blocked,
         ReasonCode::ToolFailure,
     );
