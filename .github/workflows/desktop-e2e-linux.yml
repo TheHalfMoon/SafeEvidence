@@ -109,7 +109,8 @@ jobs:
             xvfb-run -a strace -ff -qq -e trace=execve,socket,bind,listen,accept,accept4,connect,sendto,sendmsg,sendmmsg \
               -o "$RUNNER_TEMP/shipped-trace/trace" "$app" &
             sleep 30
-            pkill -KILL -f "^$app$" || true
+            # Fails the step if the app is not running by now, so an early crash cannot look like a quiet run.
+            pkill -KILL -f "^$app$"
             wait || true
           '
       - name: Report network calls by that build
