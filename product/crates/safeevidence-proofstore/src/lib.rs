@@ -74,9 +74,10 @@ const SCHEMA: &[&str] = &[
 ];
 
 /// SHA-256 of the stored names and text of every schema object. A store whose triggers or tables
-/// differ is refused before its schema or data changes. There are no migrations yet. Change this
+/// differ is refused before its schema or data changes. There are no migrations yet, so a caller
+/// that keys its store's location on this gets a new store when the schema changes. Change this
 /// only together with `SCHEMA`.
-const SCHEMA_OBJECTS_SHA256: &str =
+pub const SCHEMA_OBJECTS_SHA256: &str =
     "986cbbd50456a9a0a3092948d99957ddddd6906c622a38238ccf3610a7ddd290";
 
 #[derive(Debug)]
@@ -673,7 +674,7 @@ impl ProofStore {
         let superseding_id = record.superseding_assertion_id.as_str();
         let record_id = record.header.id.as_str();
         if prior_id == superseding_id
-            || record_id.is_empty()
+            || record_id.trim().is_empty()
             || record.rationale.trim().is_empty()
             || record.authorized_by.as_str().trim().is_empty()
         {

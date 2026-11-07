@@ -297,7 +297,9 @@ fn amendment_appends_and_leaves_the_prior_bytes_unchanged() {
     store.put_source("a1", b"first").unwrap();
     store.put_source("a2", b"second").unwrap();
     store.put_source("a3", b"third").unwrap();
-    let first = amendment("am-1", "a1", "a2", AmendmentKind::Supersession);
+    let mut first = amendment("am-1", "a1", "a2", AmendmentKind::Supersession);
+    // Every field must come back, including the optional offset `MedicalTime::new` leaves out.
+    first.recorded_time.timezone_offset_minutes = Some(-330);
     let second = amendment("am-2", "a1", "a3", AmendmentKind::Retraction);
     store.amend(&first).unwrap();
     store.amend(&second).unwrap();
@@ -315,6 +317,7 @@ fn amendment_appends_and_leaves_the_prior_bytes_unchanged() {
     empty_rationale.rationale = " ".to_owned();
     let mut no_author = amendment("am-4", "a2", "a3", AmendmentKind::Supersession);
     no_author.authorized_by = OpaqueId::new("");
+    let blank_id = amendment(" ", "a2", "a3", AmendmentKind::Supersession);
     let refused = [
         amendment("am-5", "a1", "a1", AmendmentKind::Supersession),
         amendment("am-6", "a1", "missing", AmendmentKind::Supersession),
@@ -322,6 +325,7 @@ fn amendment_appends_and_leaves_the_prior_bytes_unchanged() {
         reused.clone(),
         empty_rationale,
         no_author,
+        blank_id,
     ];
     for record in refused {
         assert!(
@@ -340,7 +344,8 @@ fn amendment_appends_and_leaves_the_prior_bytes_unchanged() {
 #[test]
 fn amendment_records_survive_a_reopen() {
     let db = TempDb::new();
-    let record = amendment("am-1", "a1", "a2", AmendmentKind::Supersession);
+    let mut record = amendment("am-1", "a1", "a2", AmendmentKind::Supersession);
+    record.recorded_time.timezone_offset_minutes = Some(60);
     {
         let mut store = open(&db.path());
         store.put_source("a1", b"first").unwrap();
