@@ -107,3 +107,29 @@ jobs:
         if: always()
         shell: bash
         run: python tools/ci/windows_socket_report.py "$RUNNER_TEMP/shipped-sockets.txt" webview2
+      # WebView2 holds a loopback connection to port 80, where the runner's kernel HTTP service listens. Stop that
+      # service, listen on the port, and launch the same build again, to see whether any bytes cross the connection.
+      # It covers startup and 30 seconds idle, not a question.
+      - name: Record what reaches loopback port 80
+        shell: bash
+        working-directory: product/apps/desktop
+        timeout-minutes: 5
+        run: |
+          net stop http //y || true
+          node e2e/port80_listener.mjs "$(cygpath -w "$RUNNER_TEMP/port80.txt")" "$(cygpath -w "$RUNNER_TEMP/port80-stop.flag")" &
+          listener=$!
+          sleep 3
+          # A control: a known request must be recorded, or a listener that sees nothing would pass.
+          curl -s -m 3 -o /dev/null http://127.0.0.1/port80-control || true
+          ./src-tauri/target/debug/safeevidence-desktop.exe 2> "$RUNNER_TEMP/port80-stderr.txt" &
+          sleep 30
+          status=0
+          tasklist //FI "IMAGENAME eq safeevidence-desktop.exe" | grep -q safeevidence-desktop.exe || status=1
+          if grep -q "could not start" "$RUNNER_TEMP/port80-stderr.txt"; then status=1; fi
+          taskkill //F //T //IM safeevidence-desktop.exe || true
+          sleep 2
+          touch "$RUNNER_TEMP/port80-stop.flag"
+          wait "$listener"
+          cat "$RUNNER_TEMP/port80.txt"
+          grep -q "port80-control" "$RUNNER_TEMP/port80.txt" || { echo "the listener did not record the control request"; status=1; }
+          exit "$status"
