@@ -1,5 +1,7 @@
 //! TA-03 negative control inside a test binary: under `tools/ci/ta03_isolated.sh`, a
 //! direct socket must fail. Elsewhere this test does nothing, so it proves nothing there.
+//! It is the one place allowed to name a socket type: `clippy.toml` bans them everywhere else.
+#![allow(clippy::disallowed_types, clippy::disallowed_methods)]
 
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;

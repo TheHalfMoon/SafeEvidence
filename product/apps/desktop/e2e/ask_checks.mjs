@@ -23,6 +23,9 @@ import { setTimeout as sleep } from "node:timers/promises";
 const ANSWERED = "Does veltrixamine help adults with glimmer syndrome?";
 const ASK_MORE = "Does veltrixamine help with glimmer syndrome?";
 const OUTSIDE_GRAMMAR = "What should I take?";
+// A question whose words appear nowhere in the app, so the storage scan can look for what the person typed.
+const TYPED_NONCE = "zqvortelinax";
+const TYPED = `Does ${TYPED_NONCE} help adults with glimmer syndrome?`;
 
 export async function waitFor(check, what, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
@@ -156,6 +159,10 @@ export async function runAskChecks(driver) {
     assert.equal(view.brief, null);
     passed("a question missing its population asks for more");
 
+    await ask(page, TYPED);
+    view = await readView(page);
+    assert.notEqual(view.outcome, "Answer, with caution", "the typed question has no evidence");
+
     // A local listener, so a blocked fetch is told from one that simply could not resolve a name.
     let probeHits = 0;
     const probe = createServer((_request, response) => {
@@ -216,7 +223,7 @@ export async function runAskChecks(driver) {
     await driver.webViewExited?.();
     await sleep(3000);
     // Not the question: it is also the view's example text, so the bundle's own code cache holds it.
-    const markers = [answered.brief, answered.proof, span];
+    const markers = [answered.brief, answered.proof, span, TYPED_NONCE];
     const control = mkdtempSync(join(tmpdir(), "se-e2e-control-"));
     writeFileSync(join(control, "planted"), Buffer.from(span, "utf16le"));
     assert.deepEqual(scanForMarkers(control, markers).found, ["planted"], "the scan finds a UTF-16 marker");
@@ -224,8 +231,8 @@ export async function runAskChecks(driver) {
     const webview = scanForMarkers(join(dataDir, "webview"), markers);
     assert.deepEqual(webview.unreadable, []);
     assert.ok(webview.scanned > 0, "the web view left files to scan");
-    assert.deepEqual(webview.found, [], `the answer is in ${webview.found.join(", ")}`);
-    passed(`the web view's ${webview.scanned} files hold none of the answer, cited span or proof id`);
+    assert.deepEqual(webview.found, [], `what the page saw is in ${webview.found.join(", ")}`);
+    passed(`the web view's ${webview.scanned} files hold none of the typed question, answer, cited span or proof id`);
     assert.equal(checks.length, driver.expectedChecks, "every check this driver should run has run");
     failed = false;
   } catch (error) {

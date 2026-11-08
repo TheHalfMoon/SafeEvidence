@@ -798,6 +798,85 @@ fn a_claim_also_inside_a_negated_sentence_uses_its_own_span_or_is_refused() {
     );
 }
 
+/// Each of these reads as "not" on screen but defeats a word check, or reorders text on screen.
+#[test]
+fn invisible_bidi_and_lookalike_characters_are_refused() {
+    for finding in [
+        "The score did n\u{200B}ot improve at 8 weeks.",
+        "The score did n\u{00AD}ot improve at 8 weeks.",
+        "The score did n\u{2060}ot improve at 8 weeks.",
+        "The score did n\u{043E}t improve at 8 weeks.",
+        "The score did \u{202E}ton\u{202C} improve at 8 weeks.",
+        "The score did not\u{0007} improve at 8 weeks.",
+    ] {
+        let value = one_doc_corpus(finding, finding, Direction::Benefit);
+        assert!(
+            matches!(
+                validate_documents(&value),
+                Err(CorpusError::UnsupportedCharacters(_))
+            ),
+            "{finding:?}"
+        );
+    }
+}
+
+/// A null result worded without a negation word carries its honest label, and cannot be called a benefit.
+#[test]
+fn a_null_result_worded_without_negation_is_labelled_no_benefit_only() {
+    let finding = "The score was unchanged at 8 weeks.";
+    assert_eq!(
+        validate_documents(&one_doc_corpus(finding, finding, Direction::NoBenefit)),
+        Ok(())
+    );
+    assert!(matches!(
+        validate_documents(&one_doc_corpus(finding, finding, Direction::Benefit)),
+        Err(CorpusError::DirectionContradictsFinding(_))
+    ));
+}
+
+/// Conflict detection reads only the labels, so relabelling the improved study as no benefit would turn
+/// a contradiction into an answer. For the fixture's wording the loader refuses that label. Wording with
+/// an incidental "no" or "similar" is not covered: the check is a word list (see `validate_documents`).
+#[test]
+fn relabelling_the_fixtures_improvement_as_no_benefit_is_refused() {
+    let mut document: serde_json::Value = serde_json::from_slice(FIXTURE).unwrap();
+    for item in document["documents"].as_array_mut().unwrap() {
+        if item["doc_id"] == "doc-orbalin-a" {
+            item["direction"] = serde_json::json!("no_benefit");
+        }
+    }
+    let bytes = document.to_string().into_bytes();
+    assert!(matches!(
+        load_corpus(&bytes, &DigestSha256::of(&bytes)),
+        Err(CorpusError::DirectionContradictsFinding(_))
+    ));
+}
+
+/// Listed contractions, with or without the apostrophe, and listed null words read as no benefit.
+#[test]
+fn contractions_cannot_be_labelled_benefit() {
+    for finding in [
+        "The score isn't better at 8 weeks.",
+        "The score can't improve at 8 weeks.",
+        "The score cannot improve at 8 weeks.",
+        "The score didnt improve at 8 weeks.",
+        "The scores weren't better at 8 weeks.",
+        "The score don't improve at 8 weeks.",
+        "The score couldn`t improve at 8 weeks.",
+        "The change was non-significant at 8 weeks.",
+        "The drug was ineffective at 8 weeks.",
+    ] {
+        let value = one_doc_corpus(finding, finding, Direction::Benefit);
+        assert!(
+            matches!(
+                validate_documents(&value),
+                Err(CorpusError::DirectionContradictsFinding(_))
+            ),
+            "{finding}"
+        );
+    }
+}
+
 #[test]
 fn broader_reversal_wording_cannot_be_labelled_benefit() {
     for finding in [

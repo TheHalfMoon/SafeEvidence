@@ -65,27 +65,58 @@ pub enum CorpusError {
     DuplicateDocument(String),
     FindingNotASourceSentence(String),
     DirectionContradictsFinding(String),
+    /// A control, invisible or bidi character, or a letter outside the English path's ASCII.
+    UnsupportedCharacters(String),
 }
 
 /// Words that reverse a finding. A word list, so `direction` remains partly the fixture author's
 /// label: this catches mislabels it can recognize, and is not an understanding of meaning.
-const NEGATIONS: [&str; 15] = [
+const NEGATIONS: [&str; 42] = [
     "not", "no", "never", "without", "neither", "nor", "didn", "doesn", "wasn", "failed", "fails",
-    "worsened", "worse", "unable", "nobody",
+    "worsened", "worse", "unable", "nobody", "cannot", "cant", "didnt", "doesnt", "wasnt", "isnt",
+    "isn", "arent", "aren", "werent", "weren", "hasnt", "hasn", "havent", "haven", "dont", "don",
+    "wont", "won", "couldnt", "couldn", "shouldnt", "shouldn", "wouldnt", "wouldn", "hadnt",
+    "hadn",
+];
+/// Words that report a null result without a negation word. A finding using one is not a benefit.
+const NULL_RESULTS: [&str; 7] = [
+    "unchanged",
+    "similar",
+    "comparable",
+    "equivalent",
+    "nonsignificant",
+    "insignificant",
+    "ineffective",
 ];
 const UNITS: [&str; 8] = ["mg", "g", "mcg", "kg", "ml", "weeks", "months", "points"];
 
 fn word_set(text: &str) -> BTreeSet<String> {
     text.to_lowercase()
+        .replace(['\'', '`'], "")
+        .replace("non-significant", "nonsignificant")
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| !word.is_empty())
         .map(str::to_owned)
         .collect()
 }
 
+/// Text the English path can check word by word. An invisible or bidi character, or a lookalike letter
+/// from another script, would let a finding read one way on screen and another to the word checks.
+/// Corpora in other languages return with WP-06.
+fn is_plain_english(text: &str) -> bool {
+    text.chars()
+        .all(|c| c.is_ascii() && (!c.is_ascii_control() || c == '\n'))
+}
+
 fn is_negated(text: &str) -> bool {
     let words = word_set(text);
     NEGATIONS.iter().any(|word| words.contains(*word))
+}
+
+/// A finding that reports no benefit: negated, or worded as a null result.
+fn reports_no_benefit(text: &str) -> bool {
+    let words = word_set(text);
+    is_negated(text) || NULL_RESULTS.iter().any(|word| words.contains(*word))
 }
 
 /// Digest-checked fixture loader. It gives no pack-trust claim (`plan-v1.1` §C).
@@ -123,6 +154,19 @@ pub fn validate_documents(corpus: &Corpus) -> Result<(), CorpusError> {
         if !seen.insert(document.doc_id.as_str()) {
             return Err(CorpusError::DuplicateDocument(document.doc_id.clone()));
         }
+        let fields = [
+            &document.doc_id,
+            &document.study_id,
+            &document.title,
+            &document.text,
+            &document.finding,
+            &document.population,
+            &document.condition,
+            &document.intervention,
+        ];
+        if fields.iter().any(|field| !is_plain_english(field)) {
+            return Err(CorpusError::UnsupportedCharacters(document.doc_id.clone()));
+        }
         if claim_defect(&document.finding, &document.text).is_some()
             || sentence_positions(&document.text, &document.finding).len() != 1
         {
@@ -130,7 +174,12 @@ pub fn validate_documents(corpus: &Corpus) -> Result<(), CorpusError> {
                 document.doc_id.clone(),
             ));
         }
-        if is_negated(&document.finding) != (document.direction == Direction::NoBenefit) {
+        // Both ways: conflict detection reads only these labels, so a wrong label in either direction can
+        // hide a contradiction. This is a word-list sanity check on author-asserted labels, not an
+        // understanding of meaning: unlisted wording can still carry a wrong label, and a benefit finding
+        // with an incidental "no" or "similar" is refused. Corpus trust (signed packs, WP-04) and claim
+        // verification (WP-08) are the real controls, and are owed before any imported corpus.
+        if reports_no_benefit(&document.finding) != (document.direction == Direction::NoBenefit) {
             return Err(CorpusError::DirectionContradictsFinding(
                 document.doc_id.clone(),
             ));
