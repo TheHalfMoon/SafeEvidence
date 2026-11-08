@@ -30,6 +30,17 @@ fn presentation_builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri:
         .invoke_handler(tauri::generate_handler![ask_command::ask_question])
 }
 
+/// WebView2 switches for every Windows build: wry's defaults, then background services turned off.
+#[cfg(windows)]
+const WEBVIEW2_ARGS: &str = concat!(
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,msEdgeTranslate,Translate,",
+    "OptimizationHints,MediaRouter,AutofillServerCommunication,CertificateTransparencyComponentUpdater,",
+    "NetworkTimeServiceQuerying",
+    " --disable-background-networking --disable-component-update --disable-domain-reliability",
+    " --disable-sync --no-pings --disable-quic --disable-client-side-phishing-detection",
+    " --disable-breakpad --dns-prefetch-disable",
+);
+
 fn main() {
     startup_failure::install_panic_hook();
     presentation_builder(tauri::Builder::default())
@@ -62,12 +73,16 @@ fn main() {
             // could not attach. This is the only build that is not incognito, and a release build refuses the feature.
             #[cfg(not(all(feature = "e2e", target_os = "linux")))]
             let window = window.incognito(true);
-            // Setting these replaces wry's defaults, so they stay in the list. A shipped build does not set a
-            // debugging port.
+            // Setting these replaces wry's defaults, so they stay in the list. The rest ask WebView2 not to reach
+            // Microsoft or the network on its own: CI captured a test build connecting to Microsoft on port 443 and
+            // WebView2 holding a UDP socket outside loopback. Switches are requests to the browser, not a guarantee,
+            // and the Windows captures are the check. A shipped build does not set a debugging port.
+            #[cfg(all(not(feature = "e2e"), windows))]
+            let window = window.additional_browser_args(WEBVIEW2_ARGS);
             #[cfg(all(feature = "e2e", windows))]
-            let window = window.additional_browser_args(
-                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --remote-debugging-port=9333",
-            );
+            let window = window.additional_browser_args(&format!(
+                "{WEBVIEW2_ARGS} --autoplay-policy=no-user-gesture-required --remote-debugging-port=9333"
+            ));
             window.build()?;
             Ok(())
         })
