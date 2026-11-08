@@ -91,11 +91,14 @@ jobs:
           out="$(cygpath -w "$RUNNER_TEMP")"
           pwsh -NoProfile -File ../../../tools/ci/windows_socket_poll.ps1 -Out "$out\shipped-sockets.txt" -Stop "$out\shipped-stop.flag" &
           poller=$!
-          ./src-tauri/target/debug/safeevidence-desktop.exe &
+          ./src-tauri/target/debug/safeevidence-desktop.exe 2> "$RUNNER_TEMP/shipped-stderr.txt" &
           sleep 30
           status=0
           # Fails the step if the app is not running by now, so an early crash cannot look like a quiet run.
           tasklist //FI "IMAGENAME eq safeevidence-desktop.exe" | grep -q safeevidence-desktop.exe || status=1
+          # A startup failure does not exit: it waits on a dialog nobody clicks. It writes its title to stderr first.
+          cat "$RUNNER_TEMP/shipped-stderr.txt"
+          if grep -q "could not start" "$RUNNER_TEMP/shipped-stderr.txt"; then status=1; fi
           taskkill //F //T //IM safeevidence-desktop.exe || true
           touch "$RUNNER_TEMP/shipped-stop.flag"
           wait "$poller"

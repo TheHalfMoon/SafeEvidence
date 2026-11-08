@@ -27,6 +27,7 @@ while (-not (Test-Path $Stop)) {
   } while ($added)
   if ($tree.Count -gt 0) {
     $lines = @("tree|" + ((($tree | ForEach-Object { $names[$_] }) | Sort-Object -Unique) -join ','))
+    $parsed = 0
     foreach ($row in (netstat -ano)) {
       $fields = -split $row
       # TCP rows: proto, local, remote, state, pid. UDP rows: proto, local, remote, pid.
@@ -35,6 +36,7 @@ while (-not (Test-Path $Stop)) {
       } elseif ($fields.Count -eq 4 -and $fields[0] -eq 'UDP') {
         $owner = [int]$fields[3]; $state = 'Bound'
       } else { continue }
+      $parsed += 1
       if (-not $tree.Contains($owner)) { continue }
       $local = $fields[1]; $remote = $fields[2]
       $lp = $local.Substring($local.LastIndexOf(':') + 1); $la = $local.Substring(0, $local.LastIndexOf(':')).Trim('[', ']')
@@ -43,6 +45,8 @@ while (-not (Test-Path $Stop)) {
       if ($state -eq 'Bound') { $ra = ''; $rp = '' }
       $lines += "$($fields[0].ToLower())|$($names[$owner])|$la|$lp|$ra|$rp|$state"
     }
+    # Every socket row parsed system-wide, so a parser that matches nothing cannot pass as a quiet run.
+    $lines += "parsed|$parsed"
     $samples += 1
     if ($lines.Count -gt 0) { Add-Content -Path $Out -Value $lines }
   }
