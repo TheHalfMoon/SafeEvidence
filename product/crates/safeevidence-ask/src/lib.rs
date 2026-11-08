@@ -71,14 +71,24 @@ pub enum CorpusError {
 
 /// Words that reverse a finding. A word list, so `direction` remains partly the fixture author's
 /// label: this catches mislabels it can recognize, and is not an understanding of meaning.
-const NEGATIONS: [&str; 15] = [
+const NEGATIONS: [&str; 30] = [
     "not", "no", "never", "without", "neither", "nor", "didn", "doesn", "wasn", "failed", "fails",
-    "worsened", "worse", "unable", "nobody",
+    "worsened", "worse", "unable", "nobody", "cannot", "cant", "didnt", "doesnt", "wasnt", "isnt",
+    "isn", "arent", "aren", "werent", "weren", "hasnt", "hasn", "havent", "haven",
+];
+/// Words that report a null result without a negation word. A finding using one is not a benefit.
+const NULL_RESULTS: [&str; 5] = [
+    "unchanged",
+    "similar",
+    "comparable",
+    "equivalent",
+    "nonsignificant",
 ];
 const UNITS: [&str; 8] = ["mg", "g", "mcg", "kg", "ml", "weeks", "months", "points"];
 
 fn word_set(text: &str) -> BTreeSet<String> {
     text.to_lowercase()
+        .replace('\'', "")
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| !word.is_empty())
         .map(str::to_owned)
@@ -96,6 +106,12 @@ fn is_plain_english(text: &str) -> bool {
 fn is_negated(text: &str) -> bool {
     let words = word_set(text);
     NEGATIONS.iter().any(|word| words.contains(*word))
+}
+
+/// A finding that reports no benefit: negated, or worded as a null result.
+fn reports_no_benefit(text: &str) -> bool {
+    let words = word_set(text);
+    is_negated(text) || NULL_RESULTS.iter().any(|word| words.contains(*word))
 }
 
 /// Digest-checked fixture loader. It gives no pack-trust claim (`plan-v1.1` §C).
@@ -134,6 +150,8 @@ pub fn validate_documents(corpus: &Corpus) -> Result<(), CorpusError> {
             return Err(CorpusError::DuplicateDocument(document.doc_id.clone()));
         }
         let fields = [
+            &document.doc_id,
+            &document.study_id,
             &document.title,
             &document.text,
             &document.finding,
@@ -151,9 +169,9 @@ pub fn validate_documents(corpus: &Corpus) -> Result<(), CorpusError> {
                 document.doc_id.clone(),
             ));
         }
-        // One way only: a negated finding cannot be labelled a benefit. A null result worded without a
-        // listed negation word ("was unchanged") may still be labelled no benefit.
-        if is_negated(&document.finding) && document.direction == Direction::Benefit {
+        // Both ways: conflict detection reads only these labels, so a wrong label in either direction can
+        // hide a contradiction. The wording must report what the label says.
+        if reports_no_benefit(&document.finding) != (document.direction == Direction::NoBenefit) {
             return Err(CorpusError::DirectionContradictsFinding(
                 document.doc_id.clone(),
             ));

@@ -5,6 +5,10 @@ disallowed-types = [
   { path = "std::net::TcpStream", reason = "the core opens no sockets" },
   { path = "std::net::TcpListener", reason = "the core opens no sockets" },
   { path = "std::net::UdpSocket", reason = "the core opens no sockets" },
+  # Unix sockets: on Windows these types do not exist, so clippy warns about the paths there and still passes.
+  { path = "std::os::unix::net::UnixStream", reason = "the core opens no sockets" },
+  { path = "std::os::unix::net::UnixListener", reason = "the core opens no sockets" },
+  { path = "std::os::unix::net::UnixDatagram", reason = "the core opens no sockets" },
 ]
 disallowed-methods = [
   { path = "std::net::TcpStream::connect", reason = "the core opens no sockets" },

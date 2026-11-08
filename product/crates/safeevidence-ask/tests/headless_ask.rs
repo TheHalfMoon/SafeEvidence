@@ -739,9 +739,12 @@ fn loader_refuses_a_finding_that_is_a_fragment_or_a_mislabelled_direction() {
             "doc-veltrix-a".to_owned()
         ))
     );
-    // One way only: a "no benefit" label is never refused. Mislabelling an improvement this way can
-    // only add a conflict or an abstention, never an answer.
-    assert_eq!(edit("direction", "no_benefit"), Ok(()));
+    assert_eq!(
+        edit("direction", "no_benefit"),
+        Err(CorpusError::DirectionContradictsFinding(
+            "doc-veltrix-a".to_owned()
+        ))
+    );
     assert!(matches!(
         edit("direction", "maybe"),
         Err(CorpusError::Malformed(_))
@@ -817,16 +820,56 @@ fn invisible_bidi_and_lookalike_characters_are_refused() {
     }
 }
 
-/// A null result without a listed negation word can carry its honest label, so it still counts
-/// against a benefit and the answer becomes a conflict rather than a cautious yes.
+/// A null result worded without a negation word carries its honest label, and cannot be called a benefit.
 #[test]
-fn a_null_result_worded_without_negation_can_be_labelled_no_benefit() {
-    let value = one_doc_corpus(
-        "The score was unchanged at 8 weeks.",
-        "The score was unchanged at 8 weeks.",
-        Direction::NoBenefit,
+fn a_null_result_worded_without_negation_is_labelled_no_benefit_only() {
+    let finding = "The score was unchanged at 8 weeks.";
+    assert_eq!(
+        validate_documents(&one_doc_corpus(finding, finding, Direction::NoBenefit)),
+        Ok(())
     );
-    assert_eq!(validate_documents(&value), Ok(()));
+    assert!(matches!(
+        validate_documents(&one_doc_corpus(finding, finding, Direction::Benefit)),
+        Err(CorpusError::DirectionContradictsFinding(_))
+    ));
+}
+
+/// Conflict detection reads only the labels, so relabelling the improved study as no benefit would turn
+/// a contradiction into an answer. The loader must refuse that label.
+#[test]
+fn relabelling_an_improvement_as_no_benefit_cannot_hide_a_conflict() {
+    let mut document: serde_json::Value = serde_json::from_slice(FIXTURE).unwrap();
+    for item in document["documents"].as_array_mut().unwrap() {
+        if item["doc_id"] == "doc-orbalin-a" {
+            item["direction"] = serde_json::json!("no_benefit");
+        }
+    }
+    let bytes = document.to_string().into_bytes();
+    assert!(matches!(
+        load_corpus(&bytes, &DigestSha256::of(&bytes)),
+        Err(CorpusError::DirectionContradictsFinding(_))
+    ));
+}
+
+/// Contractions, with or without the apostrophe, read as negations.
+#[test]
+fn contractions_cannot_be_labelled_benefit() {
+    for finding in [
+        "The score isn't better at 8 weeks.",
+        "The score can't improve at 8 weeks.",
+        "The score cannot improve at 8 weeks.",
+        "The score didnt improve at 8 weeks.",
+        "The scores weren't better at 8 weeks.",
+    ] {
+        let value = one_doc_corpus(finding, finding, Direction::Benefit);
+        assert!(
+            matches!(
+                validate_documents(&value),
+                Err(CorpusError::DirectionContradictsFinding(_))
+            ),
+            "{finding}"
+        );
+    }
 }
 
 #[test]
