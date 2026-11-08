@@ -46,8 +46,8 @@ TA29_DESKTOP_SCRIPT_SHA256 = "4acd672c1a495d7e4ff1149d58fc3c02636d2c76d64c3c92d4
 NETWORK_TRACE_SCRIPT = "tools/ci/network_trace_report.py"
 NETWORK_TRACE_SCRIPT_SHA256 = "1626491e01a4284ce219111da1859c6d1c9e8b26fb247448bc98eb5ff66caf6f"
 WINDOWS_SOCKET_SCRIPTS_SHA256 = {
-    "tools/ci/windows_socket_poll.ps1": "e1fd3d589bbc5465bd323f81d492e5bd51e0caedda159cf7aade831d6cb80909",
-    "tools/ci/windows_socket_report.py": "22ee977430115974b307d38c7e96a7c31dfec3e077b553340abf8f6cfa8377e4",
+    "tools/ci/windows_socket_poll.ps1": "7e1496eec40f34332eecca1e82ab5a2a5808bb42fb8f1fcb7577c92766ffcd24",
+    "tools/ci/windows_socket_report.py": "c79a9c093f99129038866ad0623cb87b3eba09db29e00f29a0e9501617a3aa7b",
 }
 TA03_SCRIPT_SHA256 = "fa83a8a0b1abc085d5cb8e3ca0be5dbd2ff401d5cdf3c1e707aa792fb230c22b"
 
