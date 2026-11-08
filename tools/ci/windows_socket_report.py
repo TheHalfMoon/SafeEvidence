@@ -1,7 +1,7 @@
 """Summarises `windows_socket_poll.ps1` output: the sockets the desktop app and its WebView2 processes held.
 
 Evidence for VS-1a's no-socket capture (`plan-v1.1` section C). It reports and does not fail, except when
-the poller never saw the app. Usage: python tools/ci/windows_socket_report.py <poll output> [port a known listener holds]
+the poller never saw the app. Usage: python tools/ci/windows_socket_report.py <poll output> [port a known listener holds | webview2]
 """
 import collections
 import ipaddress
@@ -68,5 +68,10 @@ for (name, proto, host, port, state), count in sorted(outside_endpoints.items())
     print(f"  {count:5d}  {proto} {host} port {port} {state} {name}")
 # A control: a socket the run is known to hold must be seen, or a poller that sees nothing would pass.
 expected = sys.argv[2] if len(sys.argv) > 2 else None
-if expected and not any(k[3] == expected and k[4] == "Listen" for k in seen):
+# A build without a debugging port has no known listener. Then the control is weaker: WebView2's processes
+# must have been seen in the app's tree, so the poller at least walked the processes that hold sockets.
+if expected == "webview2":
+    if not any("msedgewebview2.exe" in names.split(",") for names in trees):
+        sys.exit("the poller never saw WebView2 in the app's process tree, so this capture cannot be trusted")
+elif expected and not any(k[3] == expected and k[4] == "Listen" for k in seen):
     sys.exit(f"the poller never saw the known listener on port {expected}, so this capture cannot be trusted")
