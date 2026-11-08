@@ -24,7 +24,7 @@ while (-not (Test-Path $Stop)) {
     }
   } while ($added)
   if ($tree.Count -gt 0) {
-    $lines = @()
+    $lines = @("tree|" + (($tree | ForEach-Object { $names[$_] }) | Sort-Object -Unique) -join ',')
     foreach ($row in (netstat -ano)) {
       $fields = -split $row
       # TCP rows: proto, local, remote, state, pid. UDP rows: proto, local, remote, pid.
