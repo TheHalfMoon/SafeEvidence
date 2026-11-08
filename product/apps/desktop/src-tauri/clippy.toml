@@ -1,0 +1,15 @@
+# The core opens no sockets (architecture section 2). The CI tree checks read crate names only, so they
+# would miss first-party code opening a socket through std. This makes that a clippy error. The one test
+# that deliberately tries a connection, to prove the OS sandbox blocks it, allows it locally.
+disallowed-types = [
+  { path = "std::net::TcpStream", reason = "the core opens no sockets" },
+  { path = "std::net::TcpListener", reason = "the core opens no sockets" },
+  { path = "std::net::UdpSocket", reason = "the core opens no sockets" },
+]
+disallowed-methods = [
+  { path = "std::net::TcpStream::connect", reason = "the core opens no sockets" },
+  { path = "std::net::TcpStream::connect_timeout", reason = "the core opens no sockets" },
+  { path = "std::net::TcpListener::bind", reason = "the core opens no sockets" },
+  { path = "std::net::UdpSocket::bind", reason = "the core opens no sockets" },
+  { path = "std::net::ToSocketAddrs::to_socket_addrs", reason = "a name lookup leaves the machine" },
+]

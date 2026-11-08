@@ -65,6 +65,8 @@ pub enum CorpusError {
     DuplicateDocument(String),
     FindingNotASourceSentence(String),
     DirectionContradictsFinding(String),
+    /// A control, invisible or bidi character, or a letter outside the English path's ASCII.
+    UnsupportedCharacters(String),
 }
 
 /// Words that reverse a finding. A word list, so `direction` remains partly the fixture author's
@@ -81,6 +83,14 @@ fn word_set(text: &str) -> BTreeSet<String> {
         .filter(|word| !word.is_empty())
         .map(str::to_owned)
         .collect()
+}
+
+/// Text the English path can check word by word. An invisible or bidi character, or a lookalike letter
+/// from another script, would let a finding read one way on screen and another to the word checks.
+/// Corpora in other languages return with WP-06.
+fn is_plain_english(text: &str) -> bool {
+    text.chars()
+        .all(|c| c.is_ascii() && (!c.is_ascii_control() || c == '\n'))
 }
 
 fn is_negated(text: &str) -> bool {
@@ -123,6 +133,17 @@ pub fn validate_documents(corpus: &Corpus) -> Result<(), CorpusError> {
         if !seen.insert(document.doc_id.as_str()) {
             return Err(CorpusError::DuplicateDocument(document.doc_id.clone()));
         }
+        let fields = [
+            &document.title,
+            &document.text,
+            &document.finding,
+            &document.population,
+            &document.condition,
+            &document.intervention,
+        ];
+        if fields.iter().any(|field| !is_plain_english(field)) {
+            return Err(CorpusError::UnsupportedCharacters(document.doc_id.clone()));
+        }
         if claim_defect(&document.finding, &document.text).is_some()
             || sentence_positions(&document.text, &document.finding).len() != 1
         {
@@ -130,7 +151,9 @@ pub fn validate_documents(corpus: &Corpus) -> Result<(), CorpusError> {
                 document.doc_id.clone(),
             ));
         }
-        if is_negated(&document.finding) != (document.direction == Direction::NoBenefit) {
+        // One way only: a negated finding cannot be labelled a benefit. A null result worded without a
+        // listed negation word ("was unchanged") may still be labelled no benefit.
+        if is_negated(&document.finding) && document.direction == Direction::Benefit {
             return Err(CorpusError::DirectionContradictsFinding(
                 document.doc_id.clone(),
             ));

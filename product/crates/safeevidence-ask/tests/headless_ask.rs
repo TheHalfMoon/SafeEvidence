@@ -739,12 +739,9 @@ fn loader_refuses_a_finding_that_is_a_fragment_or_a_mislabelled_direction() {
             "doc-veltrix-a".to_owned()
         ))
     );
-    assert_eq!(
-        edit("direction", "no_benefit"),
-        Err(CorpusError::DirectionContradictsFinding(
-            "doc-veltrix-a".to_owned()
-        ))
-    );
+    // One way only: a "no benefit" label is never refused. Mislabelling an improvement this way can
+    // only add a conflict or an abstention, never an answer.
+    assert_eq!(edit("direction", "no_benefit"), Ok(()));
     assert!(matches!(
         edit("direction", "maybe"),
         Err(CorpusError::Malformed(_))
@@ -796,6 +793,40 @@ fn a_claim_also_inside_a_negated_sentence_uses_its_own_span_or_is_refused() {
         validate_documents(&twice).is_err(),
         "an ambiguous span is refused"
     );
+}
+
+/// Each of these reads as "not" on screen but defeats a word check, or reorders text on screen.
+#[test]
+fn invisible_bidi_and_lookalike_characters_are_refused() {
+    for finding in [
+        "The score did n\u{200B}ot improve at 8 weeks.",
+        "The score did n\u{00AD}ot improve at 8 weeks.",
+        "The score did n\u{2060}ot improve at 8 weeks.",
+        "The score did n\u{043E}t improve at 8 weeks.",
+        "The score did \u{202E}ton\u{202C} improve at 8 weeks.",
+        "The score did not\u{0007} improve at 8 weeks.",
+    ] {
+        let value = one_doc_corpus(finding, finding, Direction::Benefit);
+        assert!(
+            matches!(
+                validate_documents(&value),
+                Err(CorpusError::UnsupportedCharacters(_))
+            ),
+            "{finding:?}"
+        );
+    }
+}
+
+/// A null result without a listed negation word can carry its honest label, so it still counts
+/// against a benefit and the answer becomes a conflict rather than a cautious yes.
+#[test]
+fn a_null_result_worded_without_negation_can_be_labelled_no_benefit() {
+    let value = one_doc_corpus(
+        "The score was unchanged at 8 weeks.",
+        "The score was unchanged at 8 weeks.",
+        Direction::NoBenefit,
+    );
+    assert_eq!(validate_documents(&value), Ok(()));
 }
 
 #[test]

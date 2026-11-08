@@ -85,6 +85,17 @@ jobs:
       - name: Check TA-29 for the desktop binary
         shell: bash
         run: python tools/ci/ta29_desktop_denial.py
+      # The desktop app's own lockfile, which the product workspace's cargo-deny run does not cover. Its
+      # config covers all three desktop targets, so one OS is enough.
+      - name: Install cargo-deny
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: cargo +1.98.1 install cargo-deny --version 0.20.2 --locked
+      - name: Check the desktop dependencies with cargo-deny
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        working-directory: product/apps/desktop/src-tauri
+        run: cargo deny --locked check
       - name: Check formatting
         shell: bash
         working-directory: product/apps/desktop/src-tauri
