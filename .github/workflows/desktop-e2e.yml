@@ -62,4 +62,19 @@ jobs:
         shell: bash
         working-directory: product/apps/desktop
         timeout-minutes: 10
-        run: node e2e/ask_e2e.mjs "$(cygpath -w "$PWD/src-tauri/target/debug/safeevidence-desktop.exe")"
+        run: |
+          # The app and its WebView2 processes are polled for sockets while the test runs, as VS-1a's no-socket
+          # capture evidence (plan-v1.1 section C). It reports, and fails only if the capture cannot be trusted.
+          out="$(cygpath -w "$RUNNER_TEMP")"
+          pwsh -NoProfile -File ../../../tools/ci/windows_socket_poll.ps1 -Out "$out\sockets.txt" -Stop "$out\stop.flag" &
+          poller=$!
+          status=0
+          node e2e/ask_e2e.mjs "$(cygpath -w "$PWD/src-tauri/target/debug/safeevidence-desktop.exe")" || status=$?
+          touch "$RUNNER_TEMP/stop.flag"
+          wait "$poller"
+          exit "$status"
+      - name: Report sockets held during the run
+        if: always()
+        shell: bash
+        # 9333 is the e2e build's debugging port, so seeing it shows the poller sees the app's processes.
+        run: python tools/ci/windows_socket_report.py "$RUNNER_TEMP/sockets.txt" 9333
