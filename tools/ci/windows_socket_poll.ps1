@@ -3,7 +3,8 @@
 # socket seen. Polling misses a socket that opens and closes between samples, and DNS through the shared
 # Dnscache service is not attributed to the app. A UDP socket shows no destination, so UDP traffic such
 # as QUIC cannot be attributed to a host. The tree is found by image name and parent PID, so a WebView2
-# process whose parent has exited is missed, and a reused PID could be wrongly included. `netstat -ano` is used because Get-NetTCPConnection takes
+# process whose parent has exited is missed, and a reused PID could be wrongly included. For a connection to
+# a port the app does not own, the listening process is named, matched by port number only. `netstat -ano` is used because Get-NetTCPConnection takes
 # seconds per call, which would leave most of a short run unsampled.
 param([Parameter(Mandatory)] [string] $Out, [Parameter(Mandatory)] [string] $Stop, [string] $Root = 'safeevidence-desktop.exe')
 
@@ -28,6 +29,9 @@ while (-not (Test-Path $Stop)) {
   if ($tree.Count -gt 0) {
     $lines = @("tree|" + ((($tree | ForEach-Object { $names[$_] }) | Sort-Object -Unique) -join ','))
     $parsed = 0
+    # Which process listens on each TCP port, system-wide, so a loopback peer outside the app can be named.
+    $listeners = @{}
+    $peers = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($row in (netstat -ano)) {
       $fields = -split $row
       # TCP rows: proto, local, remote, state, pid. UDP rows: proto, local, remote, pid.
@@ -37,13 +41,20 @@ while (-not (Test-Path $Stop)) {
         $owner = [int]$fields[3]; $state = 'Bound'
       } else { continue }
       $parsed += 1
-      if (-not $tree.Contains($owner)) { continue }
       $local = $fields[1]; $remote = $fields[2]
+      if ($state -eq 'LISTENING') { $listeners[$local.Substring($local.LastIndexOf(':') + 1)] = $owner }
+      if (-not $tree.Contains($owner)) { continue }
       $lp = $local.Substring($local.LastIndexOf(':') + 1); $la = $local.Substring(0, $local.LastIndexOf(':')).Trim('[', ']')
       $rp = $remote.Substring($remote.LastIndexOf(':') + 1); $ra = $remote.Substring(0, $remote.LastIndexOf(':')).Trim('[', ']')
       if ($state -eq 'LISTENING') { $state = 'Listen' }
       if ($state -eq 'Bound') { $ra = ''; $rp = '' }
       $lines += "$($fields[0].ToLower())|$($names[$owner])|$la|$lp|$ra|$rp|$state"
+      if ($state -eq 'ESTABLISHED') { [void]$peers.Add($rp) }
+    }
+    foreach ($port in $peers) {
+      if ($listeners.ContainsKey($port) -and -not $tree.Contains($listeners[$port])) {
+        $lines += "peer|$port|$($names[$listeners[$port]])"
+      }
     }
     # Every socket row parsed system-wide, so a parser that matches nothing cannot pass as a quiet run.
     $lines += "parsed|$parsed"

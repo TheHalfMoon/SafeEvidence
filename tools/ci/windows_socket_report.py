@@ -38,10 +38,14 @@ parsed_rows = 0
 seen = collections.Counter()
 trees = collections.Counter()
 outside_endpoints = collections.Counter()
+peers = collections.Counter()
 for line in open(sys.argv[1], encoding="utf-8-sig", errors="replace"):
     parts = line.strip().split("|")
     if parts[0] == "tree":
         trees[parts[1]] += 1
+        continue
+    if parts[0] == "peer" and len(parts) == 3:
+        peers[(parts[1], parts[2])] += 1
         continue
     if parts[0] == "parsed":
         parsed_rows += int(parts[1])
@@ -70,6 +74,9 @@ listening = sum(c for k, c in seen.items() if k[2].startswith("LISTENING"))
 print(f"Not loopback: {outside}. Listening: {listening}.")
 print("Processes counted as the app, by sample:", dict(trees))
 print(f"Socket rows parsed system-wide, all samples: {parsed_rows}.")
+print("Processes outside the app listening on a port the app connected to, by sample:")
+for (port, name), count in sorted(peers.items()):
+    print(f"  {count:5d}  port {port} {name}")
 print("Endpoints outside loopback (remote address, or local address for a listening or bound socket):")
 for (name, proto, host, port, state), count in sorted(outside_endpoints.items()):
     print(f"  {count:5d}  {proto} {host} port {port} {state} {name}")
