@@ -115,12 +115,13 @@ jobs:
         working-directory: product/apps/desktop
         timeout-minutes: 5
         run: |
-          net stop http //y || true
+          net stop http //y
           node e2e/port80_listener.mjs "$(cygpath -w "$RUNNER_TEMP/port80.txt")" "$(cygpath -w "$RUNNER_TEMP/port80-stop.flag")" &
           listener=$!
           sleep 3
-          # A control: a known request must be recorded, or a listener that sees nothing would pass.
+          # Controls, one per address family: each must be recorded, or a listener that sees nothing would pass.
           curl -s -m 3 -o /dev/null http://127.0.0.1/port80-control || true
+          curl -s -m 3 -o /dev/null "http://[::1]/port80-control-v6" || true
           ./src-tauri/target/debug/safeevidence-desktop.exe 2> "$RUNNER_TEMP/port80-stderr.txt" &
           sleep 30
           status=0
@@ -131,5 +132,8 @@ jobs:
           touch "$RUNNER_TEMP/port80-stop.flag"
           wait "$listener"
           cat "$RUNNER_TEMP/port80.txt"
-          grep -q "port80-control" "$RUNNER_TEMP/port80.txt" || { echo "the listener did not record the control request"; status=1; }
+          grep -q "port80-control HTTP" "$RUNNER_TEMP/port80.txt" || { echo "the listener did not record the IPv4 control"; status=1; }
+          grep -q "port80-control-v6 HTTP" "$RUNNER_TEMP/port80.txt" || { echo "the listener did not record the IPv6 control"; status=1; }
+          # The question is what the app's connection carries, so a run where nothing else connected answers nothing.
+          grep "^connection|" "$RUNNER_TEMP/port80.txt" | grep -vq "port80-control" || { echo "no connection besides the controls arrived"; status=1; }
           exit "$status"
