@@ -71,24 +71,29 @@ pub enum CorpusError {
 
 /// Words that reverse a finding. A word list, so `direction` remains partly the fixture author's
 /// label: this catches mislabels it can recognize, and is not an understanding of meaning.
-const NEGATIONS: [&str; 30] = [
+const NEGATIONS: [&str; 42] = [
     "not", "no", "never", "without", "neither", "nor", "didn", "doesn", "wasn", "failed", "fails",
     "worsened", "worse", "unable", "nobody", "cannot", "cant", "didnt", "doesnt", "wasnt", "isnt",
-    "isn", "arent", "aren", "werent", "weren", "hasnt", "hasn", "havent", "haven",
+    "isn", "arent", "aren", "werent", "weren", "hasnt", "hasn", "havent", "haven", "dont", "don",
+    "wont", "won", "couldnt", "couldn", "shouldnt", "shouldn", "wouldnt", "wouldn", "hadnt",
+    "hadn",
 ];
 /// Words that report a null result without a negation word. A finding using one is not a benefit.
-const NULL_RESULTS: [&str; 5] = [
+const NULL_RESULTS: [&str; 7] = [
     "unchanged",
     "similar",
     "comparable",
     "equivalent",
     "nonsignificant",
+    "insignificant",
+    "ineffective",
 ];
 const UNITS: [&str; 8] = ["mg", "g", "mcg", "kg", "ml", "weeks", "months", "points"];
 
 fn word_set(text: &str) -> BTreeSet<String> {
     text.to_lowercase()
-        .replace('\'', "")
+        .replace(['\'', '`'], "")
+        .replace("non-significant", "nonsignificant")
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| !word.is_empty())
         .map(str::to_owned)
@@ -170,7 +175,10 @@ pub fn validate_documents(corpus: &Corpus) -> Result<(), CorpusError> {
             ));
         }
         // Both ways: conflict detection reads only these labels, so a wrong label in either direction can
-        // hide a contradiction. The wording must report what the label says.
+        // hide a contradiction. This is a word-list sanity check on author-asserted labels, not an
+        // understanding of meaning: unlisted wording can still carry a wrong label, and a benefit finding
+        // with an incidental "no" or "similar" is refused. Corpus trust (signed packs, WP-04) and claim
+        // verification (WP-08) are the real controls, and are owed before any imported corpus.
         if reports_no_benefit(&document.finding) != (document.direction == Direction::NoBenefit) {
             return Err(CorpusError::DirectionContradictsFinding(
                 document.doc_id.clone(),

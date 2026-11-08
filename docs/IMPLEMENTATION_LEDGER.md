@@ -65,6 +65,8 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 
 **Retrieval selects the cited evidence, under `plan-v1.6`** (founder decision, 2026-11-07). Only reports lexical retrieval found can be cited. The guards still see the whole corpus, so a contradiction retrieval misses still stops the answer. A missed applicable report is listed with `EVIDENCE_INSUFFICIENT`.
 
+**Open, from the 2026-11-08 security review:** conflict detection trusts author-asserted direction labels. The loader's word-list check catches simple mislabels only: an improved finding with an incidental "no" or "similar" cannot carry its honest label, and unlisted wording can carry a wrong one, which can hide a contradiction. Corpus trust (WP-04) and claim verification (WP-08) are the real controls, and owed before any imported corpus.
+
 **VS-1 scope is set by `plan-v1.5`** (founder rulings, 2026-11-07): `plan-v1.1` is in force with no independent human review, TA-20 is the Ask flow, a labelled synthetic set serves TA-09, and the M1 exit review is AI-only. EXT-06 stays open. TA-21 and T05 are unchanged and still owed before VS-1 is done.
 
 **TA-13 for VS-1 is narrowed by `plan-v1.4`** (founder decisions, 2026-11-06). Its VS-1 clauses have tests: 1,329 mechanics vectors, 12 of 17 donor fixture cases at resolution level, all 17 questions

@@ -835,9 +835,10 @@ fn a_null_result_worded_without_negation_is_labelled_no_benefit_only() {
 }
 
 /// Conflict detection reads only the labels, so relabelling the improved study as no benefit would turn
-/// a contradiction into an answer. The loader must refuse that label.
+/// a contradiction into an answer. For the fixture's wording the loader refuses that label. Wording with
+/// an incidental "no" or "similar" is not covered: the check is a word list (see `validate_documents`).
 #[test]
-fn relabelling_an_improvement_as_no_benefit_cannot_hide_a_conflict() {
+fn relabelling_the_fixtures_improvement_as_no_benefit_is_refused() {
     let mut document: serde_json::Value = serde_json::from_slice(FIXTURE).unwrap();
     for item in document["documents"].as_array_mut().unwrap() {
         if item["doc_id"] == "doc-orbalin-a" {
@@ -851,7 +852,7 @@ fn relabelling_an_improvement_as_no_benefit_cannot_hide_a_conflict() {
     ));
 }
 
-/// Contractions, with or without the apostrophe, read as negations.
+/// Listed contractions, with or without the apostrophe, and listed null words read as no benefit.
 #[test]
 fn contractions_cannot_be_labelled_benefit() {
     for finding in [
@@ -860,6 +861,10 @@ fn contractions_cannot_be_labelled_benefit() {
         "The score cannot improve at 8 weeks.",
         "The score didnt improve at 8 weeks.",
         "The scores weren't better at 8 weeks.",
+        "The score don't improve at 8 weeks.",
+        "The score couldn`t improve at 8 weeks.",
+        "The change was non-significant at 8 weeks.",
+        "The drug was ineffective at 8 weeks.",
     ] {
         let value = one_doc_corpus(finding, finding, Direction::Benefit);
         assert!(
