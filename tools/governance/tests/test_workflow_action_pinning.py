@@ -45,6 +45,10 @@ TA29_DESKTOP_SCRIPT = "tools/ci/ta29_desktop_denial.py"
 TA29_DESKTOP_SCRIPT_SHA256 = "4acd672c1a495d7e4ff1149d58fc3c02636d2c76d64c3c92d4bb546fefcd4d54"
 NETWORK_TRACE_SCRIPT = "tools/ci/network_trace_report.py"
 NETWORK_TRACE_SCRIPT_SHA256 = "1626491e01a4284ce219111da1859c6d1c9e8b26fb247448bc98eb5ff66caf6f"
+WINDOWS_SOCKET_SCRIPTS_SHA256 = {
+    "tools/ci/windows_socket_poll.ps1": "bddc88c19ff2f274ad12e3fe5e401231e9bba5905e568a9ccc74eb80a5e15f1e",
+    "tools/ci/windows_socket_report.py": "81a633cf0bb5979358be6450e3b0404aa8a34c4d7528786daa8f6698a9aba142",
+}
 TA03_SCRIPT_SHA256 = "fa83a8a0b1abc085d5cb8e3ca0be5dbd2ff401d5cdf3c1e707aa792fb230c22b"
 
 CHECKOUT_LINE = re.compile(r"^\s*uses:\s*actions/checkout@([^\s#]+)", re.MULTILINE)
@@ -119,6 +123,11 @@ class WorkflowCheckoutPinTests(unittest.TestCase):
     def test_network_trace_report_matches_pinned_revision(self):
         source = (ROOT / NETWORK_TRACE_SCRIPT).read_text(encoding="utf-8")
         self.assertEqual(hashlib.sha256(source.encode("utf-8")).hexdigest(), NETWORK_TRACE_SCRIPT_SHA256)
+
+    def test_windows_socket_scripts_match_pinned_revisions(self):
+        for path, digest in WINDOWS_SOCKET_SCRIPTS_SHA256.items():
+            source = (ROOT / path).read_text(encoding="utf-8")
+            self.assertEqual(hashlib.sha256(source.encode("utf-8")).hexdigest(), digest, path)
 
     def test_ta29_desktop_gate_script_matches_pinned_revision(self):
         source = (ROOT / TA29_DESKTOP_SCRIPT).read_text(encoding="utf-8")

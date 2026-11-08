@@ -1,7 +1,9 @@
 # Polls the sockets owned by the desktop app and its WebView2 processes, for VS-1a's no-socket capture
 # evidence on Windows (plan-v1.1 section C). It runs until the stop file exists, and writes one line per
 # socket seen. Polling misses a socket that opens and closes between samples, and DNS through the shared
-# Dnscache service is not attributed to the app. `netstat -ano` is used because Get-NetTCPConnection takes
+# Dnscache service is not attributed to the app. A UDP socket shows no destination, so UDP traffic such
+# as QUIC cannot be attributed to a host. The tree is found by image name and parent PID, so a WebView2
+# process whose parent has exited is missed, and a reused PID could be wrongly included. `netstat -ano` is used because Get-NetTCPConnection takes
 # seconds per call, which would leave most of a short run unsampled.
 param([Parameter(Mandatory)] [string] $Out, [Parameter(Mandatory)] [string] $Stop, [string] $Root = 'safeevidence-desktop.exe')
 
@@ -24,7 +26,7 @@ while (-not (Test-Path $Stop)) {
     }
   } while ($added)
   if ($tree.Count -gt 0) {
-    $lines = @("tree|" + (($tree | ForEach-Object { $names[$_] }) | Sort-Object -Unique) -join ',')
+    $lines = @("tree|" + ((($tree | ForEach-Object { $names[$_] }) | Sort-Object -Unique) -join ','))
     foreach ($row in (netstat -ano)) {
       $fields = -split $row
       # TCP rows: proto, local, remote, state, pid. UDP rows: proto, local, remote, pid.
