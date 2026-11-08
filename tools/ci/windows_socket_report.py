@@ -1,7 +1,7 @@
 """Summarises `windows_socket_poll.ps1` output: the sockets the desktop app and its WebView2 processes held.
 
 Evidence for VS-1a's no-socket capture (`plan-v1.1` section C). It reports and does not fail, except when
-the poller never saw the app. Usage: python tools/ci/windows_socket_report.py <poll output> [port a known listener holds]
+the poller never saw the app. Usage: python tools/ci/windows_socket_report.py <poll output> [port a known listener holds | webview2]
 """
 import collections
 import ipaddress
@@ -34,6 +34,7 @@ def kind(local, remote, state):
 
 
 samples = 0
+parsed_rows = 0
 seen = collections.Counter()
 trees = collections.Counter()
 outside_endpoints = collections.Counter()
@@ -41,6 +42,9 @@ for line in open(sys.argv[1], encoding="utf-8-sig", errors="replace"):
     parts = line.strip().split("|")
     if parts[0] == "tree":
         trees[parts[1]] += 1
+        continue
+    if parts[0] == "parsed":
+        parsed_rows += int(parts[1])
         continue
     if parts[0] == "samples":
         samples = int(parts[1])
@@ -56,6 +60,8 @@ for line in open(sys.argv[1], encoding="utf-8-sig", errors="replace"):
 
 if samples == 0:
     sys.exit("the poller never saw the app")
+if parsed_rows == 0:
+    sys.exit("the poller parsed no socket rows at all, so this capture cannot be trusted")
 print(f"Samples with the app running: {samples}. Sockets seen, counted per sample:")
 for (name, proto, where, port, state), count in sorted(seen.items()):
     print(f"  {count:5d}  {where:28s} {proto} port {port:6s} {state:12s} {name}")
@@ -63,10 +69,16 @@ outside = sum(c for k, c in seen.items() if k[2].endswith("NOT LOOPBACK"))
 listening = sum(c for k, c in seen.items() if k[2].startswith("LISTENING"))
 print(f"Not loopback: {outside}. Listening: {listening}.")
 print("Processes counted as the app, by sample:", dict(trees))
+print(f"Socket rows parsed system-wide, all samples: {parsed_rows}.")
 print("Endpoints outside loopback (remote address, or local address for a listening or bound socket):")
 for (name, proto, host, port, state), count in sorted(outside_endpoints.items()):
     print(f"  {count:5d}  {proto} {host} port {port} {state} {name}")
 # A control: a socket the run is known to hold must be seen, or a poller that sees nothing would pass.
 expected = sys.argv[2] if len(sys.argv) > 2 else None
-if expected and not any(k[3] == expected and k[4] == "Listen" for k in seen):
+# A build without a debugging port has no known listener. Then the control is weaker: WebView2's processes
+# must have been seen in the app's tree, so the poller at least walked the processes that hold sockets.
+if expected == "webview2":
+    if not any("msedgewebview2.exe" in names.split(",") for names in trees):
+        sys.exit("the poller never saw WebView2 in the app's process tree, so this capture cannot be trusted")
+elif expected and not any(k[3] == expected and k[4] == "Listen" for k in seen):
     sys.exit(f"the poller never saw the known listener on port {expected}, so this capture cannot be trusted")

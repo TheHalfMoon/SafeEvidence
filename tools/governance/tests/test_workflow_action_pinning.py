@@ -31,7 +31,7 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
     ".github/workflows/product-ci.yml": "2fd5dd9537e2c2886e8dc7663d3afc2f19c3e9280a56681ebb6ad8a230c6ced8",
     ".github/workflows/desktop-ci.yml": "47e48dbb7e11a289039ed7192fd0de65367a124558021181662d7a667d2e94ea",
-    ".github/workflows/desktop-e2e.yml": "89d77947a8823437dbc3de06c360316925433015ae4ed53317ea4d3144d6a22b",
+    ".github/workflows/desktop-e2e.yml": "acdd32adc9c0e6076e7c5a280373fc9919a04eceaff8b28668403e2df11dc5c5",
     ".github/workflows/desktop-e2e-linux.yml": "500ec98cc8cebe690d8568d6cf84a4f8ef928d4afaaa25df80901d00b8d9506d",
 }
 
@@ -46,8 +46,8 @@ TA29_DESKTOP_SCRIPT_SHA256 = "4acd672c1a495d7e4ff1149d58fc3c02636d2c76d64c3c92d4
 NETWORK_TRACE_SCRIPT = "tools/ci/network_trace_report.py"
 NETWORK_TRACE_SCRIPT_SHA256 = "1626491e01a4284ce219111da1859c6d1c9e8b26fb247448bc98eb5ff66caf6f"
 WINDOWS_SOCKET_SCRIPTS_SHA256 = {
-    "tools/ci/windows_socket_poll.ps1": "bddc88c19ff2f274ad12e3fe5e401231e9bba5905e568a9ccc74eb80a5e15f1e",
-    "tools/ci/windows_socket_report.py": "81a633cf0bb5979358be6450e3b0404aa8a34c4d7528786daa8f6698a9aba142",
+    "tools/ci/windows_socket_poll.ps1": "e1fd3d589bbc5465bd323f81d492e5bd51e0caedda159cf7aade831d6cb80909",
+    "tools/ci/windows_socket_report.py": "22ee977430115974b307d38c7e96a7c31dfec3e077b553340abf8f6cfa8377e4",
 }
 TA03_SCRIPT_SHA256 = "fa83a8a0b1abc085d5cb8e3ca0be5dbd2ff401d5cdf3c1e707aa792fb230c22b"
 

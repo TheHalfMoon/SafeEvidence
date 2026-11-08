@@ -78,3 +78,32 @@ jobs:
         shell: bash
         # 9333 is the e2e build's debugging port, so seeing it shows the poller sees the app's processes.
         run: python tools/ci/windows_socket_report.py "$RUNNER_TEMP/sockets.txt" 9333
+      # The same capture for a build as it ships: no e2e feature, so no debugging port. It covers startup and
+      # 30 seconds idle, not a question, since nothing drives the window. It is a debug build and unsigned.
+      - name: Build the app as it ships, apart from release mode and signing
+        working-directory: product/apps/desktop/src-tauri
+        run: cargo build --locked --features custom-protocol
+      - name: Capture a launch of that build
+        shell: bash
+        working-directory: product/apps/desktop
+        timeout-minutes: 5
+        run: |
+          out="$(cygpath -w "$RUNNER_TEMP")"
+          pwsh -NoProfile -File ../../../tools/ci/windows_socket_poll.ps1 -Out "$out\shipped-sockets.txt" -Stop "$out\shipped-stop.flag" &
+          poller=$!
+          ./src-tauri/target/debug/safeevidence-desktop.exe 2> "$RUNNER_TEMP/shipped-stderr.txt" &
+          sleep 30
+          status=0
+          # Fails the step if the app is not running by now, so an early crash cannot look like a quiet run.
+          tasklist //FI "IMAGENAME eq safeevidence-desktop.exe" | grep -q safeevidence-desktop.exe || status=1
+          # A startup failure does not exit: it waits on a dialog nobody clicks. It writes its title to stderr first.
+          cat "$RUNNER_TEMP/shipped-stderr.txt"
+          if grep -q "could not start" "$RUNNER_TEMP/shipped-stderr.txt"; then status=1; fi
+          taskkill //F //T //IM safeevidence-desktop.exe || true
+          touch "$RUNNER_TEMP/shipped-stop.flag"
+          wait "$poller"
+          exit "$status"
+      - name: Report sockets held by that build
+        if: always()
+        shell: bash
+        run: python tools/ci/windows_socket_report.py "$RUNNER_TEMP/shipped-sockets.txt" webview2
