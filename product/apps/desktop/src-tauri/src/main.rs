@@ -30,7 +30,8 @@ fn presentation_builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri:
         .invoke_handler(tauri::generate_handler![ask_command::ask_question])
 }
 
-/// WebView2 switches for every Windows build: wry's defaults, then background services turned off.
+/// WebView2 switches for every Windows build: wry 0.57's defaults (its disabled features and, with autoplay on,
+/// the autoplay policy), plus background services turned off.
 #[cfg(windows)]
 const WEBVIEW2_ARGS: &str = concat!(
     "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,msEdgeTranslate,Translate,",
@@ -38,7 +39,7 @@ const WEBVIEW2_ARGS: &str = concat!(
     "NetworkTimeServiceQuerying",
     " --disable-background-networking --disable-component-update --disable-domain-reliability",
     " --disable-sync --no-pings --disable-quic --disable-client-side-phishing-detection",
-    " --disable-breakpad --dns-prefetch-disable",
+    " --disable-breakpad --dns-prefetch-disable --autoplay-policy=no-user-gesture-required",
 );
 
 fn main() {
@@ -80,9 +81,8 @@ fn main() {
             #[cfg(all(not(feature = "e2e"), windows))]
             let window = window.additional_browser_args(WEBVIEW2_ARGS);
             #[cfg(all(feature = "e2e", windows))]
-            let window = window.additional_browser_args(&format!(
-                "{WEBVIEW2_ARGS} --autoplay-policy=no-user-gesture-required --remote-debugging-port=9333"
-            ));
+            let window = window
+                .additional_browser_args(&format!("{WEBVIEW2_ARGS} --remote-debugging-port=9333"));
             window.build()?;
             Ok(())
         })
