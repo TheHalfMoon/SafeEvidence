@@ -4,7 +4,8 @@
 # Dnscache service is not attributed to the app. A UDP socket shows no destination, so UDP traffic such
 # as QUIC cannot be attributed to a host. The tree is found by image name and parent PID, so a WebView2
 # process whose parent has exited is missed, and a reused PID could be wrongly included. For a connection to
-# a port the app does not own, the listening process is named, matched by port number only. `netstat -ano` is used because Get-NetTCPConnection takes
+# a loopback port the app does not own, the listening process is named, matched by port number only and
+# skipped when two processes listen on that number. `netstat -ano` is used because Get-NetTCPConnection takes
 # seconds per call, which would leave most of a short run unsampled.
 param([Parameter(Mandatory)] [string] $Out, [Parameter(Mandatory)] [string] $Stop, [string] $Root = 'safeevidence-desktop.exe')
 
@@ -42,17 +43,22 @@ while (-not (Test-Path $Stop)) {
       } else { continue }
       $parsed += 1
       $local = $fields[1]; $remote = $fields[2]
-      if ($state -eq 'LISTENING') { $listeners[$local.Substring($local.LastIndexOf(':') + 1)] = $owner }
+      if ($state -eq 'LISTENING') {
+        # Two owners on one port number (say IPv4 and IPv6) cannot be told apart by port, so neither is named.
+        $port = $local.Substring($local.LastIndexOf(':') + 1)
+        if ($listeners.ContainsKey($port) -and $listeners[$port] -ne $owner) { $listeners[$port] = -1 } else { $listeners[$port] = $owner }
+      }
       if (-not $tree.Contains($owner)) { continue }
       $lp = $local.Substring($local.LastIndexOf(':') + 1); $la = $local.Substring(0, $local.LastIndexOf(':')).Trim('[', ']')
       $rp = $remote.Substring($remote.LastIndexOf(':') + 1); $ra = $remote.Substring(0, $remote.LastIndexOf(':')).Trim('[', ']')
       if ($state -eq 'LISTENING') { $state = 'Listen' }
       if ($state -eq 'Bound') { $ra = ''; $rp = '' }
       $lines += "$($fields[0].ToLower())|$($names[$owner])|$la|$lp|$ra|$rp|$state"
-      if ($state -eq 'ESTABLISHED') { [void]$peers.Add($rp) }
+      # Only loopback peers: a remote port says nothing about a local listener on the same number.
+      if ($state -eq 'ESTABLISHED' -and ($ra -like '127.*' -or $ra -eq '::1')) { [void]$peers.Add($rp) }
     }
     foreach ($port in $peers) {
-      if ($listeners.ContainsKey($port) -and -not $tree.Contains($listeners[$port])) {
+      if ($listeners.ContainsKey($port) -and $listeners[$port] -ge 0 -and -not $tree.Contains($listeners[$port])) {
         $lines += "peer|$port|$($names[$listeners[$port]])"
       }
     }
