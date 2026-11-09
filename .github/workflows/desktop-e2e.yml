@@ -144,6 +144,11 @@ jobs:
         working-directory: product/apps/desktop
         timeout-minutes: 10
         run: |
+          # WebView2 processes from the launches above can outlive the app and hold its data folder. A new window
+          # would then join that browser, which has no debugging port, so the test could not attach.
+          tasklist | grep -i -E "msedgewebview2|safeevidence" || echo "no WebView2 or app process left"
+          taskkill //F //IM msedgewebview2.exe || true
+          sleep 3
           node e2e/port80_listener.mjs "$(cygpath -w "$RUNNER_TEMP/port80-ask.txt")" "$(cygpath -w "$RUNNER_TEMP/port80-ask-stop.flag")" &
           listener=$!
           sleep 3
