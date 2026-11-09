@@ -14,8 +14,9 @@ jobs:
   # because it has not shown it is reliable on hosted runners. The Linux build places the keyring helper beside
   # the app, from `src-tauri/binaries`, which this job fills first.
   desktop-e2e-linux:
-    name: desktop end-to-end (ubuntu-latest)
-    runs-on: ubuntu-latest
+    name: desktop end-to-end (ubuntu-24.04)
+    # Pinned: Ubuntu 26.04, now behind ubuntu-latest, has no webkit2gtk-driver package, so WebKitWebDriver is missing.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       CARGO_TERM_COLOR: never
