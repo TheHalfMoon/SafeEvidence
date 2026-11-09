@@ -32,7 +32,7 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/product-ci.yml": "2fd5dd9537e2c2886e8dc7663d3afc2f19c3e9280a56681ebb6ad8a230c6ced8",
     ".github/workflows/desktop-ci.yml": "47e48dbb7e11a289039ed7192fd0de65367a124558021181662d7a667d2e94ea",
     ".github/workflows/desktop-e2e.yml": "044a10d5a33023ae8b09c74a8e3f3662b66f04288d7333f146fb730fd1af90fa",
-    ".github/workflows/desktop-e2e-linux.yml": "500ec98cc8cebe690d8568d6cf84a4f8ef928d4afaaa25df80901d00b8d9506d",
+    ".github/workflows/desktop-e2e-linux.yml": "af7f0e5cd3a7b70ce227ce792029c5759b8386f9d659c516e3ea99980027265f",
 }
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.
@@ -335,7 +335,7 @@ class WorkflowCheckoutPinTests(unittest.TestCase):
     def test_the_linux_end_to_end_workflow_runs_only_where_its_driver_exists(self):
         # WebKitWebDriver exists only on Linux, so this workflow is an exception below too.
         source = (ROOT / LINUX_ONLY_WORKFLOW).read_text(encoding="utf-8")
-        self.assertIn("runs-on: ubuntu-latest", source)
+        self.assertIn("runs-on: ubuntu-24.04", source)
         self.assertNotIn("matrix.os", source)
         self.assertIn('test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"', source)
 
