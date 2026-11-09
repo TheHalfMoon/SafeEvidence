@@ -137,3 +137,27 @@ jobs:
           # The question is what the app's connection carries, so a run where nothing else connected answers nothing.
           grep "^connection|" "$RUNNER_TEMP/port80.txt" | grep -vq "port80-control" || { echo "no connection besides the controls arrived"; status=1; }
           exit "$status"
+      # The same listener while the end-to-end test asks a question, in the e2e build, across both of its launches.
+      # The HTTP service is still stopped from the step above. It fails if the typed question reaches the port.
+      - name: Record what reaches loopback port 80 during an Ask
+        shell: bash
+        working-directory: product/apps/desktop
+        timeout-minutes: 10
+        run: |
+          node e2e/port80_listener.mjs "$(cygpath -w "$RUNNER_TEMP/port80-ask.txt")" "$(cygpath -w "$RUNNER_TEMP/port80-ask-stop.flag")" &
+          listener=$!
+          sleep 3
+          curl -s -m 3 -o /dev/null http://127.0.0.1/port80-control || true
+          curl -s -m 3 -o /dev/null "http://[::1]/port80-control-v6" || true
+          status=0
+          node e2e/ask_e2e.mjs "$(cygpath -w "$PWD/src-tauri/target/debug/safeevidence-desktop.exe")" || status=$?
+          sleep 2
+          touch "$RUNNER_TEMP/port80-ask-stop.flag"
+          wait "$listener"
+          cat "$RUNNER_TEMP/port80-ask.txt"
+          grep -q "port80-control HTTP" "$RUNNER_TEMP/port80-ask.txt" || { echo "the listener did not record the IPv4 control"; status=1; }
+          grep -q "port80-control-v6 HTTP" "$RUNNER_TEMP/port80-ask.txt" || { echo "the listener did not record the IPv6 control"; status=1; }
+          grep "^connection|" "$RUNNER_TEMP/port80-ask.txt" | grep -vq "port80-control" || { echo "no connection besides the controls arrived"; status=1; }
+          # zqvortelinax is the nonce the test types into the question (e2e/ask_checks.mjs).
+          if grep -q "zqvortelinax" "$RUNNER_TEMP/port80-ask.txt"; then echo "the typed question reached loopback port 80"; status=1; fi
+          exit "$status"
