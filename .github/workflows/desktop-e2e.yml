@@ -135,7 +135,10 @@ jobs:
           grep -q "port80-control HTTP" "$RUNNER_TEMP/port80.txt" || { echo "the listener did not record the IPv4 control"; status=1; }
           grep -q "port80-control-v6 HTTP" "$RUNNER_TEMP/port80.txt" || { echo "the listener did not record the IPv6 control"; status=1; }
           # The question is what the app's connection carries, so a run where nothing else connected answers nothing.
-          grep "^connection|" "$RUNNER_TEMP/port80.txt" | grep -vq "port80-control" || { echo "no connection besides the controls arrived"; status=1; }
+          others="$(grep "^connection|" "$RUNNER_TEMP/port80.txt" | grep -v "port80-control" || true)"
+          [ -n "$others" ] || { echo "no connection besides the controls arrived"; status=1; }
+          # The listener keeps only the first bytes, so any byte from another connection fails the step.
+          if echo "$others" | awk -F"|" '$5 != "" && $5 != "0" { found = 1 } END { exit !found }'; then echo "a connection besides the controls carried bytes"; status=1; fi
           exit "$status"
       # The same listener while the end-to-end test asks a question, in the e2e build, across both of its launches.
       # The HTTP service is still stopped from the step above. It fails if the typed question reaches the port.
@@ -161,7 +164,10 @@ jobs:
           cat "$RUNNER_TEMP/port80-ask.txt"
           grep -q "port80-control HTTP" "$RUNNER_TEMP/port80-ask.txt" || { echo "the listener did not record the IPv4 control"; status=1; }
           grep -q "port80-control-v6 HTTP" "$RUNNER_TEMP/port80-ask.txt" || { echo "the listener did not record the IPv6 control"; status=1; }
-          grep "^connection|" "$RUNNER_TEMP/port80-ask.txt" | grep -vq "port80-control" || { echo "no connection besides the controls arrived"; status=1; }
+          others="$(grep "^connection|" "$RUNNER_TEMP/port80-ask.txt" | grep -v "port80-control" || true)"
+          [ -n "$others" ] || { echo "no connection besides the controls arrived"; status=1; }
+          # The listener keeps only the first bytes, so any byte from another connection fails the step.
+          if echo "$others" | awk -F"|" '$5 != "" && $5 != "0" { found = 1 } END { exit !found }'; then echo "a connection besides the controls carried bytes"; status=1; fi
           # zqvortelinax is the nonce the test types into the question (e2e/ask_checks.mjs).
           if grep -q "zqvortelinax" "$RUNNER_TEMP/port80-ask.txt"; then echo "the typed question reached loopback port 80"; status=1; fi
           exit "$status"
