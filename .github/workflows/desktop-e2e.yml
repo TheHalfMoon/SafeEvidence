@@ -139,16 +139,15 @@ jobs:
           exit "$status"
       # The same listener while the end-to-end test asks a question, in the e2e build, across both of its launches.
       # The HTTP service is still stopped from the step above. It fails if the typed question reaches the port.
+      # The shipped-style build above overwrote the e2e binary at the same path, so build the e2e app again.
+      - name: Build the app for the end-to-end test again
+        working-directory: product/apps/desktop/src-tauri
+        run: cargo build --locked --features custom-protocol,e2e
       - name: Record what reaches loopback port 80 during an Ask
         shell: bash
         working-directory: product/apps/desktop
         timeout-minutes: 10
         run: |
-          # WebView2 processes from the launches above can outlive the app and hold its data folder. A new window
-          # would then join that browser, which has no debugging port, so the test could not attach.
-          tasklist | grep -i -E "msedgewebview2|safeevidence" || echo "no WebView2 or app process left"
-          taskkill //F //IM msedgewebview2.exe || true
-          sleep 3
           node e2e/port80_listener.mjs "$(cygpath -w "$RUNNER_TEMP/port80-ask.txt")" "$(cygpath -w "$RUNNER_TEMP/port80-ask-stop.flag")" &
           listener=$!
           sleep 3

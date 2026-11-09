@@ -31,7 +31,7 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
     ".github/workflows/product-ci.yml": "2fd5dd9537e2c2886e8dc7663d3afc2f19c3e9280a56681ebb6ad8a230c6ced8",
     ".github/workflows/desktop-ci.yml": "47e48dbb7e11a289039ed7192fd0de65367a124558021181662d7a667d2e94ea",
-    ".github/workflows/desktop-e2e.yml": "5c61aca942618bae64d32147c61d64896bfaa071f98e7965579eada33bc6a613",
+    ".github/workflows/desktop-e2e.yml": "044a10d5a33023ae8b09c74a8e3f3662b66f04288d7333f146fb730fd1af90fa",
     ".github/workflows/desktop-e2e-linux.yml": "500ec98cc8cebe690d8568d6cf84a4f8ef928d4afaaa25df80901d00b8d9506d",
 }
 
