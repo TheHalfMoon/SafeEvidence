@@ -1,14 +1,19 @@
 # SafeEvidence V1 External Founder and Expert Decision Packet
 
+State: **REQUEST ONLY — NOT APPROVED. NOT SIGNED.**
 Date: `2026-11-27`
 Evaluated `main` baseline: `69fea4c32eaa1384e5305e425fa1076e4b630d94`
 Companion technical & rights dossier: [V1_GATE_AND_ADMISSION_AUDIT_2026-11-27.md](../handoff/V1_GATE_AND_ADMISSION_AUDIT_2026-11-27.md)
 
 ---
 
-## Purpose and Governance Boundary
+## Purpose, Non-Ratification Fence, and Governance Boundary
 
-Autonomous engineering has completed all M0-M4 synthetic baseline PRs (`#91`-#`95` merged on `main` @ `69fea4c3`) and is executing all remaining `EXT-02` / D2-authorized engineering tasks. Under `AGENTS.md` and `docs/PLAN_FREEZE.md`, autonomous engineering **cannot** invent founder source-rights grants, disclose private-repository paths, sign clinical charters, hold production TUF/code-signing keys, or substitute an AI review for an independent human expert review.
+This document is an **engineering-prepared decision request**, not a decision record. In strict alignment with `docs/decisions/M0_FOUNDER_DECISION_PACKET_2026-11-05.md` §3:
+
+1. **Machine-key / DCO non-ratification rule:** Committing, signing, pushing, or merging this file from the authorized development workstation — even when git commits carry this machine's configured SSH signing key, GitHub push credentials, or `Signed-off-by: Abdulaziz <alshehriofficial@gmail.com>` — **does NOT ratify, sign, or approve any decision `D5` through `D12`**.
+2. **How a decision becomes effective:** Each decision `D5`–`D12` takes effect **only** after an explicit human decision comment is posted directly on the target GitHub Issue (`#5`, `#3`, `#4`, or `#17`) or pull request (`PR #43`) by the accountable rights owner, founder, clinical lead, or independent human expert, and is subsequently bound by `decision_ref` in a separate governance PR.
+3. **Hard non-delegable boundaries:** Autonomous engineering **cannot** invent founder source-rights grants, disclose private-repository paths, sign clinical charters, hold production TUF/code-signing keys, or substitute an AI review for an independent human expert review.
 
 This packet consolidates the exact external decisions required across **Issue #5**, **Issue #3**, **Issue #4**, **Issue #17**, and **PR #43** (`D5` through `D12`, continuing the numbering from `docs/decisions/M0_FOUNDER_DECISION_PACKET_2026-11-05.md` `D1`-`D4`).
 
@@ -24,8 +29,8 @@ Prior signed baseline: [D2 & D4 (`issuecomment-6647500204`)](https://github.com/
   - `T05` (`AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`, `8` files, `52,284` B, `Apache-2.0`) — network broker (`safeevidence-network`).
   - `T07` (`AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`, `6` files, `33,171` B, `Apache-2.0`; `pack_runtime.rs` excluded per F8) — pack manifest/store (`safeevidence-pack`).
   - `T09` (`AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`, `7` files, `51,418` B, `Apache-2.0`) — FHIR R4 lexical gate & extractors (`safeevidence-fhir`; clinical use still gated on Issue #4 `EXT-03`).
-  - `T10` (`AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`, `18` files, `115,612` B, `Apache-2.0`) — OS sandbox plans/probes (`safeevidence-sandbox`).
-  - `T15` (`TheHalfMoon/MedOrigin` @ `ec8b1b6f7392b09ecbb023600b3a83cfff6f14a8`, `38` files, `197,171` B, `Apache-2.0`) — Python stdlib `litdb` acquisition, dedupe, screening, and PRISMA log.
+  - `T10` (`AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`, `18` files, `116,470` B, `Apache-2.0`) — OS sandbox plans/probes (`safeevidence-sandbox`).
+  - `T15` (`TheHalfMoon/MedOrigin` @ `ec8b1b6f7392b09ecbb023600b3a83cfff6f14a8`, `38` files, `188,511` B, `Apache-2.0`) — Python stdlib `litdb` acquisition, dedupe, screening, and PRISMA log.
   - `T16` (`AbdulazizShehri/safeOCR` @ `d2e2ea815b17a7a3f0e59ce43dbdd160966e73a4`, `9` files, `103,411` B, `Apache-2.0`; `ocr.py` excluded per F11) — critical-value verification.
 - **Options:**
   - **Option D5-A (Approve all 6 slices):** Confirm sole founder ownership/authority over `T05`, `T07`, `T09`, `T10`, `T15`, and `T16` at the pinned commits and authorize flipping `ADM-0015`..`ADM-0020` to `VERIFIED_ALLOWED` (`FOUNDER_OWNED`, `Apache-2.0`), while keeping `T09` patient-care runtime disabled until Issue #4 (`EXT-03`) closes.
@@ -46,12 +51,12 @@ Prior signed baseline: [D2 & D4 (`issuecomment-6647500204`)](https://github.com/
 ### Decision D7 — External Public-License Worker, Crate, Benchmark, and Copyleft Boundary (`EXT-01`)
 - **Options:**
   - **Option D7-A (Approve permissive slices with explicit asset boundaries; enforce copyleft/no-license denials):**
-    1. Approve `PUBLIC_LICENSE` code admission (subject to `WP-23a` sandbox + hash-locked dependency closure) for: `T18` (`asreview`, `Apache-2.0`), `T19` (`statsmodels`, `BSD-3-Clause`), `T20` (`xberg` `pdf-native` only, `MIT`, in separate `safeevidence-docs` workspace), and `T24` (`uniffi`, `MPL-2.0`, unmodified crate at M5).
-    2. Approve benchmark-only admission (`bench/`, never shipped in desktop/mobile binaries) for `T27` (`allenai/scifact`: code `Apache-2.0`, claims `CC-BY-4.0`, abstracts `ODC-By-1.0` with mandatory attribution) and `T28` (`jayded/evidence-inference`: code `MIT`, filtered strictly to permissive `CC-BY`/`CC0` PMC OA articles).
-    3. Ratify permanent in-tree **denial** (`DENIED` / `RIGHTS_UNKNOWN`, zero bytes copied or distributed) for `T34` (`ijmarshall/robotreviewer`, `GPL-3.0-only`), `T28b` Zenodo weights (`GPL-2.0`) & UMLS `minimap`, and `T35` (`ijmarshall/trialstreamer`, no license file) unless a separate written rightsholder grant is later filed.
+    1. Approve `PUBLIC_LICENSE` code admission (subject to `WP-23a` sandbox + hash-locked dependency closure) for: `T17` worker grounding/decoding slice (`ADM-0041`, `maziyarpanahi/openmed`, `Apache-2.0`, carrying `ICU.txt` if `core/decoding/spans.py` Indic segmenter rules are used and excluding `athena`/`rxnorm`/`loinc`), `T18` (`ADM-0021`, `asreview`, `Apache-2.0`), `T19` (`ADM-0022`, `statsmodels`, `BSD-3-Clause`), `T20` (`ADM-0023`, `xberg` `pdf-native` only, `MIT`, in separate `safeevidence-docs` workspace), and `T24` (`ADM-0027`, `uniffi`, `MPL-2.0`, unmodified crate at M5).
+    2. Approve benchmark-only admission (`bench/`, never shipped in desktop/mobile binaries) for `T20c` (`docling.rs` @ `69eaf416...`, `MIT`, strictly `--no-default-features --features pdf` per `TA-29`), `T27` (`ADM-0030`, `allenai/scifact`: code `Apache-2.0`, claims `CC-BY-4.0`, abstracts `ODC-By-1.0` with mandatory attribution), `T28` (`ADM-0032`, `jayded/evidence-inference`: code `MIT`, filtered strictly to permissive `CC-BY`/`CC0` PMC OA articles), `T28d` (`ADM-0035`, `PICOX` `MIT` after verifying `PICO-corpus-output.zip` underlying abstract terms), `SYNERGY` (`CC0-1.0` @ `dc2dadfd...`), and `BEIR` harness (`Apache-2.0` @ `ef83d293...`, with per-dataset license review before any corpus download).
+    3. Ratify permanent in-tree **denial** (`DENIED` / `RIGHTS_UNKNOWN`, zero bytes copied or distributed) for `T34` (`ADM-0039`, `ijmarshall/robotreviewer`, `GPL-3.0-only`), `T28b` (`ADM-0033`, Zenodo `GPL-2.0` weights & UMLS `minimap`), and `T35` (`ADM-0040`, `ijmarshall/trialstreamer`, no license file) unless a separate written rightsholder grant is later filed.
   - **Option D7-B (Modify scope / hold):** Specify per-packet overrides on Issue #5.
 - **Required evidence:** Signed founder comment on [Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5).
-- **Consequences & unlocked work:** Unlocks `WP-14` (`TA-16` ASReview WSS@95), `WP-16` (`TA-18` `statsmodels` meta-analysis), `WP-13` native PDF extraction (`T20` `pdf-native`), `TA-10` SciFact evaluation (`T27`), and `TA-17` Evidence Inference evaluation (`T28`).
+- **Consequences & unlocked work:** Unlocks `WP-06` worker grounding (`ADM-0041`), `WP-14` (`TA-16` ASReview WSS@95), `WP-16` (`TA-18` `statsmodels` meta-analysis), `WP-13` native PDF extraction (`T20` `pdf-native` + `T20c` challenger), `TA-10` SciFact evaluation (`T27`), and `TA-17` Evidence Inference evaluation (`T28`).
 
 ### Decision D8 — Model-Card & Weight Redistribution Clearance (`EXT-07`)
 - **Affected items:** `T23` (`ncbi/MedCPT` HF weights declare `license: other`), `T29` (`PaddleOCR` printed EN + AR ONNX weights), `WP-08` NLI cross-encoder ONNX model, `WP-12` optional local LLM generator (`llama.cpp` GGUF), plus model-bearing crates `ort` and `fastembed` (`T21`).
@@ -62,13 +67,13 @@ Prior signed baseline: [D2 & D4 (`issuecomment-6647500204`)](https://github.com/
 - **Required evidence:** Per-model row on [Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5) naming model card URL, exact weight SHA-256, license SPDX, and training/redistribution restrictions.
 - **Consequences & unlocked work:** Unlocks `ort` + `fastembed` (`T21`), `sqlite-vec` (`T22`), OCR recognition (`T20` `xberg-paddle-ocr` + `T29`), VS-1b NLI claim verification (`WP-08`), and optional local synthesis (`WP-12`).
 
-### Decision D9 — Release Signing Keys, TUF Ceremony, and Installer Bundling (`EXT-05`)
-- **Affected items:** `WP-24` (`TA-28`), `T25` (`awslabs/tough`), and `tauri.conf.json` (`bundle.active`).
+### Decision D9 — Release Signing Keys, TUF Ceremony, Installer Bundling, and Pre-Release Platform Isolation Revisits (`EXT-05`, `plan-v1.2`, `plan-v1.5`)
+- **Affected items:** `WP-24` (`TA-28`), `T25` (`awslabs/tough`), `tauri.conf.json` (`bundle.active`), `plan-v1.2` Windows `TA-03` build-script network isolation revisit, and `plan-v1.5` shipped-Linux-incognito E2E disposition.
 - **Options:**
-  - **Option D9-A (Establish offline root + targets TUF ceremony & OS signing identity):** Name the human key-custody owner on Issue #5, generate offline hardware-backed TUF Root/Targets/Snapshot/Timestamp public keys (committing only public root metadata `root.json`), and provision Windows Authenticode / macOS Developer ID signing in release CI.
-  - **Option D9-B (Defer release signing until clinical & human security gates close):** Keep `bundle.active = false`, `RELEASE_QUALIFIED = FALSE`, and zero GitHub Releases while qualifying unsigned offline staging artifacts in CI.
-- **Required evidence:** Signed custody record on [Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5) + committed public TUF `1.root.json` (never private keys).
-- **Consequences & unlocked work:** Unlocks `T25` `tough` pack update/rollback verification, `bundle.active = true` signed Windows/macOS/Linux installers, and `WP-24` (`TA-28`) M6 release candidate qualification.
+  - **Option D9-A (Establish offline root + targets TUF ceremony, OS signing identity, & pre-release platform dispositions):** Name the human key-custody owner on Issue #5, generate offline hardware-backed TUF Root/Targets/Snapshot/Timestamp public keys (committing only public root metadata `1.root.json`), provision Windows Authenticode / macOS Developer ID signing in release CI, select the M6 Windows `TA-03` isolation mechanism (VM/Hyper-V network-off runner vs accepted `plan-v1.2` firewall scope), and rule on `plan-v1.5` shipped-Linux-incognito verification (accepting shipped-binary `strace -ff` + non-incognito WebDriver E2E if `webkit2gtk-driver` continues to block `incognito: true` automation, or requiring custom non-WebDriver IPC harness).
+  - **Option D9-B (Defer release signing & M6 platform dispositions until clinical & human security gates close):** Keep `bundle.active = false`, `RELEASE_QUALIFIED = FALSE`, and zero GitHub Releases while qualifying unsigned offline staging artifacts in CI.
+- **Required evidence:** Signed custody and platform-disposition record on [Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5) + committed public TUF `1.root.json` (never private keys).
+- **Consequences & unlocked work:** Unlocks `T25` `tough` pack update/rollback verification, `bundle.active = true` signed Windows/macOS/Linux installers, pre-release `plan-v1.2`/`plan-v1.5` closure, and `WP-24` (`TA-28`) M6 release candidate qualification.
 
 ---
 

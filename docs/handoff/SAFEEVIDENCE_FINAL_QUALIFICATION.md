@@ -25,7 +25,7 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 
 | Qualification Axis | Status | Governing Authority & Remaining External Gate |
 |---|---|---|
-| `ENGINEERING_COMPLETE` | `EXT02_SYNTHETIC_SCOPE_COMPLETE` (`FALSE` for full V1) | All `EXT-02` greenfield & admitted-donor (`ADM-0001`..`ADM-0012`) engineering work complete; remaining V1 packets are `BLOCKED_EXTERNAL` |
+| `ENGINEERING_COMPLETE` | `EXT02_SYNTHETIC_SCOPE_COMPLETE` (`V1_READINESS_CAMPAIGN_ACTIVE`; `FALSE` for full V1) | Initial M0-M4 `EXT-02` synthetic baseline merged on `69fea4c3`; remaining `ENGINEERING_ACTIONABLE` slices tracked in `docs/handoff/V1_GATE_AND_ADMISSION_AUDIT_2026-11-27.md`; unadmitted V1 packets remain `BLOCKED_EXTERNAL` |
 | `MILESTONE_QUALIFIED` | `G01A_AND_M0_ENGINEERING_COMPLETE` (`AI_ONLY`; `EXT-06` open) | `docs/reviews/M0_M1_EXIT_REVIEW_2026-11-26.md`; human review (`EXT-06`) and `T05` (`EXT-01`) remain open |
 | `CLINICALLY_EVALUATED` | `FALSE` (`BLOCKED_EXTERNAL`) | `EXT-03` -- [Issue #4](https://github.com/TheHalfMoon/SafeEvidence/issues/4) clinical intended-use & evaluation charter |
 | `SOURCE_RIGHTS_CLEARED` | `PARTIAL_BOUNDED` (`ADM-0001`..`ADM-0012` only) | `EXT-01` & `EXT-07` -- [Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5) exact-source, dataset, and model-weight admissions |
@@ -52,7 +52,7 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 
 | Row | Target | Disposition | Verified Evidence / Blocking Gate |
 |---|---|---|---|
-| `TA-01` | Admission schema & pin integrity | `TESTED_PASSED` | `source_admission_check.py`, `p01_candidate_integrity.py`, `207` Python governance tests |
+| `TA-01` | Admission schema & pin integrity | `TESTED_PASSED` | `source_admission_check.py`, `p01_candidate_integrity.py`, `208` Python governance tests (`ADM-0001`..`ADM-0041`) |
 | `TA-02` | CycloneDX 1.5 SBOM & notices | `TESTED_PASSED` | `safeevidence-release` (`613` components across 3 lockfiles) + `THIRD_PARTY_NOTICES.md` |
 | `TA-03` | Fresh-checkout offline reproducibility | `TESTED_PASSED` (`plan-v1.2`) | `product-ci.yml` (`fmt`, `clippy -D warnings`, `test --locked`, `deny check`) on Ubuntu, Windows, macOS |
 | `TA-04` | Canonical contracts, no coercion, spans, study independence | `TESTED_PASSED` (`plan-v1.3`) | `safeevidence-contracts` + `safeevidence-proofstore` vault immutability/lineage tests |
@@ -66,7 +66,7 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 | `TA-12` | Appraisal structures & EBMonFHIR | `TESTED_PASSED` (synthetic scope) | `appraisal.rs` + `ta12_appraisal_ebmonfhir.rs` (`RoB 2`, `ROBINS-I`, `QUADAS-2`, `AMSTAR 2`, `GRADE`, human actor gate, `EBMonFHIR` JSON crosswalk) |
 | `TA-13` | Assurance determinism & zero UI percentage | `PARTIAL` (`plan-v1.4` `TESTED_PASSED`; `EXT-01` open) | `safeevidence-assurance` (`1,329` vectors + `17` cases + lexical-emergency ban) + UI zero-percentage check; `T14` DAL vectors gated on `EXT-01` |
 | `TA-14` | Atomic proof admission & fault withholding | `PARTIAL` (`VS-1a` `TESTED_PASSED`; `EXT-07` open) | `answer_faults.rs`, `proof_commit.rs`, `ask_command.rs` (`CommitUnknown` reconciliation); LLM worker kill tests gated on `EXT-07` |
-| `TA-15` | Document parsing & OCR | `BLOCKED_EXTERNAL` | Gated on `EXT-01` (`T16`, `T20`), `EXT-07` (`T29` PaddleOCR models), and `WP-23a` (`T10` sandbox) |
+| `TA-15` | Document parsing & OCR | `PARTIAL` (`ADM-0007` hostile-MIME quarantine actionable; PDF/OCR worker `BLOCKED_EXTERNAL`) | Hostile-MIME quarantine (`ADM-0007` `hostile_mime_010.rs`) `ENGINEERING_ACTIONABLE`; PDF/OCR worker gated on `EXT-01` (`T16`, `T20`), `EXT-07` (`T29` PaddleOCR models), and `WP-23a` (`T10` sandbox) |
 | `TA-16` | Screening replay & ASReview WSS@95 | `PARTIAL` (protocol audit `TESTED_PASSED`; `EXT-01` open) | `review_protocol.rs` hash-chained `ProtocolAuditBundle` (`ta17_protocol_extraction.rs`); `T15` PRISMA & `T18` `ASReview` gated on `EXT-01` |
 | `TA-17` | Quote-anchored structured extraction | `PARTIAL` (gating rule `TESTED_PASSED`; `EXT-01` open) | `StructuredEffectExtraction` (`100%` quote span + verbatim estimate check + `PROPOSED` until human confirms); `T28` Evidence Inference split gated on `EXT-01` |
 | `TA-18` | Meta-analysis pooling & refusal | `PARTIAL` (refusal gate `TESTED_PASSED`; `EXT-01` open) | `decide_pooling` + `decide_subset_pooling`; `T19` `statsmodels` golden numerical worker gated on `EXT-01` + `WP-23a` |
@@ -79,7 +79,7 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 | `TA-25` | Mobile offline shell | `BLOCKED_EXTERNAL` | Gated on `EXT-01` (`T20`, `T24`) + EGM finding V5 (`reqwest`/`hyper` in Tauri mobile targets) |
 | `TA-26` | OS worker sandboxing | `BLOCKED_EXTERNAL` | Gated on `EXT-01` (`T10` sandbox launcher slice) |
 | `TA-27` | Prompt-injection immunity | `PARTIAL` (deterministic Ask immune; worker `BLOCKED_EXTERNAL`) | Closed-grammar deterministic Ask + BiDi/control-char rejection cannot invoke tools/network; generative LLM worker prompt-injection suite gated on `EXT-07` |
-| `TA-28` | Signed installer & TUF pack rollback | `BLOCKED_EXTERNAL` | Gated on `EXT-05` ([Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5)) release signing keys & TUF roles |
+| `TA-28` | Signed installer & TUF pack rollback | `PARTIAL` (unsigned offline staging actionable; signing & TUF `BLOCKED_EXTERNAL`) | Unsigned offline staging manifest & checksum verification `ENGINEERING_ACTIONABLE` in `safeevidence-release`; signed installers & TUF rollback (`T25`) gated on `EXT-05` ([Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5)) |
 | `TA-29` | Dependency-tree HTTP/model denial | `TESTED_PASSED` | `ta29_dependency_denial.py`, `core_no_sockets.py`, `ta29_desktop_denial.py`, and `deny.toml` across all 3 desktop targets |
 | `TA-30` | Outbound-query disclosure (`P00 D7`) | `PARTIAL` (local contract `TESTED_PASSED`; `EXT-01` open) | `surveillance.rs` (`outbound_opt_in: false` default, patient-narrative rejection, exact `prepare_outbound_preview`); live `T05` transport gated on `EXT-01` |
 | `TA-M0` | Reference-machine runtime budgets | `TESTED_PASSED` (synthetic scope) | `docs/RUNTIME_BUDGET_BASELINE_2026-11-26.md` (`14.00 MiB` release exe, `2.50 s` cold start, `3.8 ms` `p50` warm Ask, `25.58 MiB` host RSS / `364.70 MiB` WebView2 tree) |

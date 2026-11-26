@@ -483,7 +483,7 @@
       "license_spdx": "Apache-2.0",
       "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
       "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE and NOTICE travel with the fixture",
-      "transitive": "none; test fixtures only",
+      "transitive": "none; copied files are test fixtures and notices only; pure-stdlib span/offset modules pinned for Rust port under product/deny.toml",
       "assets": "synthetic donor fixture text, stated non-PHI by its source",
       "security_test_owner": "founder",
       "files": [
@@ -516,55 +516,6 @@
           "modification": "none"
         },
         {
-          "source_path": "openmed/clinical/evidence_span_audit.py",
-          "git_blob_oid": "79a13c445b429ecfda63a21802c91b0d8b8739cd",
-          "bytes": 13626,
-          "dest_path": null,
-          "modification": "not_copied"
-        },
-        {
-          "source_path": "openmed/clinical/grounding/calibration.py",
-          "git_blob_oid": "a733cee9266486b02391f5d298877e1df7086d17",
-          "bytes": 42809,
-          "dest_path": null,
-          "modification": "not_copied"
-        },
-        {
-          "source_path": "openmed/clinical/grounding/candidate_generator.py",
-          "git_blob_oid": "0cd9142360a2d82edddff61a0ec6d8c88ca12539",
-          "bytes": 12820,
-          "dest_path": null,
-          "modification": "not_copied"
-        },
-        {
-          "source_path": "openmed/clinical/grounding/linkers/base.py",
-          "git_blob_oid": "60d014d88583d18ab6218f390ff76f3d0b3be0e9",
-          "bytes": 4559,
-          "dest_path": null,
-          "modification": "not_copied"
-        },
-        {
-          "source_path": "openmed/clinical/grounding/matcher.py",
-          "git_blob_oid": "4ee62046886bd942b34b8a400e16556c8816f8bf",
-          "bytes": 22194,
-          "dest_path": null,
-          "modification": "not_copied"
-        },
-        {
-          "source_path": "openmed/clinical/grounding/multilingual.py",
-          "git_blob_oid": "3cef0df89dbacb7907eb7ec62d734a808fbbf47c",
-          "bytes": 17592,
-          "dest_path": null,
-          "modification": "not_copied"
-        },
-        {
-          "source_path": "openmed/core/decoding/spans.py",
-          "git_blob_oid": "1059ba89a2645ca777648cebbcabdbf1c14ae2be",
-          "bytes": 46598,
-          "dest_path": null,
-          "modification": "not_copied"
-        },
-        {
           "source_path": "openmed/core/schemas/span.py",
           "git_blob_oid": "84f57f012eb1c980199b42e908a3637ded46a91a",
           "bytes": 12316,
@@ -575,6 +526,20 @@
           "source_path": "openmed/structured/offset_properties.py",
           "git_blob_oid": "405195c704538c4fd3e6f74552f55b94e9bc2003",
           "bytes": 22396,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/clinical/evidence_span_audit.py",
+          "git_blob_oid": "79a13c445b429ecfda63a21802c91b0d8b8739cd",
+          "bytes": 13626,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/unit/clinical/test_evidence_span_audit.py",
+          "git_blob_oid": "b6088d5490c6cd28808d9c82988d95a033be7507",
+          "bytes": 5721,
           "dest_path": null,
           "modification": "not_copied"
         }
@@ -2907,6 +2872,65 @@
           "source_path": "trialstreamer/upw.py",
           "git_blob_oid": "3a62380ed172df596441226cc1216e15e4771302",
           "bytes": 2824,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0041",
+      "packet": "T17",
+      "repo": "maziyarpanahi/openmed",
+      "source_commit": "8440bdac59621981372d318f43c8bfb2d6625b86",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE and NOTICE; ICU.txt required if core/decoding/spans.py Indic segmenter table is ever used",
+      "transitive": "Gated on WP-23a sandboxed Python worker admission, Python wheel closure, and ICU notice check; restricted vocab loaders (athena, rxnorm, loinc) excluded",
+      "assets": "none; terminology bytes excluded",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "openmed/clinical/grounding/calibration.py",
+          "git_blob_oid": "a733cee9266486b02391f5d298877e1df7086d17",
+          "bytes": 42809,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/clinical/grounding/candidate_generator.py",
+          "git_blob_oid": "0cd9142360a2d82edddff61a0ec6d8c88ca12539",
+          "bytes": 12820,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/clinical/grounding/linkers/base.py",
+          "git_blob_oid": "60d014d88583d18ab6218f390ff76f3d0b3be0e9",
+          "bytes": 4559,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/clinical/grounding/matcher.py",
+          "git_blob_oid": "4ee62046886bd942b34b8a400e16556c8816f8bf",
+          "bytes": 22194,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/clinical/grounding/multilingual.py",
+          "git_blob_oid": "3cef0df89dbacb7907eb7ec62d734a808fbbf47c",
+          "bytes": 17592,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/core/decoding/spans.py",
+          "git_blob_oid": "1059ba89a2645ca777648cebbcabdbf1c14ae2be",
+          "bytes": 46598,
           "dest_path": null,
           "modification": "not_copied"
         }
