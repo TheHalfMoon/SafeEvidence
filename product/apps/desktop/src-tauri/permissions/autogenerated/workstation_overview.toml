@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workstation-overview"
+description = "Enables the workstation_overview command without any pre-configured scope."
+commands.allow = ["workstation_overview"]
+
+[[permission]]
+identifier = "deny-workstation-overview"
+description = "Denies the workstation_overview command without any pre-configured scope."
+commands.deny = ["workstation_overview"]

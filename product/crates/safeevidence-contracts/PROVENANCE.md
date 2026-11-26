@@ -32,6 +32,10 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
   normalization and bidirectional coordinate projection, tested against `ADM-0004` `T17` fixtures).
   `src/surveillance.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-17` watch-query and
   cause-named surveillance alert schemas).
+  `src/review_protocol.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-14` protocol lock &
+  hash-chained audit export and `WP-15` / `TA-17` quote-anchored `Proposed` -> human `Confirmed`
+  effect extraction contracts; `T15` screening/PRISMA and `T18`/`T19` worker execution remain
+  fenced on `EXT-01`).
   `src/assurance.rs` is SafeEvidence-written; it encodes the P00 contract vocabulary directly.
 - `src/proof.rs` is SafeEvidence-written from the P00 proof contract: shape only, with no atomic commit or verification.
 - `decide_pooling` checks independence declarations only. It has no population or timepoint

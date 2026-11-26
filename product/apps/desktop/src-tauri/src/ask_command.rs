@@ -4,13 +4,28 @@
 //! returns the text read back from the store, and only if the stored proof reads `COMMITTED`.
 //! Every request ends in one outcome and reason: a failure is a refusal with no text.
 
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use safeevidence_ask::overlay::build_rights_admissible_manifest;
 use safeevidence_ask::{AskResult, Corpus, Funnel, ask, load_corpus};
+use safeevidence_contracts::appraisal::{
+    AppraisalConfirmation, CertaintyAssessment, CertaintyLevel, DowngradeDomain, DowngradeStep,
+    GradeCertaintyDomains, StartingDesign, UpgradeDomain, UpgradeStep,
+};
 use safeevidence_contracts::assurance::{ProofState, ReasonCode, TerminalOutcome};
+use safeevidence_contracts::evidence::EvidenceCorpusRights;
 use safeevidence_contracts::objects::DigestSha256;
+use safeevidence_contracts::proof::EvidenceSpan;
+use safeevidence_contracts::review_protocol::{
+    EffectMeasureKind, ExtractionState, ReviewPicoCriteria, ReviewProtocol,
+    StructuredEffectExtraction, append_protocol_audit_event, export_protocol_audit_bundle,
+};
+use safeevidence_contracts::study::{
+    Known, OutcomeId, PublicationState, ReportVersionId, ResultId, ScopedId, StudyId,
+};
 use safeevidence_proofstore::{ProofStore, SCHEMA_OBJECTS_SHA256, StoreError};
 use safeevidence_vault::VAULT_DOMAIN_VERSION;
 use safeevidence_vault::vault_keys::{KeyDerivationContext, KeyPurpose};
@@ -448,6 +463,487 @@ impl AskState {
 #[tauri::command]
 pub fn ask_question(state: tauri::State<'_, AskState>, question: String) -> AskView {
     state.answer(&question)
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceRecordView {
+    doc_id: String,
+    study_id: String,
+    title: String,
+    population: String,
+    condition: String,
+    intervention: String,
+    publication_state: PublicationState,
+    rights: EvidenceCorpusRights,
+    citable: bool,
+    rights_admissible: bool,
+    scalar_count: usize,
+    source_digest_prefix: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvidencePaneView {
+    corpus_description: String,
+    total_documents: usize,
+    active_independent_studies: usize,
+    sources: Vec<SourceRecordView>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionRowView {
+    extraction_id: String,
+    study_id: String,
+    source_id: String,
+    outcome_label: String,
+    measure_kind: EffectMeasureKind,
+    point_estimate_text: String,
+    timepoint: String,
+    quote_text: String,
+    start_scalar: u64,
+    end_scalar: u64,
+    workflow_state: String,
+    actor_label: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeepReviewPaneView {
+    protocol_id: String,
+    protocol_title: String,
+    protocol_version: u32,
+    protocol_digest_prefix: String,
+    audit_event_count: usize,
+    audit_bundle_digest_prefix: String,
+    extractions: Vec<ExtractionRowView>,
+    certainty_outcome: String,
+    certainty_level: CertaintyLevel,
+    certainty_status: String,
+    certainty_reasons: Vec<String>,
+    external_worker_gate: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PacksValidityPaneView {
+    validity_epoch: u64,
+    rights_grant_version: String,
+    pack_id: String,
+    pack_digest_prefix: String,
+    admissible_pack_doc_ids: Vec<String>,
+    excluded_from_pack: Vec<ExcludedView>,
+    signed_pack_gate: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrivacyDiagnosticsPaneView {
+    network_posture: String,
+    core_http_clients_present: bool,
+    vault_domain_version: String,
+    schema_digest_prefix: String,
+    store_established: bool,
+    webview_incognito_default: bool,
+    outbound_surveillance_default_opt_in: bool,
+    clinical_use_authorized: bool,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkstationOverview {
+    schema_version: u8,
+    fixture_only: bool,
+    evidence: EvidencePaneView,
+    deep_review: DeepReviewPaneView,
+    packs_and_validity: PacksValidityPaneView,
+    privacy_and_diagnostics: PrivacyDiagnosticsPaneView,
+}
+
+fn build_deep_review_view(corpus: &Corpus) -> Result<DeepReviewPaneView, String> {
+    let protocol = ReviewProtocol::create_locked(
+        "proto-synthetic-01".to_owned(),
+        1,
+        "Synthetic review protocol for glimmer syndrome and ember fatigue".to_owned(),
+        ReviewPicoCriteria {
+            population: "adults and children".to_owned(),
+            intervention: "synthetic investigational agents".to_owned(),
+            comparator: "placebo".to_owned(),
+            primary_outcomes: vec!["symptom composite score".to_owned()],
+            eligible_designs: vec!["randomized placebo-controlled synthetic fixture".to_owned()],
+        },
+        vec!["Randomized placebo-controlled synthetic fixture report".to_owned()],
+        vec!["Retracted, withdrawn, or rights-unresolved source".to_owned()],
+        "reviewer-synthetic-lead".to_owned(),
+        "2026-11-26T00:00:00Z".to_owned(),
+        Vec::new(),
+    )
+    .map_err(|_| "could not lock review protocol".to_owned())?;
+
+    let mut events = Vec::new();
+    append_protocol_audit_event(
+        &mut events,
+        "PROTOCOL_LOCKED",
+        "reviewer-synthetic-lead",
+        &protocol.protocol_id,
+        "Locked initial PICO and eligibility rules",
+        "2026-11-26T00:01:00Z",
+    )
+    .map_err(|_| "could not append protocol audit event".to_owned())?;
+    append_protocol_audit_event(
+        &mut events,
+        "EXTRACTION_PROPOSED",
+        "rule-extractor-v1",
+        "ext-orbalin-a",
+        "Anchored quote extraction on doc-orbalin-a",
+        "2026-11-26T00:02:00Z",
+    )
+    .map_err(|_| "could not append extraction audit event".to_owned())?;
+    append_protocol_audit_event(
+        &mut events,
+        "EXTRACTION_CONFIRMED",
+        "reviewer-synthetic-lead",
+        "ext-veltrix-peds",
+        "Human confirmed quote span on doc-veltrix-peds",
+        "2026-11-26T00:03:00Z",
+    )
+    .map_err(|_| "could not append confirmation audit event".to_owned())?;
+
+    let audit_bundle = export_protocol_audit_bundle(&protocol, &events)
+        .map_err(|_| "could not verify protocol audit bundle".to_owned())?;
+
+    let scoped = |id: &str| ScopedId {
+        scope: "vs1a-fixture".to_owned(),
+        id: id.to_owned(),
+        version: 1,
+    };
+    let build_extraction = |ext_id: &str,
+                            doc_id: &str,
+                            estimate: &str,
+                            timepoint: &str,
+                            confirm_actor: Option<&str>|
+     -> Result<ExtractionRowView, String> {
+        let doc = corpus
+            .documents
+            .iter()
+            .find(|d| d.doc_id == doc_id)
+            .ok_or_else(|| "missing extraction fixture document".to_owned())?;
+        let start_byte = doc
+            .text
+            .find(&doc.finding)
+            .ok_or_else(|| "finding absent from document".to_owned())?;
+        let start_scalar = doc.text[..start_byte].chars().count() as u64;
+        let end_scalar = start_scalar + doc.finding.chars().count() as u64;
+        let span = EvidenceSpan {
+            source_id: doc.doc_id.clone(),
+            source_version: "1".to_owned(),
+            source_digest: DigestSha256::of(doc.text.as_bytes()),
+            start_scalar,
+            end_scalar,
+        };
+        let mut ext = StructuredEffectExtraction::propose_anchored(
+            ext_id.to_owned(),
+            StudyId(scoped(&doc.study_id)),
+            ReportVersionId(scoped(&doc.doc_id)),
+            ResultId(scoped(&format!("res-{doc_id}"))),
+            doc.condition.clone(),
+            EffectMeasureKind::MeanDifference,
+            estimate.to_owned(),
+            Known::Unknown {
+                reason: "not_reported".to_owned(),
+            },
+            Known::Unknown {
+                reason: "not_reported".to_owned(),
+            },
+            Known::Unknown {
+                reason: "not_reported".to_owned(),
+            },
+            timepoint.to_owned(),
+            "abstract_finding".to_owned(),
+            doc.finding.clone(),
+            span,
+            "rule-extractor-v1".to_owned(),
+            &doc.text,
+        )
+        .map_err(|_| "extraction anchor check failed".to_owned())?;
+        if let Some(actor) = confirm_actor {
+            ext.confirm_by_human(actor, "2026-11-26T00:03:00Z", &doc.text)
+                .map_err(|_| "extraction confirmation failed".to_owned())?;
+        }
+        let (workflow_state, actor_label) = match &ext.state {
+            ExtractionState::Proposed { extractor } => ("PROPOSED".to_owned(), extractor.clone()),
+            ExtractionState::Confirmed { authorized_by, .. } => {
+                ("CONFIRMED".to_owned(), authorized_by.clone())
+            }
+            ExtractionState::Rejected { authorized_by, .. } => {
+                ("REJECTED".to_owned(), authorized_by.clone())
+            }
+        };
+        Ok(ExtractionRowView {
+            extraction_id: ext.extraction_id,
+            study_id: doc.study_id.clone(),
+            source_id: ext.quote_span.source_id,
+            outcome_label: ext.outcome_label,
+            measure_kind: ext.measure_kind,
+            point_estimate_text: ext.point_estimate_text,
+            timepoint: ext.timepoint,
+            quote_text: ext.quote_text,
+            start_scalar: ext.quote_span.start_scalar,
+            end_scalar: ext.quote_span.end_scalar,
+            workflow_state,
+            actor_label,
+        })
+    };
+
+    let extractions = vec![
+        build_extraction(
+            "ext-orbalin-a",
+            "doc-orbalin-a",
+            "8 points",
+            "8 weeks",
+            None,
+        )?,
+        build_extraction(
+            "ext-veltrix-peds",
+            "doc-veltrix-peds",
+            "did not improve",
+            "12 weeks",
+            Some("reviewer-synthetic-lead"),
+        )?,
+    ];
+
+    let certainty = CertaintyAssessment {
+        assessment_id: "grade-glimmer-adults-v1".to_owned(),
+        outcome: OutcomeId(scoped("glimmer-score")),
+        studies: vec![StudyId(scoped("study-veltrix-a"))],
+        starting_design: StartingDesign::RandomizedTrial,
+        domains: GradeCertaintyDomains {
+            risk_of_bias: DowngradeDomain {
+                step: DowngradeStep::None,
+                reason: "Synthetic randomized fixture reports complete follow-up.".to_owned(),
+            },
+            inconsistency: DowngradeDomain {
+                step: DowngradeStep::None,
+                reason: "Single independent adult primary study across baseline and follow-up reports.".to_owned(),
+            },
+            indirectness: DowngradeDomain {
+                step: DowngradeStep::None,
+                reason: "Adult population and synthetic score match the protocol criteria.".to_owned(),
+            },
+            imprecision: DowngradeDomain {
+                step: DowngradeStep::SeriousMinusOne,
+                reason: "Downgraded one level: single synthetic study without sample denominator.".to_owned(),
+            },
+            publication_bias: DowngradeDomain {
+                step: DowngradeStep::None,
+                reason: "Closed synthetic corpus; no selective non-publication modelled.".to_owned(),
+            },
+            large_magnitude_of_effect: UpgradeDomain {
+                step: UpgradeStep::None,
+                reason: "Randomized starting design is not eligible for observational upgrades.".to_owned(),
+            },
+            dose_response_gradient: UpgradeDomain {
+                step: UpgradeStep::None,
+                reason: "Single daily regimen evaluated.".to_owned(),
+            },
+            plausible_residual_confounding: UpgradeDomain {
+                step: UpgradeStep::None,
+                reason: "Not applicable to randomized synthetic design.".to_owned(),
+            },
+        },
+        final_certainty: CertaintyLevel::Moderate,
+        summary_rationale:
+            "Moderate GRADE certainty proposal: single adult study downgraded once for imprecision; remains unconfirmed so Ask emits Answer, with caution."
+                .to_owned(),
+        confirmation: AppraisalConfirmation::Proposed {
+            generator: "deterministic-grade-v1".to_owned(),
+        },
+    };
+    certainty
+        .validate()
+        .map_err(|_| "invalid GRADE certainty structure".to_owned())?;
+
+    let certainty_reasons = vec![
+        format!("Risk of bias: {}", certainty.domains.risk_of_bias.reason),
+        format!("Inconsistency: {}", certainty.domains.inconsistency.reason),
+        format!("Indirectness: {}", certainty.domains.indirectness.reason),
+        format!("Imprecision: {}", certainty.domains.imprecision.reason),
+        format!(
+            "Publication bias: {}",
+            certainty.domains.publication_bias.reason
+        ),
+        format!(
+            "Large effect: {}",
+            certainty.domains.large_magnitude_of_effect.reason
+        ),
+        format!(
+            "Dose-response: {}",
+            certainty.domains.dose_response_gradient.reason
+        ),
+        format!(
+            "Residual confounding: {}",
+            certainty.domains.plausible_residual_confounding.reason
+        ),
+    ];
+
+    Ok(DeepReviewPaneView {
+        protocol_id: protocol.protocol_id,
+        protocol_title: protocol.title,
+        protocol_version: protocol.version,
+        protocol_digest_prefix: protocol.protocol_digest.to_hex()[..16].to_owned(),
+        audit_event_count: audit_bundle.events.len(),
+        audit_bundle_digest_prefix: audit_bundle.bundle_digest.to_hex()[..16].to_owned(),
+        extractions,
+        certainty_outcome: "Glimmer syndrome composite score (adults)".to_owned(),
+        certainty_level: certainty.final_certainty,
+        certainty_status: "PROPOSED".to_owned(),
+        certainty_reasons,
+        external_worker_gate:
+            "EXT-01: Screening (T15, T18) and meta-analysis pooling (T19) workers remain gated on Issue #5 donor admission."
+                .to_owned(),
+    })
+}
+
+impl AskState {
+    fn overview(&self) -> Result<WorkstationOverview, String> {
+        let corpus = load_corpus(FIXTURE, &DigestSha256::of(FIXTURE))
+            .map_err(|_| "the fixture did not load".to_owned())?;
+
+        let (live_epoch, live_grant, store_established) = {
+            let mut inner = self
+                .0
+                .lock()
+                .map_err(|_| "workstation state unavailable".to_owned())?;
+            let established = inner
+                .data_dir
+                .as_deref()
+                .is_some_and(|dir| is_established(&store_dir(dir)));
+            if let Some(session) = inner.session.as_mut() {
+                let epoch = session
+                    .store
+                    .epoch()
+                    .map_err(|_| "could not read store epoch".to_owned())?;
+                let grant = session
+                    .store
+                    .rights_grant()
+                    .map_err(|_| "could not read store rights grant".to_owned())?;
+                (epoch, grant, true)
+            } else {
+                (
+                    corpus.validity_epoch,
+                    corpus.rights_grant_version.clone(),
+                    established,
+                )
+            }
+        };
+
+        let withdrawn_studies: BTreeSet<&str> = corpus
+            .documents
+            .iter()
+            .filter(|d| {
+                matches!(
+                    d.publication_state,
+                    PublicationState::Retracted | PublicationState::Withdrawn
+                )
+            })
+            .map(|d| d.study_id.as_str())
+            .collect();
+
+        let mut active_studies: BTreeSet<&str> = BTreeSet::new();
+        let mut sources = Vec::with_capacity(corpus.documents.len());
+        let mut excluded_from_pack = Vec::new();
+
+        for doc in &corpus.documents {
+            let study_withdrawn = withdrawn_studies.contains(doc.study_id.as_str());
+            let citable = doc.publication_state.citable() && !study_withdrawn;
+            let admissible = doc.rights.admissible();
+            if citable && admissible {
+                active_studies.insert(doc.study_id.as_str());
+            } else if !admissible {
+                excluded_from_pack.push(ExcludedView {
+                    doc_id: doc.doc_id.clone(),
+                    reason_code: ReasonCode::RightsUnresolved,
+                    reason: "rights not established for pack inclusion".to_owned(),
+                });
+            } else {
+                excluded_from_pack.push(ExcludedView {
+                    doc_id: doc.doc_id.clone(),
+                    reason_code: ReasonCode::SourceInvalidOrRetracted,
+                    reason: "retracted or non-citable source excluded from active pack".to_owned(),
+                });
+            }
+            sources.push(SourceRecordView {
+                doc_id: doc.doc_id.clone(),
+                study_id: doc.study_id.clone(),
+                title: doc.title.clone(),
+                population: doc.population.clone(),
+                condition: doc.condition.clone(),
+                intervention: doc.intervention.clone(),
+                publication_state: doc.publication_state,
+                rights: doc.rights,
+                citable,
+                rights_admissible: admissible,
+                scalar_count: doc.text.chars().count(),
+                source_digest_prefix: DigestSha256::of(doc.text.as_bytes()).to_hex()[..16]
+                    .to_owned(),
+            });
+        }
+
+        let pack_manifest = build_rights_admissible_manifest(
+            "pack-vs1a-synthetic",
+            "1.0.0-synthetic",
+            "urn:safeevidence:rights:synthetic-owned-1",
+            &corpus,
+        )
+        .map_err(|_| "could not build rights-admissible pack preview".to_owned())?;
+
+        let admissible_pack_doc_ids = pack_manifest
+            .documents
+            .iter()
+            .map(|d| d.doc_id.clone())
+            .collect();
+
+        Ok(WorkstationOverview {
+            schema_version: 1,
+            fixture_only: true,
+            evidence: EvidencePaneView {
+                corpus_description: corpus.description.clone(),
+                total_documents: corpus.documents.len(),
+                active_independent_studies: active_studies.len(),
+                sources,
+            },
+            deep_review: build_deep_review_view(&corpus)?,
+            packs_and_validity: PacksValidityPaneView {
+                validity_epoch: live_epoch,
+                rights_grant_version: live_grant,
+                pack_id: pack_manifest.corpus_id,
+                pack_digest_prefix: pack_manifest.content_digest.to_hex()[..16].to_owned(),
+                admissible_pack_doc_ids,
+                excluded_from_pack,
+                signed_pack_gate:
+                    "EXT-01 / EXT-05: TUF-signed pack import (T07, T25) remains gated on Issue #5 release-trust authority."
+                        .to_owned(),
+            },
+            privacy_and_diagnostics: PrivacyDiagnosticsPaneView {
+                network_posture: "NETWORK_LOCKED".to_owned(),
+                core_http_clients_present: false,
+                vault_domain_version: VAULT_DOMAIN_VERSION.to_owned(),
+                schema_digest_prefix: SCHEMA_OBJECTS_SHA256[..16].to_owned(),
+                store_established,
+                webview_incognito_default: true,
+                outbound_surveillance_default_opt_in: false,
+                clinical_use_authorized: false,
+            },
+        })
+    }
+}
+
+#[tauri::command]
+pub fn workstation_overview(
+    state: tauri::State<'_, AskState>,
+) -> Result<WorkstationOverview, String> {
+    state.overview()
 }
 
 #[cfg(test)]
@@ -936,5 +1432,44 @@ mod tests {
         );
         assert!(json["excluded"][0]["reason"].as_str().is_some());
         assert!(json.get("confidence").is_none());
+    }
+
+    #[test]
+    fn workstation_overview_projects_verified_backend_authority_with_zero_percentages() {
+        let dir = TempDir::new();
+        let state = AskState::default();
+        state.use_test_keys();
+        state.set_data_dir(dir.0.clone());
+
+        let before = state.overview().expect("overview before ask");
+        assert_eq!(before.schema_version, 1);
+        assert!(before.fixture_only);
+        assert!(!before.privacy_and_diagnostics.store_established);
+        assert_eq!(before.evidence.total_documents, 7);
+        assert_eq!(before.evidence.active_independent_studies, 4);
+        assert_eq!(before.packs_and_validity.admissible_pack_doc_ids.len(), 5);
+        assert_eq!(before.packs_and_validity.excluded_from_pack.len(), 2);
+        assert_eq!(before.deep_review.extractions.len(), 2);
+        assert_eq!(before.deep_review.extractions[0].workflow_state, "PROPOSED");
+        assert_eq!(
+            before.deep_review.extractions[1].workflow_state,
+            "CONFIRMED"
+        );
+        assert_eq!(before.deep_review.certainty_level, CertaintyLevel::Moderate);
+        assert_eq!(before.deep_review.certainty_reasons.len(), 8);
+
+        let _ = state.answer(ANSWERED);
+        let after = state.overview().expect("overview after ask");
+        assert!(after.privacy_and_diagnostics.store_established);
+        assert_eq!(
+            after.privacy_and_diagnostics.vault_domain_version,
+            VAULT_DOMAIN_VERSION
+        );
+        assert!(!after.privacy_and_diagnostics.clinical_use_authorized);
+
+        let serialized = serde_json::to_string(&after).expect("serialize overview");
+        assert!(!serialized.contains('%'));
+        assert!(!serialized.to_ascii_lowercase().contains("confidence"));
+        state.close();
     }
 }

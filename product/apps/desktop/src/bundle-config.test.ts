@@ -24,9 +24,9 @@ test("this build packages nothing and adds no updater or plugin", () => {
   assert.deepEqual(conf.app.security.capabilities, ["default"]);
 });
 
-test("the main window may call the named command and nothing else", () => {
+test("the main window may call the named commands and nothing else", () => {
   assert.deepEqual(capability.windows, ["main"]);
-  assert.deepEqual(capability.permissions, ["allow-ask-question"]);
+  assert.deepEqual(capability.permissions, ["allow-ask-question", "allow-workstation-overview"]);
   assert.equal(capability.remote, undefined);
 });
 

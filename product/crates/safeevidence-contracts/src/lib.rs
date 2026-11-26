@@ -6,6 +6,7 @@ pub mod bilingual;
 pub mod evidence;
 pub mod objects;
 pub mod proof;
+pub mod review_protocol;
 pub mod study;
 pub mod study_linkage;
 pub mod surveillance;
