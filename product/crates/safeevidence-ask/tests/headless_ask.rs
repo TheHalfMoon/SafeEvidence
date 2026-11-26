@@ -1093,3 +1093,126 @@ fn every_donor_fixture_question_gets_its_pinned_refusal_and_no_text() {
         assert!(result.brief.is_none() && result.manifest.is_none(), "{id}");
     }
 }
+
+#[test]
+fn appraised_corpus_gives_clean_answer_unless_retrieval_missed_an_applicable_report() {
+    let mut appraised = corpus();
+    appraised.quality_appraised = true;
+    let clean = ask(ADULT, &appraised);
+    assert_eq!(clean.outcome, TerminalOutcome::Answer);
+    assert_eq!(clean.reason, ReasonCode::None);
+    let manifest = clean.manifest.expect("manifest");
+    assert_eq!(
+        manifest.applicability,
+        safeevidence_contracts::proof::ApplicabilityState::Applicable
+    );
+    assert!(commit_defects(&manifest).is_empty());
+
+    // If lexical retrieval misses one applicable report, limits return -> AnswerWithCaution.
+    unretrievable(
+        appraised
+            .documents
+            .iter_mut()
+            .find(|d| d.doc_id == "doc-veltrix-a-followup")
+            .unwrap(),
+    );
+    let partial = ask(ADULT, &appraised);
+    assert_eq!(partial.outcome, TerminalOutcome::AnswerWithCaution);
+    assert_eq!(
+        partial.manifest.expect("manifest").applicability,
+        safeevidence_contracts::proof::ApplicabilityState::ApplicableWithLimits
+    );
+
+    // Non-current standing (`ExpressionOfConcern`, `Corrected`, `Unknown`, `Superseded`) on a
+    // sibling report of the cited study or the queried population also requires `AnswerWithCaution`.
+    for state in [
+        PublicationState::ExpressionOfConcern,
+        PublicationState::Corrected,
+        PublicationState::Unknown,
+        PublicationState::Superseded,
+    ] {
+        let mut with_limit = corpus();
+        with_limit.quality_appraised = true;
+        with_limit
+            .documents
+            .iter_mut()
+            .find(|d| d.doc_id == "doc-veltrix-a-followup")
+            .unwrap()
+            .publication_state = state;
+        let cautious = ask(ADULT, &with_limit);
+        assert_eq!(
+            cautious.outcome,
+            TerminalOutcome::AnswerWithCaution,
+            "{state:?}"
+        );
+    }
+}
+
+#[test]
+fn missing_population_abstains_when_lexical_retrieval_missed_every_citable_report() {
+    let mut value = corpus();
+    for id in [
+        "doc-veltrix-a",
+        "doc-veltrix-a-followup",
+        "doc-veltrix-peds",
+    ] {
+        unretrievable(value.documents.iter_mut().find(|d| d.doc_id == id).unwrap());
+    }
+    let result = ask("Does veltrixamine help with glimmer syndrome?", &value);
+    assert_eq!(result.outcome, TerminalOutcome::Abstain);
+    assert_eq!(result.reason, ReasonCode::EvidenceInsufficient);
+    assert!(result.brief.is_none() && result.manifest.is_none());
+    assert_eq!(result.excluded.len(), 3);
+
+    // Also abstain when the only retrieved population has within-study disagreement and the other
+    // population's reports were missed by lexical retrieval (so no population can yield an answer).
+    let mut mixed = with_doc("doc-veltrix-a-followup", |d| {
+        d.text = "This follow-up reports the same adults with synthetic glimmer syndrome on veltrixamine 40 mg daily. The glimmer score did not improve compared with placebo at 24 weeks.".to_owned();
+        d.finding =
+            "The glimmer score did not improve compared with placebo at 24 weeks.".to_owned();
+        d.direction = Direction::NoBenefit;
+    });
+    unretrievable(
+        mixed
+            .documents
+            .iter_mut()
+            .find(|d| d.doc_id == "doc-veltrix-peds")
+            .unwrap(),
+    );
+    let mixed_result = ask("Does veltrixamine help with glimmer syndrome?", &mixed);
+    assert_eq!(mixed_result.outcome, TerminalOutcome::Abstain);
+    assert_eq!(mixed_result.reason, ReasonCode::EvidenceInsufficient);
+}
+
+#[test]
+fn patient_specific_escalation_precedes_non_ascii_names_and_arabic_numerals_abstain_cleanly() {
+    let corpus = corpus();
+    for question in [
+        "Should I prescribe veltrixamine to my patient Jos\u{00e9}?",
+        "Should I prescribe veltrixamine to my patient \u{0623}\u{062d}\u{0645}\u{062f}?",
+    ] {
+        let result = ask(question, &corpus);
+        assert_eq!(result.outcome, TerminalOutcome::Escalate, "{question}");
+        assert_eq!(
+            result.reason,
+            ReasonCode::ClinicianAuthorityRequired,
+            "{question}"
+        );
+    }
+    for arabic_punct_or_digits in [
+        "Does veltrixamine \u{0665}\u{0660} mg help adults with glimmer syndrome?",
+        "Does veltrixamine help adults with glimmer syndrome\u{061f}",
+    ] {
+        let result = ask(arabic_punct_or_digits, &corpus);
+        assert_eq!(
+            result.outcome,
+            TerminalOutcome::Abstain,
+            "{arabic_punct_or_digits}"
+        );
+        assert_eq!(
+            result.reason,
+            ReasonCode::UnsupportedLanguage,
+            "{arabic_punct_or_digits}"
+        );
+    }
+}

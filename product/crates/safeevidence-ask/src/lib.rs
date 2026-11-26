@@ -52,6 +52,11 @@ pub struct Corpus {
     pub description: String,
     pub validity_epoch: u64,
     pub rights_grant_version: String,
+    /// True only when study-quality and directness appraisal have cleared all corpus limits,
+    /// allowing `TerminalOutcome::Answer` (`ApplicabilityState::Applicable`) when no applicable
+    /// report was missed by retrieval. Defaults to `false` (`AnswerWithCaution`).
+    #[serde(default)]
+    pub quality_appraised: bool,
     pub documents: Vec<Document>,
 }
 
@@ -238,10 +243,20 @@ impl AskResult {
     }
 }
 
-/// Only plain ASCII questions take the English path here. Any other letter, in Arabic script
-/// or not, gets an explicit refusal rather than a partial reading.
+/// Only plain ASCII questions take the English path here. Any other letter, Arabic numeral,
+/// or Arabic punctuation mark gets an explicit refusal rather than a partial reading.
 fn has_unsupported_script(text: &str) -> bool {
-    text.chars().any(|c| !c.is_ascii() && c.is_alphabetic())
+    text.chars().any(|c| {
+        !c.is_ascii()
+            && (c.is_alphabetic()
+                || matches!(
+                    c,
+                    '\u{0600}'..='\u{06FF}'
+                        | '\u{0750}'..='\u{08FF}'
+                        | '\u{FB50}'..='\u{FDFF}'
+                        | '\u{FE70}'..='\u{FEFF}'
+                ))
+    })
 }
 
 fn normalized(text: &str) -> String {
@@ -446,8 +461,18 @@ const BRIEF_HEADER: [&str; 2] = [
     "Limits: fixture evidence only, and no appraisal of study quality.",
 ];
 
-fn render_brief(claims: &[(&Document, EvidenceSpan)]) -> String {
-    let mut lines: Vec<String> = BRIEF_HEADER.iter().map(|line| (*line).to_owned()).collect();
+const BRIEF_HEADER_APPRAISED: [&str; 2] = [
+    "Synthetic evidence brief. Invented fixture data; not medical information.",
+    "Appraisal: synthetic study quality and applicability confirmed.",
+];
+
+fn render_brief(claims: &[(&Document, EvidenceSpan)], appraised_clean: bool) -> String {
+    let header = if appraised_clean {
+        &BRIEF_HEADER_APPRAISED
+    } else {
+        &BRIEF_HEADER
+    };
+    let mut lines: Vec<String> = header.iter().map(|line| (*line).to_owned()).collect();
     for (document, span) in claims {
         lines.push(format!(
             "- {} [{} {}..{}]",
@@ -480,7 +505,11 @@ fn offset(text: &str) -> Option<usize> {
 /// `verify_brief`, keeping each citation's span as scalar offsets.
 fn verified_citations(brief: &str, corpus: &Corpus) -> Result<Vec<(String, u64, u64)>, String> {
     let lines: Vec<&str> = brief.split('\n').collect();
-    if lines.len() <= BRIEF_HEADER.len() || lines[..BRIEF_HEADER.len()] != BRIEF_HEADER {
+    let valid_header = lines.len() > BRIEF_HEADER.len()
+        && (lines[..BRIEF_HEADER.len()] == BRIEF_HEADER
+            || (corpus.quality_appraised
+                && lines[..BRIEF_HEADER_APPRAISED.len()] == BRIEF_HEADER_APPRAISED));
+    if !valid_header {
         return Err("header differs or no claims".to_owned());
     }
     let mut cited = Vec::new();
@@ -626,17 +655,19 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
     if validate_documents(corpus).is_err() {
         return AskResult::refuse(TerminalOutcome::Blocked, ReasonCode::ToolFailure, funnel);
     }
-    if has_unsupported_script(text) {
-        return AskResult::refuse(
-            TerminalOutcome::Abstain,
-            ReasonCode::UnsupportedLanguage,
-            funnel,
-        );
-    }
+    // P00 Guard 2 (`ESCALATE`) precedes Guard 5 (`ABSTAIN` / `UNSUPPORTED_LANGUAGE`): a detected
+    // patient-specific prescribing request must escalate even if it includes a non-ASCII name.
     if is_patient_specific_request(&normalized(text)) {
         return AskResult::refuse(
             TerminalOutcome::Escalate,
             ReasonCode::ClinicianAuthorityRequired,
+            funnel,
+        );
+    }
+    if has_unsupported_script(text) {
+        return AskResult::refuse(
+            TerminalOutcome::Abstain,
+            ReasonCode::UnsupportedLanguage,
             funnel,
         );
     }
@@ -812,6 +843,17 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
                 .collect();
             studies_conflict(&group)
         });
+        let answerable_population = populations.iter().any(|population| {
+            let group: Vec<&Document> = citable
+                .iter()
+                .copied()
+                .filter(|d| normalized(&d.population) == *population)
+                .collect();
+            let within_study_disagreement = study_directions(&group)
+                .values()
+                .any(|directions| directions.len() > 1);
+            !within_study_disagreement && group.iter().any(|d| retrieved.contains(&d.doc_id))
+        });
         if conflict {
             fire(
                 "independent-conflict",
@@ -819,12 +861,31 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
                 TerminalOutcome::Conflict,
                 ReasonCode::MaterialContradiction,
             );
-        } else {
+        } else if answerable_population {
             fire(
                 "population-missing",
                 4,
                 TerminalOutcome::AskMore,
                 ReasonCode::MissingCriticalContext,
+            );
+        } else {
+            // `plan-v1.6` + P00 Guard 4: ask for a population only when supplying one can produce
+            // a cited answer. If every population either has within-study disagreement or had all
+            // its citable reports missed by lexical retrieval, every population yields ABSTAIN.
+            for document in &citable {
+                if !retrieved.contains(&document.doc_id) {
+                    excluded.push(Exclusion {
+                        doc_id: document.doc_id.clone(),
+                        reason: ReasonCode::EvidenceInsufficient,
+                        detail: "applicable, but lexical retrieval did not find it".to_owned(),
+                    });
+                }
+            }
+            fire(
+                "no-retrieved-citable-source",
+                5,
+                TerminalOutcome::Abstain,
+                ReasonCode::EvidenceInsufficient,
             );
         }
     }
@@ -898,7 +959,22 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
         let (outcome, reason) = failure.refusal();
         refuse(outcome, reason, funnel, excluded)
     };
-    let rendered = render_brief(&claims);
+    // Non-current reports (`ExpressionOfConcern`, `Corrected`, `Unknown`, `Superseded`) matching
+    // a cited study or the queried population represent unresolved currentness/editorial limits
+    // (`P00_DECISION_ASSURANCE_CONTRACT` Guards 6 & 7), preventing an unqualified `Answer`.
+    let currentness_limited = matching.iter().any(|document| {
+        !document.publication_state.citable()
+            && (question
+                .population
+                .as_ref()
+                .is_some_and(|pop| normalized(&document.population) == *pop)
+                || claims
+                    .iter()
+                    .any(|(cited_doc, _)| cited_doc.study_id == document.study_id))
+    });
+    let appraised_clean =
+        corpus.quality_appraised && unretrieved.is_empty() && !currentness_limited;
+    let rendered = render_brief(&claims, appraised_clean);
     let brief = match catch_unwind(AssertUnwindSafe(|| seams.after_render(rendered))) {
         Ok(Ok(brief)) => brief,
         Ok(Err(failure)) => return failed(failure, &funnel, &excluded),
@@ -928,6 +1004,14 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
     };
     funnel.verified_claims = cited.len();
 
+    let (applicability, answer_outcome) = if appraised_clean {
+        (ApplicabilityState::Applicable, TerminalOutcome::Answer)
+    } else {
+        (
+            ApplicabilityState::ApplicableWithLimits,
+            TerminalOutcome::AnswerWithCaution,
+        )
+    };
     let question_digest = DigestSha256::of(normalized(text).as_bytes());
     let text_digest = DigestSha256::of(brief.as_bytes());
     let mut manifest = AnswerProofManifest {
@@ -961,9 +1045,9 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
             policy: "vs1a-guards-1".to_owned(),
             thresholds: "none".to_owned(),
         },
-        applicability: ApplicabilityState::ApplicableWithLimits,
+        applicability,
         contradiction: ContradictionState::None,
-        outcome: TerminalOutcome::AnswerWithCaution,
+        outcome: answer_outcome,
         reason: ReasonCode::None,
         post_verification_passed: true,
         verified_at_utc: "fixture-time".to_owned(),
@@ -979,7 +1063,7 @@ pub fn ask_with_seams(text: &str, corpus: &Corpus, seams: &impl AnswerSeams) -> 
         );
     }
     AskResult {
-        outcome: TerminalOutcome::AnswerWithCaution,
+        outcome: answer_outcome,
         reason: ReasonCode::None,
         brief: Some(brief),
         manifest: Some(manifest),

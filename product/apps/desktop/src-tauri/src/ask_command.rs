@@ -55,6 +55,7 @@ impl From<&Funnel> for FunnelView {
 #[serde(rename_all = "camelCase")]
 pub struct ExcludedView {
     doc_id: String,
+    reason_code: ReasonCode,
     reason: String,
 }
 
@@ -87,6 +88,8 @@ pub struct AskView {
 
 /// An answer that reached `COMMITTED`.
 struct CommittedAnswer {
+    outcome: TerminalOutcome,
+    reason: ReasonCode,
     brief: String,
     proof_id: String,
     already_committed: bool,
@@ -124,6 +127,13 @@ fn claim_data_dir(data_dir: &Path) -> Result<File, String> {
     Ok(lock)
 }
 
+#[cfg(test)]
+enum CommitFault {
+    Error(StoreError),
+    UnknownAfterCommit,
+    UnknownUnwritten,
+}
+
 /// The open store, keyed by the OS protector. It keeps answers across launches.
 pub struct AskSession {
     store: ProofStore,
@@ -131,7 +141,10 @@ pub struct AskSession {
     _lease: VaultLease,
     /// A failure the next commit returns instead of committing, for TA-14's commit boundary.
     #[cfg(test)]
-    commit_fault: Option<StoreError>,
+    commit_fault: Option<CommitFault>,
+    /// A failure injected on the readback immediately after commit.
+    #[cfg(test)]
+    read_fault: Option<StoreError>,
 }
 
 type Withheld = (TerminalOutcome, ReasonCode);
@@ -141,10 +154,11 @@ const TOOL_FAILURE: Withheld = (TerminalOutcome::Blocked, ReasonCode::ToolFailur
 fn denied(error: StoreError) -> Withheld {
     let reason = match error {
         StoreError::RightsChanged => ReasonCode::RightsUnresolved,
-        StoreError::ProofRace { .. } | StoreError::SourceAmended(_) => {
-            ReasonCode::ProofRaceInvalidated
-        }
+        StoreError::ProofRace { .. }
+        | StoreError::SourceAmended(_)
+        | StoreError::SourceRetracted(_) => ReasonCode::ProofRaceInvalidated,
         StoreError::SourceNotAdmitted(_) => ReasonCode::SourceUnavailable,
+        StoreError::InvalidSpanBounds(_) => ReasonCode::PostVerificationFailed,
         _ => ReasonCode::ToolFailure,
     };
     (TerminalOutcome::Blocked, reason)
@@ -205,6 +219,8 @@ impl AskSession {
             _lease: lease,
             #[cfg(test)]
             commit_fault: None,
+            #[cfg(test)]
+            read_fault: None,
         })
     }
 
@@ -212,6 +228,8 @@ impl AskSession {
         let result = ask(question, &self.corpus);
         match self.committed(&result) {
             Ok(Some(answer)) => AskView {
+                outcome: answer.outcome,
+                reason: answer.reason,
                 already_committed: answer.already_committed,
                 ..view(
                     &result,
@@ -236,26 +254,62 @@ impl AskSession {
             return Ok(None);
         };
         #[cfg(test)]
-        if let Some(fault) = self.commit_fault.take() {
-            return Err(committing(fault));
-        }
+        let commit_result = match self.commit_fault.take() {
+            Some(CommitFault::Error(fault)) => Err(fault),
+            Some(CommitFault::UnknownAfterCommit) => {
+                let _ = self.store.commit(manifest, brief.as_bytes());
+                Err(StoreError::synthetic_commit_unknown())
+            }
+            Some(CommitFault::UnknownUnwritten) => Err(StoreError::synthetic_commit_unknown()),
+            None => self.store.commit(manifest, brief.as_bytes()),
+        };
+        #[cfg(not(test))]
+        let commit_result = self.store.commit(manifest, brief.as_bytes());
+
         // A busy store at commit wrote nothing and did not answer in time: the same outcome as a step
-        // that timed out. After a commit, the proof is stored, so `denied` keeps its usual mapping.
-        let receipt = self
-            .store
-            .commit(manifest, brief.as_bytes())
-            .map_err(committing)?;
-        let stored = self.store.read(&manifest.proof_id).map_err(denied)?;
+        // that timed out. `CommitUnknown` reconciles via one `read` verifying both `final_text` and
+        // full manifest equivalence (`ProofStore::matches_manifest`).
+        let (replayed, reconciled) = match commit_result {
+            Ok(receipt) => (receipt.replayed, None),
+            Err(StoreError::CommitUnknown(_)) => match self.store.read(&manifest.proof_id) {
+                Ok(stored)
+                    if stored.final_text == brief.as_bytes()
+                        && ProofStore::matches_manifest(&stored, manifest) =>
+                {
+                    (false, Some(stored))
+                }
+                _ => return Err(TOOL_FAILURE),
+            },
+            Err(other) => return Err(committing(other)),
+        };
+
+        #[cfg(test)]
+        let stored = match self.read_fault.take() {
+            Some(fault) => return Err(denied(fault)),
+            None => match reconciled {
+                Some(stored) => stored,
+                None => self.store.read(&manifest.proof_id).map_err(denied)?,
+            },
+        };
+        #[cfg(not(test))]
+        let stored = match reconciled {
+            Some(stored) => stored,
+            None => self.store.read(&manifest.proof_id).map_err(denied)?,
+        };
+
         match stored.state {
             ProofState::Committed => {}
             ProofState::CurrentnessUnknown => {
                 return Err((TerminalOutcome::Abstain, ReasonCode::CurrentnessUnknown));
             }
             _ => {
-                return Err((
-                    TerminalOutcome::Blocked,
-                    ReasonCode::SourceInvalidOrRetracted,
-                ));
+                let current_grant = self.store.rights_grant().map_err(denied)?;
+                let reason = if current_grant != stored.manifest.rights_grant_version {
+                    ReasonCode::RightsUnresolved
+                } else {
+                    ReasonCode::SourceInvalidOrRetracted
+                };
+                return Err((TerminalOutcome::Blocked, reason));
             }
         }
         let text = String::from_utf8(stored.final_text).map_err(|_| TOOL_FAILURE)?;
@@ -278,9 +332,11 @@ impl AskSession {
             }
         }
         Ok(Some(CommittedAnswer {
+            outcome: stored.manifest.outcome,
+            reason: stored.manifest.reason,
             brief: text,
             proof_id: stored.manifest.proof_id,
-            already_committed: receipt.replayed,
+            already_committed: replayed,
             citations,
         }))
     }
@@ -298,6 +354,7 @@ fn view(
             .iter()
             .map(|exclusion| ExcludedView {
                 doc_id: exclusion.doc_id.clone(),
+                reason_code: exclusion.reason,
                 reason: exclusion.detail.clone(),
             })
             .collect(),
@@ -511,13 +568,59 @@ mod tests {
         for (fault, outcome, reason) in cases {
             let dir = TempDir::new();
             let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
-            session.commit_fault = Some(fault);
+            session.commit_fault = Some(CommitFault::Error(fault));
             assert_withheld(&session.ask(ANSWERED), outcome, reason);
             let next = session.ask(ANSWERED);
             assert!(
                 !next.already_committed,
                 "the refused request left nothing behind"
             );
+        }
+    }
+
+    #[test]
+    fn commit_unknown_reconciles_a_durable_write_and_withholds_an_unwritten_one() {
+        // Case 1: CommitUnknown after SQLite already wrote the durable proof -> reconciled cleanly.
+        let dir = TempDir::new();
+        let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
+        session.commit_fault = Some(CommitFault::UnknownAfterCommit);
+        let recovered = session.ask(ANSWERED);
+        assert_eq!(recovered.outcome, TerminalOutcome::AnswerWithCaution);
+        assert!(!recovered.already_committed);
+        assert!(recovered.brief.is_some() && recovered.proof_id.is_some());
+        assert_replayed(&session.ask(ANSWERED), &recovered);
+
+        // Case 2: CommitUnknown when nothing reached disk -> withheld fail-closed.
+        let dir = TempDir::new();
+        let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
+        session.commit_fault = Some(CommitFault::UnknownUnwritten);
+        assert_withheld(
+            &session.ask(ANSWERED),
+            TerminalOutcome::Blocked,
+            ReasonCode::ToolFailure,
+        );
+    }
+
+    #[test]
+    fn read_failures_after_commit_withhold_the_answer_with_denied_mapping() {
+        for (fault, expected_reason) in [
+            (StoreError::Busy, ReasonCode::ToolFailure),
+            (StoreError::RightsChanged, ReasonCode::RightsUnresolved),
+            (
+                StoreError::SourceRetracted("doc-veltrix-a".to_owned()),
+                ReasonCode::ProofRaceInvalidated,
+            ),
+            (StoreError::UnknownProof, ReasonCode::ToolFailure),
+        ] {
+            let dir = TempDir::new();
+            let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
+            session.read_fault = Some(fault);
+            let withheld = session.ask(ANSWERED);
+            assert_withheld(&withheld, TerminalOutcome::Blocked, expected_reason);
+            // The commit itself succeeded, so a subsequent call replays the durable proof.
+            let next = session.ask(ANSWERED);
+            assert!(next.already_committed);
+            assert!(next.brief.is_some());
         }
     }
 
@@ -616,6 +719,20 @@ mod tests {
             &view,
             TerminalOutcome::Blocked,
             ReasonCode::SourceInvalidOrRetracted,
+        );
+
+        let dir = TempDir::new();
+        let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("session");
+        let _proof_id = session.ask(ANSWERED).proof_id.expect("proof");
+        session
+            .store
+            .set_rights_grant("revoked-grant-v2")
+            .expect("revoke grant");
+        let revoked_view = session.ask(ANSWERED);
+        assert_withheld(
+            &revoked_view,
+            TerminalOutcome::Blocked,
+            ReasonCode::RightsUnresolved,
         );
     }
 
@@ -813,6 +930,11 @@ mod tests {
         assert_eq!(json["outcome"], "ANSWER_WITH_CAUTION");
         assert!(json["funnel"]["rightsAdmissible"].is_number());
         assert!(json["citations"][0]["startScalar"].is_number());
+        assert_eq!(
+            json["excluded"][0]["reasonCode"],
+            "APPLICABILITY_UNRESOLVED"
+        );
+        assert!(json["excluded"][0]["reason"].as_str().is_some());
         assert!(json.get("confidence").is_none());
     }
 }
