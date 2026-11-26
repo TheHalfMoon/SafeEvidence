@@ -100,7 +100,8 @@ pub struct EvidenceCorpusDoctorStatus {
 }
 
 impl EvidenceCorpusDoctorStatus {
-    /// Spec 025/045 READY_BASE honesty for the synthetic versioned corpus.
+    /// Spec 025 READY_BASE honesty for the synthetic versioned corpus.
+    /// SafeEvidence carries no procedural scale-corpus generator (`scale_corpus_generator_present: false`).
     #[must_use]
     pub fn ready_base(corpus_id: impl Into<String>, version: impl Into<String>) -> Self {
         Self {
@@ -110,10 +111,25 @@ impl EvidenceCorpusDoctorStatus {
             synthetic_owned_only: true,
             clinical_quality_claimed: false,
             release_ready: false,
-            scale_corpus_generator_present: true,
+            scale_corpus_generator_present: false,
             current_corpus_id: Some(corpus_id.into()),
             current_version: Some(version.into()),
         }
+    }
+
+    /// Rejects any doctor status that claims clinical quality, release readiness, or the absent
+    /// donor procedural scale-corpus generator.
+    pub const fn validate_non_clinical(&self) -> Result<(), &'static str> {
+        if self.clinical_quality_claimed {
+            return Err("clinical_quality_claimed must remain false");
+        }
+        if self.release_ready {
+            return Err("release_ready must remain false");
+        }
+        if self.scale_corpus_generator_present {
+            return Err("scale_corpus_generator_present must remain false in SafeEvidence");
+        }
+        Ok(())
     }
 }
 

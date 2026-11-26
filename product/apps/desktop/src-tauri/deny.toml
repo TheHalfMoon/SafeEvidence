@@ -15,6 +15,9 @@ ignore = [
     # glib 0.18 is reached through Tauri's GTK 3 and WebKitGTK stack on Linux, with no fixed version
     # within Tauri 2. The unsound API (`VariantStrIter`) is not called by this app's code.
     { id = "RUSTSEC-2024-0429", reason = "Linux GTK 3 stack under Tauri 2; no fixed version; API unused here" },
+    # SQLCipher 4.14.0 embeds SQLite 3.51.3 via libsqlite3-sys 0.38.2; mitigated in safeevidence-vault
+    # (pre-open `-wal` page_size == 4096 + 4096-byte SQLCipher HMAC zeroing); sqlcipher-src 419.0.6 uses WTFPL/blessing & SQLite 3.53.4.
+    { id = "RUSTSEC-2026-0459", reason = "Mitigated in safeevidence-vault (pre-open WAL page_size == 4096 + 4096-byte SQLCipher HMAC buffer zeroing; ask is :memory:); sqlcipher-src 419.0.6 uses WTFPL/blessing and SQLite 3.53.4" },
 ]
 
 [licenses]

@@ -97,3 +97,45 @@ impl ProofState {
         matches!(self, Self::Committed)
     }
 }
+
+/// Fail-closed gate errors enforcing `docs/P00_DECISION_ASSURANCE_CONTRACT.md` on donor object types:
+/// unpromoted proposals and heuristic confidence percentages must never enter an assured V1 surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AssuredSurfaceGateError {
+    /// Non-authoritative `Proposal` records are forbidden on assured surfaces.
+    ProposalCannotReachAssuredSurface,
+    /// Internal candidate confidence score is NaN, infinite, or outside `[0.0, 1.0]`.
+    InvalidProposalConfidence,
+    /// Required identifier or authority actor field is empty.
+    MissingRequiredAuthorityField,
+    /// Heuristic confidence percentage/score is forbidden on assured V1 surfaces and assertions.
+    ForbiddenConfidenceField,
+}
+
+/// Recursively inspects a JSON value and returns `true` if any object key carries a heuristic
+/// confidence field (`confidence`, `confidence_pct`/`confidencePct`, `confidence_percent`/
+/// `confidencePercent`, `confidence_score`/`confidenceScore`, `clinical_confidence`/
+/// `clinicalConfidence`, case-insensitively and separator-agnostically).
+#[must_use]
+pub fn json_contains_confidence_key(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Object(map) => map.iter().any(|(key, child)| {
+            let normalized: String = key
+                .trim()
+                .chars()
+                .filter(|c| *c != '_' && *c != '-')
+                .map(|c| c.to_ascii_lowercase())
+                .collect();
+            matches!(
+                normalized.as_str(),
+                "confidence"
+                    | "confidencepct"
+                    | "confidencepercent"
+                    | "confidencescore"
+                    | "clinicalconfidence"
+            ) || json_contains_confidence_key(child)
+        }),
+        serde_json::Value::Array(items) => items.iter().any(json_contains_confidence_key),
+        _ => false,
+    }
+}

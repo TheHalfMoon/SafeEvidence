@@ -256,6 +256,49 @@ class GateFixtures(unittest.TestCase):
         self.edit(check.TRACKER, "OPEN — owner unassigned", "APPROVED")
         self.assert_deny("unexpected status")
 
+    def test_issue_bound_owner_assignment_passes_without_activating_p01(self):
+        self.edit(
+            check.TRACKER,
+            "OPEN — owner unassigned",
+            "ASSIGNED — @TheHalfMoon (https://github.com/TheHalfMoon/SafeEvidence/issues/3#issuecomment-100)",
+        )
+        out = self.validate_fixture()
+        self.assertEqual(out["structure"], "PASS", out["errors"])
+        self.assertEqual(out["assigned_owners_recorded"], 1)
+        self.assertEqual(out["named_human_approvals_verified"], 0)
+        self.assertEqual(out["p01_g01_activation"], "BLOCKED")
+        self.assertFalse(out["clinical_evaluation_verified"])
+
+    def test_owner_assignment_without_matching_issue_comment_rejected(self):
+        for bad_state in (
+            "ASSIGNED — @TheHalfMoon",
+            "ASSIGNED — @TheHalfMoon (https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-100)",
+            "ASSIGNED — unauthenticated (https://github.com/TheHalfMoon/SafeEvidence/issues/3#issuecomment-100)",
+        ):
+            with self.subTest(bad_state=bad_state):
+                self.setUp()
+                self.edit(check.TRACKER, "OPEN — owner unassigned", bad_state)
+                self.assert_deny("unexpected status")
+
+    def test_all_41_assigned_requires_pending_marker_and_remains_blocked(self):
+        tracker_path = self.root / check.TRACKER
+        text = tracker_path.read_text(encoding="utf-8").replace(
+            "OPEN — owner unassigned",
+            "ASSIGNED — @TheHalfMoon (https://github.com/TheHalfMoon/SafeEvidence/issues/3#issuecomment-100)",
+        )
+        tracker_path.write_text(text, encoding="utf-8")
+        self.assert_deny("missing fail-closed marker OWNER_ASSIGNED_PRE_ENTRY_PENDING")
+
+        tracker_path.write_text(
+            text.replace("OPEN_OWNER_ASSIGNMENT", "OWNER_ASSIGNED_PRE_ENTRY_PENDING"),
+            encoding="utf-8",
+        )
+        out = self.validate_fixture()
+        self.assertEqual(out["structure"], "PASS", out["errors"])
+        self.assertEqual(out["assigned_owners_recorded"], 41)
+        self.assertEqual(out["named_human_approvals_verified"], 0)
+        self.assertEqual(out["p01_g01_activation"], "BLOCKED")
+
     def test_loss_of_clinical_blocker_rejected(self):
         self.edit(check.CHARTER, "DRAFT_UNAPPROVED", "SIGNED")
         self.assert_deny("missing fail-closed marker")

@@ -42,6 +42,13 @@ pub const EXPECTED_SQLCIPHER_CRYPTO_PROVIDER: &str = "openssl";
 /// Exact OpenSSL runtime text produced by the reviewed 3.6.3 source revision.
 pub const EXPECTED_OPENSSL_RUNTIME_VERSION: &str = "OpenSSL 3.6.3 9 Jun 2026";
 
+/// Exact SQLCipher and WAL page size enforced across every file-backed vault connection.
+/// Pre-open sibling `-wal` header inspection rejects any mismatched WAL page size before
+/// SQLite opens page-cache memory (`RUSTSEC-2026-0459` / `CVE-2026-119375`).
+pub const EXPECTED_SQLCIPHER_PAGE_SIZE: u32 = 4096;
+
+const SQLITE_WAL_HEADER_BYTES: usize = 32;
+
 #[cfg(target_os = "android")]
 const EXPECTED_TEMP_STORE_COMPILE_OPTION: &str = "TEMP_STORE=3";
 
@@ -79,6 +86,8 @@ pub enum SqlCipherOpenError {
     CompilePosture,
     /// File-backed temporary storage could not be disabled and positively verified.
     TemporaryStorage,
+    /// Sibling `-wal` header or SQLCipher `cipher_page_size` differs from 4096 bytes.
+    PageSizePosture,
 }
 
 impl fmt::Display for SqlCipherOpenError {
@@ -107,6 +116,9 @@ impl fmt::Display for SqlCipherOpenError {
                 "SQLCipher temp-store compile posture does not match the reviewed target build"
             }
             Self::TemporaryStorage => "SQLCipher temporary storage is not forced to memory",
+            Self::PageSizePosture => {
+                "SQLCipher database or sibling WAL page size does not match the reviewed 4096-byte posture"
+            }
         };
         f.write_str(message)
     }
@@ -782,6 +794,7 @@ fn open_reviewed_connection(
     }
 
     let _permit = lease.authorize()?;
+    validate_preopen_wal_page_size(path)?;
     let connection = Connection::open_with_flags(path, provider_open_flags())
         .map_err(|_| SqlCipherOpenError::Open)?;
     let structured_key = context.derive_purpose_key(vrk);
@@ -820,8 +833,30 @@ fn backup_snapshot_file_identity(path: &Path) -> Result<(u64, [u8; 32]), ()> {
     Ok((total, hasher.finalize().into()))
 }
 
+fn sqlite_sidecar_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut os = path.as_os_str().to_os_string();
+    os.push(suffix);
+    PathBuf::from(os)
+}
+
+fn target_or_sidecar_exists(target: &Path) -> Result<bool, ()> {
+    for candidate in [
+        target.to_path_buf(),
+        sqlite_sidecar_path(target, "-wal"),
+        sqlite_sidecar_path(target, "-shm"),
+        sqlite_sidecar_path(target, "-journal"),
+    ] {
+        match fs::symlink_metadata(&candidate) {
+            Ok(_) => return Ok(true),
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(_) => return Err(()),
+        }
+    }
+    Ok(false)
+}
+
 fn backup_snapshot_wal_is_empty(source: &Path) -> Result<bool, ()> {
-    let wal = PathBuf::from(format!("{}-wal", source.display()));
+    let wal = sqlite_sidecar_path(source, "-wal");
     match fs::symlink_metadata(wal) {
         Ok(metadata) => Ok(metadata.file_type().is_file() && metadata.len() == 0),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(true),
@@ -847,15 +882,23 @@ fn resolve_backup_snapshot_paths<E>(
         .file_name()
         .ok_or(SqlCipherBackupSnapshotError::Path)?;
     let target = parent.join(name);
-    if target.exists() {
-        let existing = fs::canonicalize(&target).map_err(|_| SqlCipherBackupSnapshotError::Path)?;
-        if existing == source {
-            return Err(SqlCipherBackupSnapshotError::SamePath);
-        }
-        return Err(SqlCipherBackupSnapshotError::TargetAlreadyExists);
-    }
     if target == source {
         return Err(SqlCipherBackupSnapshotError::SamePath);
+    }
+    match fs::symlink_metadata(&target) {
+        Ok(_) => {
+            if let Ok(existing) = fs::canonicalize(&target)
+                && existing == source
+            {
+                return Err(SqlCipherBackupSnapshotError::SamePath);
+            }
+            return Err(SqlCipherBackupSnapshotError::TargetAlreadyExists);
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(_) => return Err(SqlCipherBackupSnapshotError::Path),
+    }
+    if target_or_sidecar_exists(&target).map_err(|_| SqlCipherBackupSnapshotError::Path)? {
+        return Err(SqlCipherBackupSnapshotError::TargetAlreadyExists);
     }
     Ok((source, target))
 }
@@ -1045,6 +1088,8 @@ pub fn stage_sqlcipher_generation(
     verify_b304_integrity(&source_connection)
         .map_err(SqlCipherGenerationMigrationError::SourceIntegrity)?;
 
+    validate_preopen_wal_page_size(&target_path)
+        .map_err(SqlCipherGenerationMigrationError::TargetOpen)?;
     export_to_target_generation(&source_connection, &target_path, target.context, target.vrk)?;
     drop(source_connection);
 
@@ -1099,17 +1144,25 @@ fn resolve_generation_migration_paths(
         .file_name()
         .ok_or(SqlCipherGenerationMigrationError::Path)?;
     let resolved_target = parent.join(name);
-
-    if target.exists() {
-        let existing =
-            fs::canonicalize(target).map_err(|_| SqlCipherGenerationMigrationError::Path)?;
-        if existing == source {
-            return Err(SqlCipherGenerationMigrationError::SamePath);
-        }
-        return Err(SqlCipherGenerationMigrationError::TargetAlreadyExists);
-    }
     if resolved_target == source {
         return Err(SqlCipherGenerationMigrationError::SamePath);
+    }
+    match fs::symlink_metadata(target) {
+        Ok(_) => {
+            if let Ok(existing) = fs::canonicalize(target)
+                && existing == source
+            {
+                return Err(SqlCipherGenerationMigrationError::SamePath);
+            }
+            return Err(SqlCipherGenerationMigrationError::TargetAlreadyExists);
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(_) => return Err(SqlCipherGenerationMigrationError::Path),
+    }
+    if target_or_sidecar_exists(&resolved_target)
+        .map_err(|_| SqlCipherGenerationMigrationError::Path)?
+    {
+        return Err(SqlCipherGenerationMigrationError::TargetAlreadyExists);
     }
     Ok((source, resolved_target))
 }
@@ -1158,6 +1211,9 @@ fn key_opens_healthy_database(
     context: KeyDerivationContext,
     vrk: &OwnedKeyMaterial,
 ) -> bool {
+    if validate_preopen_wal_page_size(path).is_err() {
+        return false;
+    }
     let Ok(connection) = Connection::open_with_flags(path, read_only_provider_open_flags()) else {
         return false;
     };
@@ -1171,7 +1227,7 @@ fn key_opens_healthy_database(
 fn remove_database_files_best_effort(path: &Path) {
     let _ = fs::remove_file(path);
     for suffix in ["-wal", "-shm", "-journal"] {
-        let sidecar = PathBuf::from(format!("{}{suffix}", path.display()));
+        let sidecar = sqlite_sidecar_path(path, suffix);
         let _ = fs::remove_file(sidecar);
     }
 }
@@ -1254,10 +1310,64 @@ fn require_encryption_active(status: rusqlite::Result<String>) -> Result<(), Sql
     }
 }
 
+fn validate_preopen_wal_page_size(path: &Path) -> Result<(), SqlCipherOpenError> {
+    if path.as_os_str().is_empty() || path == Path::new(":memory:") {
+        return Ok(());
+    }
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.file_type().is_file() => return Err(SqlCipherOpenError::Open),
+        Ok(_) => {}
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(_) => return Err(SqlCipherOpenError::Open),
+    }
+    let wal_path = sqlite_sidecar_path(path, "-wal");
+    let metadata = match fs::symlink_metadata(&wal_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err(SqlCipherOpenError::Open),
+    };
+    if !metadata.file_type().is_file() {
+        return Err(SqlCipherOpenError::Open);
+    }
+    let mut file = File::open(&wal_path).map_err(|_| SqlCipherOpenError::Open)?;
+    let opened = file.metadata().map_err(|_| SqlCipherOpenError::Open)?;
+    if !opened.file_type().is_file() {
+        return Err(SqlCipherOpenError::Open);
+    }
+    if opened.len() == 0 {
+        return Ok(());
+    }
+    if opened.len() < SQLITE_WAL_HEADER_BYTES as u64 {
+        return Err(SqlCipherOpenError::PageSizePosture);
+    }
+    let mut header = [0_u8; SQLITE_WAL_HEADER_BYTES];
+    file.read_exact(&mut header)
+        .map_err(|_| SqlCipherOpenError::Open)?;
+    let wal_page_size = u32::from_be_bytes([header[8], header[9], header[10], header[11]]);
+    if wal_page_size != EXPECTED_SQLCIPHER_PAGE_SIZE {
+        return Err(SqlCipherOpenError::PageSizePosture);
+    }
+    Ok(())
+}
+
+fn verify_cipher_page_size(connection: &Connection) -> Result<(), SqlCipherOpenError> {
+    // SQLCipher's codec intercepts PRAGMA cipher_page_size / page_size and returns TEXT ("4096").
+    let observed = connection
+        .query_row("PRAGMA cipher_page_size;", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|_| SqlCipherOpenError::PageSizePosture)?;
+    if observed != "4096" {
+        return Err(SqlCipherOpenError::PageSizePosture);
+    }
+    Ok(())
+}
+
 fn enforce_b303_provider_and_temp_posture(
     connection: &Connection,
 ) -> Result<(), SqlCipherOpenError> {
     verify_crypto_provider_identity(connection)?;
+    verify_cipher_page_size(connection)?;
     verify_temp_store_compile_posture(connection)?;
     force_memory_temp_store(connection)
 }
@@ -2443,6 +2553,154 @@ mod tests {
         drop(target_handle);
         remove_database_files(&source_path);
         remove_database_files(&target_path);
+    }
+
+    #[test]
+    fn mismatched_sibling_wal_page_size_is_rejected_before_sqlite_open() {
+        let path = unused_path("rustsec-2026-0459-wal");
+        let wal_path = PathBuf::from(format!("{}-wal", path.display()));
+        let original_wal = {
+            let lease = VaultLease::new(identity());
+            let mut handle = store_handle(&path, &lease);
+            handle.configure_durable_store().expect("durable WAL");
+            handle
+                .inner
+                .write(|backend| {
+                    backend
+                        ._connection
+                        .execute_batch("PRAGMA wal_autocheckpoint = 0;")
+                })
+                .expect("disable autocheckpoint");
+            handle
+                .install_schema(&[
+                    "CREATE TABLE wal_page_probe (id INTEGER PRIMARY KEY, body TEXT NOT NULL)",
+                    "INSERT INTO wal_page_probe VALUES (1, 'synthetic')",
+                ])
+                .expect("commit WAL frame");
+            fs::read(&wal_path).expect("live WAL header must exist while connection is open")
+        };
+        // Clean Connection::drop checkpoints and removes `-wal`; place the captured live WAL back.
+        fs::write(&wal_path, &original_wal).expect("stage live WAL");
+        assert!(original_wal.len() >= super::SQLITE_WAL_HEADER_BYTES);
+        assert_eq!(
+            u32::from_be_bytes([
+                original_wal[8],
+                original_wal[9],
+                original_wal[10],
+                original_wal[11]
+            ]),
+            super::EXPECTED_SQLCIPHER_PAGE_SIZE
+        );
+
+        for bad_page_size in [0_u32, 512, 1024, 2048, 8192, 16384, 65536] {
+            let mut tampered = original_wal.clone();
+            tampered[8..12].copy_from_slice(&bad_page_size.to_be_bytes());
+            fs::write(&wal_path, &tampered).expect("write tampered WAL header");
+
+            let lease = VaultLease::new(identity());
+            let reopened = open_sqlcipher_database(
+                &path,
+                lease.keyed_handle_lease(),
+                context(KeyPurpose::StructuredStore),
+                &vrk(),
+            );
+            assert_eq!(
+                reopened.err(),
+                Some(SqlCipherOpenError::PageSizePosture),
+                "bad WAL page size {bad_page_size} must fail pre-open"
+            );
+            assert!(!key_opens_healthy_database(
+                &path,
+                context(KeyPurpose::StructuredStore),
+                &vrk(),
+            ));
+        }
+
+        // Torn/crafted non-empty WAL shorter than 32 bytes is rejected, while a 0-byte truncated WAL opens.
+        for short_len in [1_usize, 16, 31] {
+            fs::write(&wal_path, &original_wal[..short_len]).expect("write short WAL");
+            let lease = VaultLease::new(identity());
+            assert_eq!(
+                open_sqlcipher_database(
+                    &path,
+                    lease.keyed_handle_lease(),
+                    context(KeyPurpose::StructuredStore),
+                    &vrk(),
+                )
+                .err(),
+                Some(SqlCipherOpenError::PageSizePosture),
+                "short WAL ({short_len} bytes) must fail pre-open"
+            );
+        }
+        fs::write(&wal_path, b"").expect("write truncated 0-byte WAL");
+        {
+            let lease = VaultLease::new(identity());
+            let handle = open_sqlcipher_database(
+                &path,
+                lease.keyed_handle_lease(),
+                context(KeyPurpose::StructuredStore),
+                &vrk(),
+            )
+            .expect("0-byte truncated WAL opens cleanly");
+            drop(handle);
+        }
+
+        // Restoring the authentic 4096-byte WAL header allows recovery to proceed cleanly.
+        fs::write(&wal_path, &original_wal).expect("restore authentic WAL");
+        let lease = VaultLease::new(identity());
+        let mut handle = open_sqlcipher_database(
+            &path,
+            lease.keyed_handle_lease(),
+            context(KeyPurpose::StructuredStore),
+            &vrk(),
+        )
+        .expect("authentic 4096-byte WAL reopens cleanly");
+        assert_eq!(handle.verify_integrity(), Ok(()));
+        let rows = handle
+            .deferred_transaction(|tx| {
+                tx.query("SELECT count(*) FROM wal_page_probe", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+            })
+            .expect("query succeeds");
+        assert_eq!(rows, [1]);
+        drop(handle);
+        remove_database_files(&path);
+    }
+
+    #[test]
+    fn foreign_8192_byte_sqlite_wal_placed_beside_vault_db_is_rejected() {
+        let path = unused_path("rustsec-2026-0459-foreign");
+        let foreign = unused_path("rustsec-2026-0459-donor-wal");
+        {
+            let lease = VaultLease::new(identity());
+            let mut handle = store_handle(&path, &lease);
+            handle
+                .install_schema(&["CREATE TABLE v (id INTEGER PRIMARY KEY)"])
+                .expect("vault schema");
+        }
+        remove_database_files(&foreign);
+        {
+            let conn = Connection::open(&foreign).expect("foreign sqlite");
+            conn.execute_batch(
+                "PRAGMA page_size = 8192; PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0; CREATE TABLE f (x BLOB); INSERT INTO f VALUES (zeroblob(8192));",
+            )
+            .expect("foreign 8192 WAL");
+            let foreign_wal = fs::read(format!("{}-wal", foreign.display())).expect("foreign wal");
+            fs::write(format!("{}-wal", path.display()), foreign_wal).expect("transplant wal");
+        }
+        remove_database_files(&foreign);
+
+        let lease = VaultLease::new(identity());
+        let err = open_sqlcipher_database(
+            &path,
+            lease.keyed_handle_lease(),
+            context(KeyPurpose::StructuredStore),
+            &vrk(),
+        )
+        .expect_err("foreign 8192-byte WAL must be rejected pre-open");
+        assert_eq!(err, SqlCipherOpenError::PageSizePosture);
+        remove_database_files(&path);
     }
 }
 

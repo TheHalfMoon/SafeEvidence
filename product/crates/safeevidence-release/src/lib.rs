@@ -1,8 +1,9 @@
 //! Admission ADM-0002 (T11); see `PROVENANCE.md`.
 //! Deterministic CycloneDX release SBOM generation + verification (Spec 054).
 //!
-//! READY_BASE scope: binds `source_sha` / `tree_sha` / `cargo_lock_sha256`,
-//! workspace + Rust + native inventories, artifacts, and Pack/model assets in
+//! READY_BASE scope: binds `source_sha` / `tree_sha` / `cargo_lock_sha256` (plus
+//! optional desktop `src-tauri/Cargo.lock` and `package-lock.json` digests),
+//! workspace + Rust + npm + native inventories, artifacts, and Pack/model assets in
 //! CycloneDX 1.5 JSON. Never claims `RELEASE_READY`, reproducible builds, or a
 //! public SPDX license decision. Unknown licenses are recorded as
 //! `NOASSERTION`, never fabricated.
@@ -48,9 +49,18 @@ pub struct RustDependency {
     pub license: Option<String>,
 }
 
+/// npm (`package-lock.json`) dependency entry for the desktop frontend shell.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NpmDependency {
+    pub name: String,
+    pub version: String,
+    pub license: Option<String>,
+    pub integrity: Option<String>,
+}
+
 /// Native/system dependency entry. Anything that cannot be enumerated on the
 /// host must be explicitly classified (`host-tool`, `os-provided`,
-/// `not-applicable`), never silently omitted.
+/// `not-applicable`, `bundled-source`), never silently omitted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NativeDependency {
     pub name: String,
@@ -79,9 +89,12 @@ pub struct ReleaseSbomInput {
     pub source_sha: String,
     pub tree_sha: String,
     pub cargo_lock_sha256: String,
+    pub desktop_cargo_lock_sha256: Option<String>,
+    pub desktop_package_lock_sha256: Option<String>,
     pub build_env: BuildEnvironment,
     pub workspace_packages: Vec<WorkspacePackage>,
     pub rust_deps: Vec<RustDependency>,
+    pub npm_deps: Vec<NpmDependency>,
     pub native_deps: Vec<NativeDependency>,
     pub artifacts: Vec<ReleaseArtifact>,
     pub pack_assets: Vec<PackAsset>,
@@ -93,6 +106,8 @@ pub struct ExpectedBinding {
     pub source_sha: String,
     pub tree_sha: String,
     pub cargo_lock_sha256: String,
+    pub desktop_cargo_lock_sha256: Option<String>,
+    pub desktop_package_lock_sha256: Option<String>,
     pub workspace_package_names: Vec<String>,
 }
 
@@ -162,7 +177,7 @@ pub fn generate_release_sbom(input: &ReleaseSbomInput) -> String {
     let mut components: Vec<serde_json::Value> = Vec::new();
 
     let mut workspace = input.workspace_packages.clone();
-    workspace.sort_by(|a, b| a.name.cmp(&b.name));
+    workspace.sort_by(|a, b| (&a.name, &a.version).cmp(&(&b.name, &b.version)));
     for pkg in &workspace {
         components.push(serde_json::json!({
             "type": "application",
@@ -187,6 +202,35 @@ pub fn generate_release_sbom(input: &ReleaseSbomInput) -> String {
             "purl": format!("pkg:cargo/{}@{}", dep.name, dep.version),
             "licenses": [license_json(&dep.license)],
             "scope": "required",
+        }));
+    }
+
+    let mut npm_deps = input.npm_deps.clone();
+    npm_deps.sort_by(|a, b| (&a.name, &a.version).cmp(&(&b.name, &b.version)));
+    for dep in &npm_deps {
+        let encoded_name = dep.name.replace('@', "%40");
+        let purl = format!("pkg:npm/{encoded_name}@{}", dep.version);
+        let mut props = vec![serde_json::json!({
+            "name": "safeevidence:package_ecosystem",
+            "value": "npm",
+        })];
+        if let Some(integrity) = &dep.integrity
+            && !integrity.trim().is_empty()
+        {
+            props.push(serde_json::json!({
+                "name": "safeevidence:npm_integrity",
+                "value": integrity,
+            }));
+        }
+        components.push(serde_json::json!({
+            "type": "library",
+            "bom-ref": purl,
+            "name": dep.name,
+            "version": dep.version,
+            "purl": purl,
+            "licenses": [license_json(&dep.license)],
+            "scope": "required",
+            "properties": props,
         }));
     }
 
@@ -240,6 +284,36 @@ pub fn generate_release_sbom(input: &ReleaseSbomInput) -> String {
     });
 
     let env = &input.build_env;
+    let mut properties = vec![
+        serde_json::json!({ "name": "safeevidence:sbom_kind", "value": SBOM_KIND }),
+        serde_json::json!({ "name": "safeevidence:sbom_document_format", "value": "CycloneDX-1.5 (SBOM format; not the public project license)" }),
+        serde_json::json!({ "name": "safeevidence:public_project_license", "value": "Apache-2.0" }),
+        serde_json::json!({ "name": "safeevidence:source_sha", "value": input.source_sha }),
+        serde_json::json!({ "name": "safeevidence:tree_sha", "value": input.tree_sha }),
+        serde_json::json!({ "name": "safeevidence:cargo_lock_sha256", "value": input.cargo_lock_sha256 }),
+    ];
+    if let Some(desktop_cargo) = &input.desktop_cargo_lock_sha256 {
+        properties.push(serde_json::json!({
+            "name": "safeevidence:desktop_cargo_lock_sha256",
+            "value": desktop_cargo,
+        }));
+    }
+    if let Some(desktop_npm) = &input.desktop_package_lock_sha256 {
+        properties.push(serde_json::json!({
+            "name": "safeevidence:desktop_package_lock_sha256",
+            "value": desktop_npm,
+        }));
+    }
+    properties.extend([
+        serde_json::json!({ "name": "safeevidence:build_os", "value": env.os }),
+        serde_json::json!({ "name": "safeevidence:build_os_version", "value": env.os_version }),
+        serde_json::json!({ "name": "safeevidence:target_triple", "value": env.target_triple }),
+        serde_json::json!({ "name": "safeevidence:rustc", "value": env.rustc }),
+        serde_json::json!({ "name": "safeevidence:cargo", "value": env.cargo }),
+        serde_json::json!({ "name": "safeevidence:reproducible_build", "value": REPRODUCIBLE_BUILD_UNPROVEN }),
+        serde_json::json!({ "name": "safeevidence:release_ready", "value": "false" }),
+    ]);
+
     let document = serde_json::json!({
         "bomFormat": SBOM_FORMAT,
         "specVersion": SBOM_SPEC_VERSION,
@@ -249,21 +323,7 @@ pub fn generate_release_sbom(input: &ReleaseSbomInput) -> String {
             "timestamp": ZERO_TIME,
             "tools": [{ "vendor": "SafeEvidence", "name": "safeevidence-release", "version": "054" }],
             "component": { "type": "application", "name": "SafeEvidence", "version": "trusted-v1" },
-            "properties": [
-                { "name": "safeevidence:sbom_kind", "value": SBOM_KIND },
-                { "name": "safeevidence:sbom_document_format", "value": "CycloneDX-1.5 (SBOM format; not the public project license)" },
-                { "name": "safeevidence:public_project_license", "value": "Apache-2.0" },
-                { "name": "safeevidence:source_sha", "value": input.source_sha },
-                { "name": "safeevidence:tree_sha", "value": input.tree_sha },
-                { "name": "safeevidence:cargo_lock_sha256", "value": input.cargo_lock_sha256 },
-                { "name": "safeevidence:build_os", "value": env.os },
-                { "name": "safeevidence:build_os_version", "value": env.os_version },
-                { "name": "safeevidence:target_triple", "value": env.target_triple },
-                { "name": "safeevidence:rustc", "value": env.rustc },
-                { "name": "safeevidence:cargo", "value": env.cargo },
-                { "name": "safeevidence:reproducible_build", "value": REPRODUCIBLE_BUILD_UNPROVEN },
-                { "name": "safeevidence:release_ready", "value": "false" },
-            ],
+            "properties": properties,
         },
         "components": components,
     });
@@ -348,11 +408,27 @@ pub fn verify_release_sbom(document: &str, expected: &ExpectedBinding) -> Verifi
         &expected.cargo_lock_sha256,
         "digest_mismatch",
     );
-    for name in [
-        "safeevidence:target_triple",
-        "safeevidence:rustc",
+    if let Some(want) = &expected.desktop_cargo_lock_sha256 {
+        require_prop(
+            "safeevidence:desktop_cargo_lock_sha256",
+            want,
+            "digest_mismatch",
+        );
+    }
+    if let Some(want) = &expected.desktop_package_lock_sha256 {
+        require_prop(
+            "safeevidence:desktop_package_lock_sha256",
+            want,
+            "digest_mismatch",
+        );
+    }
+    require_prop(
         "safeevidence:reproducible_build",
-    ] {
+        REPRODUCIBLE_BUILD_UNPROVEN,
+        "invalid_property",
+    );
+    require_prop("safeevidence:release_ready", "false", "invalid_property");
+    for name in ["safeevidence:target_triple", "safeevidence:rustc"] {
         if lookup(name).is_none() {
             failures.push(format!("missing_property: {name}"));
         }
@@ -425,20 +501,15 @@ pub fn verify_release_sbom(document: &str, expected: &ExpectedBinding) -> Verifi
     }
 }
 
-/// Classification for every crate that binds native code. Unknown ones fail closed, so a new
-/// native binding cannot enter the SBOM unclassified.
-const NATIVE_BINDINGS: [(&str, &str, &str, &str); 8] = [
+/// Classification for every crate that binds native code across `product/` and
+/// `product/apps/desktop/src-tauri/`. Unknown ones fail closed, so a new native
+/// binding cannot enter the SBOM unclassified.
+const NATIVE_BINDINGS: [(&str, &str, &str, &str); 31] = [
     (
-        "libsqlite3-sys",
-        "sqlcipher",
-        "bundled-source",
-        "bundled through libsqlite3-sys",
-    ),
-    (
-        "openssl-sys",
-        "openssl",
-        "bundled-source",
-        "vendored through openssl-src",
+        "atk-sys",
+        "atk",
+        "os-provided",
+        "Linux GTK accessibility library",
     ),
     (
         "core-foundation-sys",
@@ -447,22 +518,56 @@ const NATIVE_BINDINGS: [(&str, &str, &str, &str); 8] = [
         "Apple system framework",
     ),
     (
-        "security-framework-sys",
-        "security-framework",
-        "os-provided",
-        "Apple system framework",
+        "defmt",
+        "defmt-symbols",
+        "not-applicable",
+        "Cargo links marker for embedded logging; not built on desktop",
     ),
     (
-        "windows-sys",
-        "windows-api",
+        "dirs-sys",
+        "os-user-dirs",
         "os-provided",
-        "Windows system libraries",
+        "OS standard directory APIs",
     ),
     (
-        "linux-raw-sys",
-        "linux-kernel-abi",
+        "gdk-pixbuf-sys",
+        "gdk-pixbuf",
         "os-provided",
-        "Linux kernel interface definitions",
+        "Linux GDK-Pixbuf library",
+    ),
+    ("gdk-sys", "gdk3", "os-provided", "Linux GDK 3 library"),
+    (
+        "gdkwayland-sys",
+        "gdk-wayland",
+        "os-provided",
+        "Linux GDK Wayland backend",
+    ),
+    (
+        "gdkx11-sys",
+        "gdk-x11",
+        "os-provided",
+        "Linux GDK X11 backend",
+    ),
+    ("gio-sys", "gio", "os-provided", "Linux GLib GIO library"),
+    ("glib-sys", "glib", "os-provided", "Linux GLib library"),
+    (
+        "gobject-sys",
+        "gobject",
+        "os-provided",
+        "Linux GObject library",
+    ),
+    ("gtk-sys", "gtk3", "os-provided", "Linux GTK 3 library"),
+    (
+        "javascriptcore-rs-sys",
+        "javascriptcoregtk",
+        "os-provided",
+        "Linux WebKitGTK JavaScriptCore library",
+    ),
+    (
+        "jni-sys",
+        "android-jni",
+        "not-applicable",
+        "Android JNI definitions; mobile targets not built here",
     ),
     (
         "js-sys",
@@ -471,10 +576,100 @@ const NATIVE_BINDINGS: [(&str, &str, &str, &str); 8] = [
         "WebAssembly targets only; not built here",
     ),
     (
+        "libappindicator-sys",
+        "libappindicator",
+        "not-applicable",
+        "Linux tray indicator bindings; tray feature disabled",
+    ),
+    (
+        "libsqlite3-sys",
+        "sqlcipher",
+        "bundled-source",
+        "bundled through libsqlite3-sys",
+    ),
+    (
+        "linux-raw-sys",
+        "linux-kernel-abi",
+        "os-provided",
+        "Linux kernel interface definitions",
+    ),
+    (
+        "ndk-sys",
+        "android-ndk",
+        "not-applicable",
+        "Android NDK bindings; mobile targets not built here",
+    ),
+    (
+        "objc2-exception-helper",
+        "objc2-exception-helper",
+        "bundled-source",
+        "Objective-C exception trampoline built for Apple targets",
+    ),
+    (
+        "openssl-sys",
+        "openssl",
+        "bundled-source",
+        "vendored through openssl-src",
+    ),
+    (
+        "pango-sys",
+        "pango",
+        "os-provided",
+        "Linux Pango text-layout library",
+    ),
+    (
+        "security-framework-sys",
+        "security-framework",
+        "os-provided",
+        "Apple system framework",
+    ),
+    (
+        "soup3-sys",
+        "libsoup3",
+        "os-provided",
+        "Linux libsoup3 ABI required by WebKit2GTK 4.1",
+    ),
+    (
+        "tauri",
+        "tauri-build-links",
+        "not-applicable",
+        "Cargo build-script metadata marker; not a native C library",
+    ),
+    (
+        "vswhom-sys",
+        "vswhom",
+        "host-tool",
+        "Windows Visual Studio toolchain locator for build scripts",
+    ),
+    (
         "wasm-bindgen-shared",
         "wasm-bindgen",
         "not-applicable",
         "WebAssembly targets only; not built here",
+    ),
+    (
+        "web-sys",
+        "web-dom-host",
+        "not-applicable",
+        "WebAssembly targets only; not built here",
+    ),
+    (
+        "webkit2gtk-sys",
+        "webkit2gtk-4.1",
+        "os-provided",
+        "Linux WebKit2GTK system WebView library",
+    ),
+    (
+        "webview2-com-sys",
+        "webview2",
+        "os-provided",
+        "Windows Edge WebView2 COM interface and loader",
+    ),
+    (
+        "windows-sys",
+        "windows-api",
+        "os-provided",
+        "Windows system libraries",
     ),
 ];
 
@@ -538,7 +733,57 @@ pub fn lock_packages(cargo_lock: &str) -> Result<Vec<(String, String)>, String> 
     Ok(packages)
 }
 
-/// Lock packages with no component of that exact name and version in an SBOM document.
+/// Every resolved npm package in a v3 `package-lock.json` (`node_modules/...` entries).
+///
+/// # Errors
+/// Returns an error if the JSON is malformed, `packages` is missing, any non-root entry lacks
+/// a version, or no npm packages are listed.
+pub fn npm_lock_packages(package_lock_json: &str) -> Result<Vec<NpmDependency>, String> {
+    let parsed: serde_json::Value = serde_json::from_str(package_lock_json)
+        .map_err(|error| format!("package-lock.json: {error}"))?;
+    let packages = parsed
+        .get("packages")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "package-lock.json has no packages map".to_owned())?;
+    let mut seen = std::collections::BTreeMap::new();
+    for (key, entry) in packages {
+        if key.is_empty() {
+            continue;
+        }
+        let (_, name) = key
+            .rsplit_once("node_modules/")
+            .ok_or_else(|| format!("unexpected npm package key {key}"))?;
+        if name.trim().is_empty() {
+            return Err(format!("empty npm package name in {key}"));
+        }
+        let version = entry
+            .get("version")
+            .and_then(serde_json::Value::as_str)
+            .filter(|v| !v.trim().is_empty())
+            .ok_or_else(|| format!("npm package {name} has no version"))?;
+        let license = entry
+            .get("license")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        let integrity = entry
+            .get("integrity")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        seen.entry((name.to_owned(), version.to_owned()))
+            .or_insert_with(|| NpmDependency {
+                name: name.to_owned(),
+                version: version.to_owned(),
+                license,
+                integrity,
+            });
+    }
+    if seen.is_empty() {
+        return Err("package-lock.json lists no npm packages".to_owned());
+    }
+    Ok(seen.into_values().collect())
+}
+
+/// Lock packages with no Cargo component of that exact name and version in an SBOM document.
 ///
 /// # Errors
 /// Returns an error if the lock or the document cannot be read.
@@ -553,12 +798,49 @@ pub fn packages_missing_from_document(
         .ok_or("document has no components")?;
     let listed: std::collections::BTreeSet<(&str, &str)> = components
         .iter()
+        .filter(|component| {
+            component
+                .get("purl")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|purl| purl.starts_with("pkg:cargo/"))
+        })
         .filter_map(|component| Some((component["name"].as_str()?, component["version"].as_str()?)))
         .collect();
     Ok(lock_packages(cargo_lock)?
         .into_iter()
         .filter(|(name, version)| !listed.contains(&(name.as_str(), version.as_str())))
         .map(|(name, version)| format!("{name} {version}"))
+        .collect())
+}
+
+/// npm packages from `package-lock.json` with no npm component of that exact name and version
+/// in an SBOM document.
+///
+/// # Errors
+/// Returns an error if `package-lock.json` or the document cannot be read.
+pub fn npm_packages_missing_from_document(
+    package_lock_json: &str,
+    document: &str,
+) -> Result<Vec<String>, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(document).map_err(|error| format!("document: {error}"))?;
+    let components = value["components"]
+        .as_array()
+        .ok_or("document has no components")?;
+    let listed: std::collections::BTreeSet<(&str, &str)> = components
+        .iter()
+        .filter(|component| {
+            component
+                .get("purl")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|purl| purl.starts_with("pkg:npm/"))
+        })
+        .filter_map(|component| Some((component["name"].as_str()?, component["version"].as_str()?)))
+        .collect();
+    Ok(npm_lock_packages(package_lock_json)?
+        .into_iter()
+        .filter(|dep| !listed.contains(&(dep.name.as_str(), dep.version.as_str())))
+        .map(|dep| format!("{} {}", dep.name, dep.version))
         .collect())
 }
 
@@ -571,12 +853,14 @@ mod unit_tests {
             source_sha: "a".repeat(40),
             tree_sha: "b".repeat(40),
             cargo_lock_sha256: "c".repeat(64),
+            desktop_cargo_lock_sha256: Some("e".repeat(64)),
+            desktop_package_lock_sha256: Some("f".repeat(64)),
             build_env: BuildEnvironment {
                 os: "windows".to_owned(),
                 os_version: "11".to_owned(),
                 target_triple: "x86_64-pc-windows-msvc".to_owned(),
-                rustc: "1.89.0".to_owned(),
-                cargo: "1.89.0".to_owned(),
+                rustc: "1.98.1".to_owned(),
+                cargo: "1.98.1".to_owned(),
             },
             workspace_packages: vec![WorkspacePackage {
                 name: "safeevidence-core".to_owned(),
@@ -587,6 +871,12 @@ mod unit_tests {
                 name: "serde".to_owned(),
                 version: "1.0.0".to_owned(),
                 license: Some("MIT OR Apache-2.0".to_owned()),
+            }],
+            npm_deps: vec![NpmDependency {
+                name: "@tauri-apps/api".to_owned(),
+                version: "2.12.0".to_owned(),
+                license: Some("Apache-2.0 OR MIT".to_owned()),
+                integrity: Some("sha512-synthetic==".to_owned()),
             }],
             native_deps: vec![NativeDependency {
                 name: "sqlite".to_owned(),
@@ -610,6 +900,8 @@ mod unit_tests {
             source_sha: "a".repeat(40),
             tree_sha: "b".repeat(40),
             cargo_lock_sha256: "c".repeat(64),
+            desktop_cargo_lock_sha256: Some("e".repeat(64)),
+            desktop_package_lock_sha256: Some("f".repeat(64)),
             workspace_package_names: vec!["safeevidence-core".to_owned()],
         }
     }

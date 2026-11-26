@@ -1,10 +1,11 @@
-//! Adapted from the donor test: nine of eleven tests. Its committed-document and doctor tests
-//! need donor evidence files and modules.
+//! Adapted from the donor test: nine of eleven tests, plus Cargo.lock, desktop Cargo.lock,
+//! npm `package-lock.json`, and native-binding coverage checks.
 
 use safeevidence_release::{
-    BuildEnvironment, ExpectedBinding, NativeDependency, PackAsset, ReleaseArtifact,
+    BuildEnvironment, ExpectedBinding, NativeDependency, NpmDependency, PackAsset, ReleaseArtifact,
     ReleaseSbomInput, RustDependency, WorkspacePackage, classify_native, generate_release_sbom,
-    lock_packages, packages_missing_from_document, verify_release_sbom,
+    lock_packages, npm_lock_packages, npm_packages_missing_from_document,
+    packages_missing_from_document, verify_release_sbom,
 };
 
 fn fixture_input() -> ReleaseSbomInput {
@@ -12,12 +13,14 @@ fn fixture_input() -> ReleaseSbomInput {
         source_sha: "a".repeat(40),
         tree_sha: "b".repeat(40),
         cargo_lock_sha256: "c".repeat(64),
+        desktop_cargo_lock_sha256: Some("e".repeat(64)),
+        desktop_package_lock_sha256: Some("f".repeat(64)),
         build_env: BuildEnvironment {
             os: "windows".to_owned(),
             os_version: "11".to_owned(),
             target_triple: "x86_64-pc-windows-msvc".to_owned(),
-            rustc: "1.89.0".to_owned(),
-            cargo: "1.89.0".to_owned(),
+            rustc: "1.98.1".to_owned(),
+            cargo: "1.98.1".to_owned(),
         },
         workspace_packages: vec![WorkspacePackage {
             name: "safeevidence-core".to_owned(),
@@ -28,6 +31,12 @@ fn fixture_input() -> ReleaseSbomInput {
             name: "serde".to_owned(),
             version: "1.0.0".to_owned(),
             license: Some("MIT".to_owned()),
+        }],
+        npm_deps: vec![NpmDependency {
+            name: "@tauri-apps/api".to_owned(),
+            version: "2.12.0".to_owned(),
+            license: Some("Apache-2.0 OR MIT".to_owned()),
+            integrity: Some("sha512-synthetic==".to_owned()),
         }],
         native_deps: vec![NativeDependency {
             name: "sqlite".to_owned(),
@@ -51,6 +60,8 @@ fn fixture_expected() -> ExpectedBinding {
         source_sha: "a".repeat(40),
         tree_sha: "b".repeat(40),
         cargo_lock_sha256: "c".repeat(64),
+        desktop_cargo_lock_sha256: Some("e".repeat(64)),
+        desktop_package_lock_sha256: Some("f".repeat(64)),
         workspace_package_names: vec!["safeevidence-core".to_owned()],
     }
 }
@@ -69,7 +80,7 @@ fn verifier_accepts_fixture_document() {
     let doc = generate_release_sbom(&fixture_input());
     let report = verify_release_sbom(&doc, &fixture_expected());
     assert!(report.ok, "unexpected failures: {:?}", report.failures);
-    assert!(report.component_count >= 5);
+    assert!(report.component_count >= 6);
     assert_eq!(report.document_sha256.len(), 64);
 }
 
@@ -111,6 +122,14 @@ fn verifier_rejects_stale_lock_digest() {
             .iter()
             .any(|f| f.starts_with("digest_mismatch"))
     );
+
+    let mut desktop_cargo = fixture_expected();
+    desktop_cargo.desktop_cargo_lock_sha256 = Some("0".repeat(64));
+    assert!(!verify_release_sbom(&doc, &desktop_cargo).ok);
+
+    let mut desktop_npm = fixture_expected();
+    desktop_npm.desktop_package_lock_sha256 = Some("0".repeat(64));
+    assert!(!verify_release_sbom(&doc, &desktop_npm).ok);
 }
 
 #[test]
@@ -222,19 +241,96 @@ fn another_version_of_a_listed_crate_is_not_coverage() {
 }
 
 #[test]
+fn npm_lock_coverage_is_verified_and_cross_ecosystem_names_do_not_collide() {
+    let document = generate_release_sbom(&fixture_input());
+    let parsed: serde_json::Value = serde_json::from_str(&document).expect("json");
+    let tauri_api = parsed["components"]
+        .as_array()
+        .expect("components")
+        .iter()
+        .find(|c| c["name"] == "@tauri-apps/api")
+        .expect("scoped npm component");
+    assert_eq!(tauri_api["purl"], "pkg:npm/%40tauri-apps/api@2.12.0");
+
+    // Tampering `safeevidence:release_ready` to `true` or `reproducible_build` to `true` fails closed.
+    let mut tampered = parsed;
+    for prop in tampered["metadata"]["properties"]
+        .as_array_mut()
+        .expect("props")
+    {
+        if prop["name"] == "safeevidence:release_ready" {
+            prop["value"] = serde_json::json!("true");
+        }
+    }
+    let report = verify_release_sbom(&tampered.to_string(), &fixture_expected());
+    assert!(!report.ok);
+    assert!(
+        report
+            .failures
+            .iter()
+            .any(|f| f.contains("safeevidence:release_ready"))
+    );
+
+    let npm_lock = r#"{
+      "name": "safeevidence-desktop",
+      "lockfileVersion": 3,
+      "packages": {
+        "": { "name": "safeevidence-desktop", "version": "0.0.0", "license": "Apache-2.0" },
+        "node_modules/@tauri-apps/api": {
+          "version": "2.12.0",
+          "license": "Apache-2.0 OR MIT",
+          "integrity": "sha512-synthetic=="
+        }
+      }
+    }"#;
+    assert_eq!(npm_lock_packages(npm_lock).unwrap().len(), 1);
+    assert!(
+        npm_packages_missing_from_document(npm_lock, &document)
+            .unwrap()
+            .is_empty()
+    );
+
+    // `serde 1.0.0` is present as `pkg:cargo/serde@1.0.0`, NOT `pkg:npm/serde@1.0.0`.
+    let npm_with_serde = r#"{
+      "name": "safeevidence-desktop",
+      "lockfileVersion": 3,
+      "packages": {
+        "": { "name": "safeevidence-desktop", "version": "0.0.0" },
+        "node_modules/@tauri-apps/api": { "version": "2.12.0", "license": "MIT" },
+        "node_modules/serde": { "version": "1.0.0", "license": "MIT" }
+      }
+    }"#;
+    assert_eq!(
+        npm_packages_missing_from_document(npm_with_serde, &document).unwrap(),
+        ["serde 1.0.0"]
+    );
+}
+
+#[test]
 fn malformed_input_is_an_error_not_full_coverage() {
     assert!(packages_missing_from_document(LOCK, "not json").is_err());
     assert!(packages_missing_from_document(LOCK, "{}").is_err());
     assert!(lock_packages("").is_err());
     assert!(lock_packages("name = \"a\"\nname = \"b\"\nversion = \"1\"\n").is_err());
     assert!(lock_packages("name = \"a\"\n").is_err());
+    assert!(npm_lock_packages("{}").is_err());
+    assert!(npm_lock_packages(r#"{"packages":{"":{"version":"0.0.0"}}}"#).is_err());
 }
 
 #[test]
 fn native_bindings_are_classified_and_unknown_ones_fail() {
-    let known = classify_native(&["libsqlite3-sys".to_owned(), "openssl-sys".to_owned()]).unwrap();
+    let known = classify_native(&[
+        "libsqlite3-sys".to_owned(),
+        "openssl-sys".to_owned(),
+        "webkit2gtk-sys".to_owned(),
+        "webview2-com-sys".to_owned(),
+    ])
+    .unwrap();
     let names: Vec<_> = known.into_iter().map(|dep| dep.name).collect();
-    assert_eq!(names, ["sqlcipher", "openssl"]);
+    assert_eq!(
+        names,
+        ["sqlcipher", "openssl", "webkit2gtk-4.1", "webview2"]
+    );
     assert_eq!(
         classify_native(&["openssl-sys".to_owned(), "zz-sys".to_owned()]),
         Err(vec!["zz-sys".to_owned()])
