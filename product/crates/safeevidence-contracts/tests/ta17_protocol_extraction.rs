@@ -31,7 +31,7 @@ fn wp14_review_protocol_locks_digest_and_replays_hash_chained_audit_bundle() {
         "proto-glimmer-2026".to_owned(),
         2,
         "Synthetic Systematic Review of Veltrixamine in Glimmer Syndrome".to_owned(),
-        pico,
+        pico.clone(),
         vec!["Randomized parallel-group trials in adults".to_owned()],
         vec!["Case series and non-comparative cohorts".to_owned()],
         "lead-methodologist-01".to_owned(),
@@ -46,6 +46,24 @@ fn wp14_review_protocol_locks_digest_and_replays_hash_chained_audit_bundle() {
         }],
     )
     .expect("protocol locks");
+
+    // Empty or BiDi-spoofed list elements in inclusion_rules are rejected fail-closed:
+    assert_eq!(
+        ReviewProtocol::create_locked(
+            "proto-bad".to_owned(),
+            1,
+            "Bad rule".to_owned(),
+            pico,
+            vec!["   ".to_owned()],
+            Vec::new(),
+            "lead-methodologist-01".to_owned(),
+            "2026-11-26T10:00:00Z".to_owned(),
+            Vec::new(),
+        ),
+        Err(ProtocolExtractionError::EmptyRequiredField(
+            "inclusion_rules"
+        ))
+    );
 
     let mut events = Vec::new();
     append_protocol_audit_event(
@@ -81,9 +99,11 @@ fn wp14_review_protocol_locks_digest_and_replays_hash_chained_audit_bundle() {
 }
 
 #[test]
-fn ta17_extractions_require_exact_quote_span_remain_proposed_until_human_confirms_and_ban_confidence()
- {
-    let source = "Table 2 Primary Endpoint: Mean difference -4.2 points (95% interval -6.1 to -2.3) in 240 adults at 12 weeks.";
+fn ta17_extractions_require_quote_span_human_confirmation_and_ban_confidence() {
+    let source = concat!(
+        "Table 2 Primary Endpoint: ",
+        "Mean difference -4.2 points (95% interval -6.1 to -2.3) in 240 adults at 12 weeks."
+    );
     let quote =
         "Mean difference -4.2 points (95% interval -6.1 to -2.3) in 240 adults at 12 weeks.";
     let byte_start = source.find(quote).unwrap();
@@ -127,31 +147,35 @@ fn ta17_extractions_require_exact_quote_span_remain_proposed_until_human_confirm
     raw_json["confidence"] = serde_json::json!(0.97);
     assert!(serde_json::from_value::<StructuredEffectExtraction>(raw_json).is_err());
 
-    // 3. Altered or hallucinated point estimate not in `quote_text` is rejected (`TA-17`):
-    let hallucinated = StructuredEffectExtraction::propose_anchored(
-        "ext-bad-num".to_owned(),
-        StudyId(sid("study-1")),
-        ReportVersionId(sid("rep-1")),
-        ResultId(sid("res-1")),
-        "Glimmer composite score".to_owned(),
-        EffectMeasureKind::MeanDifference,
-        "-9.9".to_owned(),
-        Known::Known("-6.1".to_owned()),
-        Known::Known("-2.3".to_owned()),
-        Known::Known(240),
-        "12 weeks".to_owned(),
-        "Table 2, Row 1".to_owned(),
-        quote.to_owned(),
-        span.clone(),
-        "deterministic-table-reader-1".to_owned(),
-        source,
-    );
-    assert_eq!(
-        hallucinated,
-        Err(ProtocolExtractionError::EstimateNotAnchoredInQuote(
-            "-9.9".to_owned()
-        ))
-    );
+    // 3. Hallucinated, sign-stripped ("4.2" vs "-4.2"), or partial-digit ("-4" vs "-4.2",
+    // "24" vs "240") point estimates are all rejected (`TA-17`):
+    for bad_estimate in ["-9.9", "4.2", "-4", "24"] {
+        let rejected = StructuredEffectExtraction::propose_anchored(
+            "ext-bad-num".to_owned(),
+            StudyId(sid("study-1")),
+            ReportVersionId(sid("rep-1")),
+            ResultId(sid("res-1")),
+            "Glimmer composite score".to_owned(),
+            EffectMeasureKind::MeanDifference,
+            bad_estimate.to_owned(),
+            Known::Known("-6.1".to_owned()),
+            Known::Known("-2.3".to_owned()),
+            Known::Known(240),
+            "12 weeks".to_owned(),
+            "Table 2, Row 1".to_owned(),
+            quote.to_owned(),
+            span.clone(),
+            "deterministic-table-reader-1".to_owned(),
+            source,
+        );
+        assert_eq!(
+            rejected,
+            Err(ProtocolExtractionError::EstimateNotAnchoredInQuote(
+                bad_estimate.to_owned()
+            )),
+            "expected {bad_estimate} to fail quote anchor check"
+        );
+    }
 
     // 4. Shifted `EvidenceSpan` coordinates fail closed (`QuoteSpanMismatch`):
     let mut bad_span = span;
@@ -176,11 +200,21 @@ fn ta17_extractions_require_exact_quote_span_remain_proposed_until_human_confirm
     );
     assert_eq!(shifted, Err(ProtocolExtractionError::QuoteSpanMismatch));
 
-    // 5. Blank human actor is refused; named human reviewer promotes cleanly to `Confirmed`:
+    // 5. Blank human actor or mismatched source digest during confirmation fails WITHOUT mutating
+    // `extraction.state` out of `Proposed`:
     assert_eq!(
         extraction.confirm_by_human("   ", "2026-11-26T10:15:00Z", source),
         Err(ProtocolExtractionError::EmptyHumanActor)
     );
+    assert_eq!(
+        extraction.confirm_by_human(
+            "reviewer-methodologist-02",
+            "2026-11-26T10:15:00Z",
+            "tampered source text"
+        ),
+        Err(ProtocolExtractionError::SourceDigestMismatch)
+    );
+    assert!(matches!(extraction.state, ExtractionState::Proposed { .. }));
     assert!(!extraction.qualifies_for_synthesis());
 
     extraction

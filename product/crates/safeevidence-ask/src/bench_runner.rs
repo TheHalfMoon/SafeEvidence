@@ -642,28 +642,25 @@ Adverse headache events did not differ from placebo over 12 weeks.";
     }
 }
 
-fn eval_study_independence_split() -> SplitEvaluation {
-    let scoped = |id: &str| ScopedId {
+#[allow(clippy::too_many_arguments)]
+fn make_bench_record(
+    outcome: &OutcomeDefinition,
+    id: &str,
+    res_id: &str,
+    pmid: &str,
+    regs: Vec<&str>,
+    parent: Option<&str>,
+    kind: ContributionKind,
+    inc_regs: Vec<&str>,
+    inc_pmids: Vec<&str>,
+    pop_group: &str,
+) -> ReportMetadataRecord {
+    let scoped = |val: &str| ScopedId {
         scope: "bench-ta07".to_owned(),
-        id: id.to_owned(),
+        id: val.to_owned(),
         version: 1,
     };
-    let outcome = OutcomeDefinition {
-        id: OutcomeId(scoped("out-glimmer")),
-        definition: "glimmer_score".to_owned(),
-        unit: Known::Known("points".to_owned()),
-        timepoint: "12_weeks".to_owned(),
-        method: Known::Known("change_from_baseline".to_owned()),
-    };
-    let make_record = |id: &str,
-                       res_id: &str,
-                       pmid: &str,
-                       regs: Vec<&str>,
-                       parent: Option<&str>,
-                       kind: ContributionKind,
-                       inc_regs: Vec<&str>,
-                       inc_pmids: Vec<&str>,
-                       pop_group: &str| ReportMetadataRecord {
+    ReportMetadataRecord {
         report_id: ReportId(scoped(id)),
         version_id: ReportVersionId(scoped(id)),
         result_id: ResultId(scoped(res_id)),
@@ -687,10 +684,26 @@ fn eval_study_independence_split() -> SplitEvaluation {
         denominator: Known::Known(120),
         participants: Known::Known(ParticipantOverlapGroupId(scoped(pop_group))),
         covariance: Known::Known(CovarianceRef(scoped(&format!("cov-{id}")))),
+    }
+}
+
+fn eval_study_independence_split() -> SplitEvaluation {
+    let scoped = |id: &str| ScopedId {
+        scope: "bench-ta07".to_owned(),
+        id: id.to_owned(),
+        version: 1,
+    };
+    let outcome = OutcomeDefinition {
+        id: OutcomeId(scoped("out-glimmer")),
+        definition: "glimmer_score".to_owned(),
+        unit: Known::Known("points".to_owned()),
+        timepoint: "12_weeks".to_owned(),
+        method: Known::Known("change_from_baseline".to_owned()),
     };
 
     let reports = vec![
-        make_record(
+        make_bench_record(
+            &outcome,
             "rep-1a",
             "res-1a",
             "900001",
@@ -701,7 +714,8 @@ fn eval_study_independence_split() -> SplitEvaluation {
             vec![],
             "grp-1",
         ),
-        make_record(
+        make_bench_record(
+            &outcome,
             "rep-1b-followup",
             "res-1b",
             "900002",
@@ -712,7 +726,8 @@ fn eval_study_independence_split() -> SplitEvaluation {
             vec![],
             "grp-1",
         ),
-        make_record(
+        make_bench_record(
+            &outcome,
             "rep-2",
             "res-2",
             "900003",
@@ -723,7 +738,8 @@ fn eval_study_independence_split() -> SplitEvaluation {
             vec![],
             "grp-2",
         ),
-        make_record(
+        make_bench_record(
+            &outcome,
             "rep-sr",
             "res-sr",
             "900004",
@@ -1005,19 +1021,25 @@ pub fn run_safeevidence_bench() -> Result<BenchPacket, String> {
             component_id: "T14-DAL-AURC-ECE".to_owned(),
             blocking_gate: "EXT-01".to_owned(),
             status: "BLOCKED_EXTERNAL".to_owned(),
-            reason: "Donor T14 (decision-assurance-lab) requires Issue #5 VERIFIED_ALLOWED admission; never reimplemented greenfield.".to_owned(),
+            reason:
+                "Donor T14 (DAL) requires Issue #5 VERIFIED_ALLOWED admission; never reimplemented greenfield."
+                    .to_owned(),
         },
         FencedExternalComponent {
             component_id: "T27-SCIFACT-T27B-MULTIVERS-T28-EVIDENCE-INFERENCE".to_owned(),
             blocking_gate: "EXT-01+EXT-07".to_owned(),
             status: "BLOCKED_EXTERNAL".to_owned(),
-            reason: "External biomedical datasets and NLI/Evidence-Inference weights require Issue #5 item-level source and model admission.".to_owned(),
+            reason:
+                "External biomedical datasets and NLI/Evidence-Inference weights require Issue #5 source and model admission."
+                    .to_owned(),
         },
         FencedExternalComponent {
             component_id: "CLINICIAN-HOLDOUT-EVALUATION".to_owned(),
             blocking_gate: "EXT-03".to_owned(),
             status: "BLOCKED_EXTERNAL".to_owned(),
-            reason: "Clinician-adjudicated SafeEvidence holdout requires signed Issue #4 clinical intended-use and evaluation charter.".to_owned(),
+            reason:
+                "Clinician-adjudicated SafeEvidence holdout requires signed Issue #4 clinical intended-use and evaluation charter."
+                    .to_owned(),
         },
     ];
 

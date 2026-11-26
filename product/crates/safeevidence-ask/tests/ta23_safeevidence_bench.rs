@@ -8,12 +8,29 @@
 //! 3. `clinical_claim_emitted` is `false`, no confidence percentages appear, and externally gated
 //!    components (`EXT-01`, `EXT-03`, `EXT-07`) are explicitly fenced as `BLOCKED_EXTERNAL`.
 
+use std::path::PathBuf;
 use std::process::Command;
 
 use safeevidence_ask::bench_runner::{
     BENCH_SCHEMA_VERSION, BenchPacket, render_bench_packet_json, run_safeevidence_bench,
 };
 use safeevidence_contracts::objects::DigestSha256;
+
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(label: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("se-bench-{label}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        Self(dir)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 #[test]
 fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identities() {
@@ -57,21 +74,19 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
 
     // Verify binary CLI execution from two clean temporary directories produces identical bytes:
     let bin = env!("CARGO_BIN_EXE_safeevidence_bench");
-    let tmp_a = std::env::temp_dir().join(format!("se-bench-a-{}", std::process::id()));
-    let tmp_b = std::env::temp_dir().join(format!("se-bench-b-{}", std::process::id()));
-    std::fs::create_dir_all(&tmp_a).expect("tmp_a");
-    std::fs::create_dir_all(&tmp_b).expect("tmp_b");
-    let out_a = tmp_a.join("packet.json");
-    let out_b = tmp_b.join("packet.json");
+    let tmp_a = TempDir::new("a");
+    let tmp_b = TempDir::new("b");
+    let out_a = tmp_a.0.join("packet.json");
+    let out_b = tmp_b.0.join("packet.json");
 
     let status_a = Command::new(bin)
-        .current_dir(&tmp_a)
+        .current_dir(&tmp_a.0)
         .arg("--out")
         .arg(&out_a)
         .status()
         .expect("spawn bin A");
     let status_b = Command::new(bin)
-        .current_dir(&tmp_b)
+        .current_dir(&tmp_b.0)
         .arg("--out")
         .arg(&out_b)
         .status()
@@ -80,9 +95,6 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
 
     let bytes_a = std::fs::read(&out_a).expect("read out_a");
     let bytes_b = std::fs::read(&out_b).expect("read out_b");
-    let _ = std::fs::remove_dir_all(&tmp_a);
-    let _ = std::fs::remove_dir_all(&tmp_b);
-
     assert_eq!(bytes_a, bytes_b, "CLI packets must be byte-identical");
     assert_eq!(bytes_a, json_a.as_bytes());
 

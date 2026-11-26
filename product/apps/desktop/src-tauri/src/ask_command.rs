@@ -561,6 +561,91 @@ pub struct WorkstationOverview {
     privacy_and_diagnostics: PrivacyDiagnosticsPaneView,
 }
 
+fn build_extraction_row(
+    corpus: &Corpus,
+    ext_id: &str,
+    doc_id: &str,
+    estimate: &str,
+    timepoint: &str,
+    confirm_actor: Option<&str>,
+) -> Result<ExtractionRowView, String> {
+    let scoped = |id: &str| ScopedId {
+        scope: "vs1a-fixture".to_owned(),
+        id: id.to_owned(),
+        version: 1,
+    };
+    let doc = corpus
+        .documents
+        .iter()
+        .find(|d| d.doc_id == doc_id)
+        .ok_or_else(|| "missing extraction fixture document".to_owned())?;
+    let start_byte = doc
+        .text
+        .find(&doc.finding)
+        .ok_or_else(|| "finding absent from document".to_owned())?;
+    let start_scalar = doc.text[..start_byte].chars().count() as u64;
+    let end_scalar = start_scalar + doc.finding.chars().count() as u64;
+    let span = EvidenceSpan {
+        source_id: doc.doc_id.clone(),
+        source_version: "1".to_owned(),
+        source_digest: DigestSha256::of(doc.text.as_bytes()),
+        start_scalar,
+        end_scalar,
+    };
+    let mut ext = StructuredEffectExtraction::propose_anchored(
+        ext_id.to_owned(),
+        StudyId(scoped(&doc.study_id)),
+        ReportVersionId(scoped(&doc.doc_id)),
+        ResultId(scoped(&format!("res-{doc_id}"))),
+        doc.condition.clone(),
+        EffectMeasureKind::MeanDifference,
+        estimate.to_owned(),
+        Known::Unknown {
+            reason: "not_reported".to_owned(),
+        },
+        Known::Unknown {
+            reason: "not_reported".to_owned(),
+        },
+        Known::Unknown {
+            reason: "not_reported".to_owned(),
+        },
+        timepoint.to_owned(),
+        "abstract_finding".to_owned(),
+        doc.finding.clone(),
+        span,
+        "rule-extractor-v1".to_owned(),
+        &doc.text,
+    )
+    .map_err(|_| "extraction anchor check failed".to_owned())?;
+    if let Some(actor) = confirm_actor {
+        ext.confirm_by_human(actor, "2026-11-26T00:03:00Z", &doc.text)
+            .map_err(|_| "extraction confirmation failed".to_owned())?;
+    }
+    let (workflow_state, actor_label) = match &ext.state {
+        ExtractionState::Proposed { extractor } => ("PROPOSED".to_owned(), extractor.clone()),
+        ExtractionState::Confirmed { authorized_by, .. } => {
+            ("CONFIRMED".to_owned(), authorized_by.clone())
+        }
+        ExtractionState::Rejected { authorized_by, .. } => {
+            ("REJECTED".to_owned(), authorized_by.clone())
+        }
+    };
+    Ok(ExtractionRowView {
+        extraction_id: ext.extraction_id,
+        study_id: doc.study_id.clone(),
+        source_id: ext.quote_span.source_id,
+        outcome_label: ext.outcome_label,
+        measure_kind: ext.measure_kind,
+        point_estimate_text: ext.point_estimate_text,
+        timepoint: ext.timepoint,
+        quote_text: ext.quote_text,
+        start_scalar: ext.quote_span.start_scalar,
+        end_scalar: ext.quote_span.end_scalar,
+        workflow_state,
+        actor_label,
+    })
+}
+
 fn build_deep_review_view(corpus: &Corpus) -> Result<DeepReviewPaneView, String> {
     let protocol = ReviewProtocol::create_locked(
         "proto-synthetic-01".to_owned(),
@@ -618,93 +703,18 @@ fn build_deep_review_view(corpus: &Corpus) -> Result<DeepReviewPaneView, String>
         id: id.to_owned(),
         version: 1,
     };
-    let build_extraction = |ext_id: &str,
-                            doc_id: &str,
-                            estimate: &str,
-                            timepoint: &str,
-                            confirm_actor: Option<&str>|
-     -> Result<ExtractionRowView, String> {
-        let doc = corpus
-            .documents
-            .iter()
-            .find(|d| d.doc_id == doc_id)
-            .ok_or_else(|| "missing extraction fixture document".to_owned())?;
-        let start_byte = doc
-            .text
-            .find(&doc.finding)
-            .ok_or_else(|| "finding absent from document".to_owned())?;
-        let start_scalar = doc.text[..start_byte].chars().count() as u64;
-        let end_scalar = start_scalar + doc.finding.chars().count() as u64;
-        let span = EvidenceSpan {
-            source_id: doc.doc_id.clone(),
-            source_version: "1".to_owned(),
-            source_digest: DigestSha256::of(doc.text.as_bytes()),
-            start_scalar,
-            end_scalar,
-        };
-        let mut ext = StructuredEffectExtraction::propose_anchored(
-            ext_id.to_owned(),
-            StudyId(scoped(&doc.study_id)),
-            ReportVersionId(scoped(&doc.doc_id)),
-            ResultId(scoped(&format!("res-{doc_id}"))),
-            doc.condition.clone(),
-            EffectMeasureKind::MeanDifference,
-            estimate.to_owned(),
-            Known::Unknown {
-                reason: "not_reported".to_owned(),
-            },
-            Known::Unknown {
-                reason: "not_reported".to_owned(),
-            },
-            Known::Unknown {
-                reason: "not_reported".to_owned(),
-            },
-            timepoint.to_owned(),
-            "abstract_finding".to_owned(),
-            doc.finding.clone(),
-            span,
-            "rule-extractor-v1".to_owned(),
-            &doc.text,
-        )
-        .map_err(|_| "extraction anchor check failed".to_owned())?;
-        if let Some(actor) = confirm_actor {
-            ext.confirm_by_human(actor, "2026-11-26T00:03:00Z", &doc.text)
-                .map_err(|_| "extraction confirmation failed".to_owned())?;
-        }
-        let (workflow_state, actor_label) = match &ext.state {
-            ExtractionState::Proposed { extractor } => ("PROPOSED".to_owned(), extractor.clone()),
-            ExtractionState::Confirmed { authorized_by, .. } => {
-                ("CONFIRMED".to_owned(), authorized_by.clone())
-            }
-            ExtractionState::Rejected { authorized_by, .. } => {
-                ("REJECTED".to_owned(), authorized_by.clone())
-            }
-        };
-        Ok(ExtractionRowView {
-            extraction_id: ext.extraction_id,
-            study_id: doc.study_id.clone(),
-            source_id: ext.quote_span.source_id,
-            outcome_label: ext.outcome_label,
-            measure_kind: ext.measure_kind,
-            point_estimate_text: ext.point_estimate_text,
-            timepoint: ext.timepoint,
-            quote_text: ext.quote_text,
-            start_scalar: ext.quote_span.start_scalar,
-            end_scalar: ext.quote_span.end_scalar,
-            workflow_state,
-            actor_label,
-        })
-    };
 
     let extractions = vec![
-        build_extraction(
+        build_extraction_row(
+            corpus,
             "ext-orbalin-a",
             "doc-orbalin-a",
             "8 points",
             "8 weeks",
             None,
         )?,
-        build_extraction(
+        build_extraction_row(
+            corpus,
             "ext-veltrix-peds",
             "doc-veltrix-peds",
             "did not improve",
@@ -725,15 +735,15 @@ fn build_deep_review_view(corpus: &Corpus) -> Result<DeepReviewPaneView, String>
             },
             inconsistency: DowngradeDomain {
                 step: DowngradeStep::None,
-                reason: "Single independent adult primary study across baseline and follow-up reports.".to_owned(),
+                reason: "Single independent adult study across baseline and follow-up.".to_owned(),
             },
             indirectness: DowngradeDomain {
                 step: DowngradeStep::None,
-                reason: "Adult population and synthetic score match the protocol criteria.".to_owned(),
+                reason: "Adult population and synthetic score match protocol criteria.".to_owned(),
             },
             imprecision: DowngradeDomain {
                 step: DowngradeStep::SeriousMinusOne,
-                reason: "Downgraded one level: single synthetic study without sample denominator.".to_owned(),
+                reason: "Downgraded one level: single study without sample denominator.".to_owned(),
             },
             publication_bias: DowngradeDomain {
                 step: DowngradeStep::None,
@@ -741,7 +751,7 @@ fn build_deep_review_view(corpus: &Corpus) -> Result<DeepReviewPaneView, String>
             },
             large_magnitude_of_effect: UpgradeDomain {
                 step: UpgradeStep::None,
-                reason: "Randomized starting design is not eligible for observational upgrades.".to_owned(),
+                reason: "Randomized design is ineligible for observational upgrades.".to_owned(),
             },
             dose_response_gradient: UpgradeDomain {
                 step: UpgradeStep::None,

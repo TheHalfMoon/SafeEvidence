@@ -217,10 +217,23 @@ impl ReviewProtocol {
                 "primary_outcomes/inclusion_rules",
             ));
         }
+        for outcome in &self.pico.primary_outcomes {
+            check_clean_non_empty(outcome, "pico.primary_outcomes")?;
+        }
+        for design in &self.pico.eligible_designs {
+            check_clean_non_empty(design, "pico.eligible_designs")?;
+        }
+        for rule in &self.inclusion_rules {
+            check_clean_non_empty(rule, "inclusion_rules")?;
+        }
+        for rule in &self.exclusion_rules {
+            check_clean_non_empty(rule, "exclusion_rules")?;
+        }
         for (idx, amd) in self.amendments.iter().enumerate() {
             check_clean_non_empty(&amd.amendment_id, "amendment_id")?;
             check_clean_non_empty(&amd.rationale, "amendment.rationale")?;
             check_clean_non_empty(&amd.authorized_by, "amendment.authorized_by")?;
+            check_clean_non_empty(&amd.recorded_at_utc, "amendment.recorded_at_utc")?;
             let expected_prior = u32::try_from(idx + 1).unwrap_or(0);
             if amd.prior_version != expected_prior || amd.new_version != expected_prior + 1 {
                 return Err(ProtocolExtractionError::InvalidProtocolVersionSequence);
@@ -279,6 +292,11 @@ pub fn export_protocol_audit_bundle(
     protocol.validate()?;
     let mut prev: Option<DigestSha256> = None;
     for (idx, event) in events.iter().enumerate() {
+        check_clean_non_empty(&event.event_type, "event_type")?;
+        check_clean_non_empty(&event.actor_id, "actor_id")?;
+        check_clean_non_empty(&event.subject_id, "subject_id")?;
+        check_clean_non_empty(&event.detail, "detail")?;
+        check_clean_non_empty(&event.recorded_at_utc, "recorded_at_utc")?;
         let expected_seq = (idx as u64) + 1;
         if event.seq != expected_seq || event.prev_event_digest != prev {
             return Err(ProtocolExtractionError::AuditChainBroken(expected_seq));
@@ -301,6 +319,59 @@ pub fn export_protocol_audit_bundle(
         .map_err(|e| ProtocolExtractionError::Serialization(e.to_string()))?;
     bundle.bundle_digest = DigestSha256::of(&encoded);
     Ok(bundle)
+}
+
+fn contains_anchored_estimate(quote: &str, token: &str) -> bool {
+    let trimmed = token.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let first = trimmed.chars().next().expect("non-empty");
+    let second = trimmed.chars().nth(1);
+    let last = trimmed.chars().next_back().expect("non-empty");
+
+    for (byte_idx, _) in quote.match_indices(trimmed) {
+        let before = &quote[..byte_idx];
+        let after = &quote[byte_idx + trimmed.len()..];
+        let prev = before.chars().next_back();
+        let next = after.chars().next();
+
+        if first.is_ascii_digit() {
+            let bad_prefix = match prev {
+                Some(c) if c.is_ascii_digit() || c == '-' || c == '+' => true,
+                Some('.') => before[..before.len() - 1]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|d| d.is_ascii_digit()),
+                _ => false,
+            };
+            if bad_prefix {
+                continue;
+            }
+        } else if (first == '-' || first == '+')
+            && second.is_some_and(|c| c.is_ascii_digit())
+            && prev.is_some_and(|c| c.is_ascii_digit())
+        {
+            continue;
+        }
+
+        if last.is_ascii_digit() {
+            let bad_suffix = match next {
+                Some(c) if c.is_ascii_digit() => true,
+                Some('.') => after[1..]
+                    .chars()
+                    .next()
+                    .is_some_and(|d| d.is_ascii_digit()),
+                _ => false,
+            };
+            if bad_suffix {
+                continue;
+            }
+        }
+
+        return true;
+    }
+    false
 }
 
 impl StructuredEffectExtraction {
@@ -377,14 +448,14 @@ impl StructuredEffectExtraction {
             return Err(ProtocolExtractionError::QuoteSpanMismatch);
         }
 
-        if !self.quote_text.contains(self.point_estimate_text.trim()) {
+        if !contains_anchored_estimate(&self.quote_text, &self.point_estimate_text) {
             return Err(ProtocolExtractionError::EstimateNotAnchoredInQuote(
                 self.point_estimate_text.clone(),
             ));
         }
         if let Known::Known(low) = &self.interval_low_text {
             check_clean_non_empty(low, "interval_low_text")?;
-            if !self.quote_text.contains(low.trim()) {
+            if !contains_anchored_estimate(&self.quote_text, low) {
                 return Err(ProtocolExtractionError::EstimateNotAnchoredInQuote(
                     low.clone(),
                 ));
@@ -392,7 +463,7 @@ impl StructuredEffectExtraction {
         }
         if let Known::Known(high) = &self.interval_high_text {
             check_clean_non_empty(high, "interval_high_text")?;
-            if !self.quote_text.contains(high.trim()) {
+            if !contains_anchored_estimate(&self.quote_text, high) {
                 return Err(ProtocolExtractionError::EstimateNotAnchoredInQuote(
                     high.clone(),
                 ));
@@ -428,7 +499,7 @@ impl StructuredEffectExtraction {
     }
 
     /// Promotes a `Proposed` extraction to `Confirmed` only when a non-empty human `authorized_by`
-    /// actor confirms it against `raw_source_text` (`TA-17`).
+    /// actor confirms it against `raw_source_text` (`TA-17`). Does not mutate `self` on error.
     pub fn confirm_by_human(
         &mut self,
         authorized_by: &str,
@@ -441,11 +512,14 @@ impl StructuredEffectExtraction {
         if authorized_by.trim().is_empty() {
             return Err(ProtocolExtractionError::EmptyHumanActor);
         }
-        self.state = ExtractionState::Confirmed {
+        let mut candidate = self.clone();
+        candidate.state = ExtractionState::Confirmed {
             authorized_by: authorized_by.to_owned(),
             confirmed_at_utc: confirmed_at_utc.to_owned(),
         };
-        self.verify_against_source(raw_source_text)
+        candidate.verify_against_source(raw_source_text)?;
+        self.state = candidate.state;
+        Ok(())
     }
 
     /// True ONLY when `state` is `Confirmed` with a non-empty human actor (`TA-17`).

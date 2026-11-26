@@ -19,7 +19,7 @@ Status: `SYNTHETIC_ENGINEERING_ACTIVE` (`EXT-02` synthetic scope; `clinical_clai
 
 ## 3. Fenced External Splits (`BLOCKED_EXTERNAL`)
 
-- **`T14` (`decision-assurance-lab` AURC / ECE / risk-coverage vectors):** `BLOCKED_EXTERNAL` on `EXT-01` (`Issue #5` donor admission). Never reimplemented greenfield.
+- **`T14` (`DAL` AURC / ECE / risk-coverage vectors):** `BLOCKED_EXTERNAL` on `EXT-01` (`Issue #5` donor admission). Never reimplemented greenfield.
 - **`T27` (`SciFact`), `T27b` (`MultiVerS`), `T28` (`Evidence Inference`):** `BLOCKED_EXTERNAL` on `EXT-01` + `EXT-07` (`Issue #5` external dataset and model-weight rights).
 - **Clinician-adjudicated SafeEvidence holdout:** `BLOCKED_EXTERNAL` on `EXT-03` (`Issue #4` clinical intended-use and evaluation charter).
 
