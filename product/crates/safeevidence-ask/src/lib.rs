@@ -23,6 +23,7 @@ use safeevidence_contracts::proof::{
 use safeevidence_contracts::study::{Known, PublicationState, ScopedId, StudyId};
 use serde::{Deserialize, Serialize};
 
+pub mod bench_runner;
 pub mod bilingual_ask;
 pub mod overlay;
 pub mod perturbation;

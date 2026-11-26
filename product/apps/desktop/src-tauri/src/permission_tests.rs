@@ -69,6 +69,24 @@ fn the_main_local_window_can_ask() {
         .expect("json");
     assert_eq!(response["outcome"], "ANSWER_WITH_CAUTION");
     assert!(response["brief"].is_string());
+
+    let overview = get_ipc_response(
+        &window,
+        request(
+            "workstation_overview",
+            local_origin(),
+            serde_json::json!({}),
+        ),
+    )
+    .expect("admitted workstation_overview command")
+    .deserialize::<serde_json::Value>()
+    .expect("overview json");
+    assert_eq!(overview["schemaVersion"], 1);
+    assert_eq!(overview["evidence"]["totalDocuments"], 7);
+    assert_eq!(
+        overview["privacyAndDiagnostics"]["networkPosture"],
+        "NETWORK_LOCKED"
+    );
     app.state::<super::ask_command::AskState>().close();
 }
 
@@ -100,6 +118,13 @@ fn remote_origins_cannot_invoke_the_admitted_command() {
         "http://tauri.localhost.example.invalid",
     ] {
         assert!(get_ipc_response(&window, request("ask_question", origin, question())).is_err());
+        assert!(
+            get_ipc_response(
+                &window,
+                request("workstation_overview", origin, serde_json::json!({}))
+            )
+            .is_err()
+        );
     }
 }
 
@@ -112,6 +137,17 @@ fn an_ungranted_window_cannot_ask() {
         .expect("ungranted mock window");
     assert!(
         get_ipc_response(&window, request("ask_question", local_origin(), question())).is_err()
+    );
+    assert!(
+        get_ipc_response(
+            &window,
+            request(
+                "workstation_overview",
+                local_origin(),
+                serde_json::json!({})
+            )
+        )
+        .is_err()
     );
 }
 

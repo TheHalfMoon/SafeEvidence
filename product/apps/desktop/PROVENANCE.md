@@ -8,7 +8,7 @@ Admission `ADM-0006` (T36) in `docs/evidence/source_admissions.json`.
 - Tightened: `default-src 'none'` and no `'unsafe-inline'` in production, and bundling is off.
 - Adapted from the donor's `src/ipc.ts` and `src/ipc.test.ts`: the reject-a-mismatched-protocol parser pattern in `src/ask-view.ts` and its test.
 - SafeEvidence-written (GREENFIELD_JUSTIFIED, product-specific view; the shell is the copied part): the rest of `src/ask-view.ts`,
-  `src/App.tsx`, `src/styles.css`, `src-tauri/src/ask_command.rs`. The icons are generated plain squares.
+  `src/workstation-types.ts`, `src/i18n.ts`, `src/accessibility-rtl.test.ts`, `src/App.tsx`, `src/styles.css`, `src-tauri/src/ask_command.rs`. The icons are generated plain squares.
 
 The Ask command commits through `safeevidence-proofstore` first, and shows the stored text only if the stored proof reads `COMMITTED`. No existing test tells that read from Ask's own text, because the commit binds the text's digest: a mutant that removes only the read passes every test.
 

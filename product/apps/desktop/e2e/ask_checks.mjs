@@ -249,6 +249,85 @@ export async function runAskChecks(driver) {
     assert.match(refusal, /^app\.version not allowed\. Permissions associated with this command/, refusal);
     passed("the capability refuses a real core command the page was not granted");
 
+    // Keyboard WAI-ARIA tablist navigation across Evidence, Deep Review, Packs, and Privacy panes:
+    await page.eval(`(() => {
+      const tab = document.querySelector("#tab-ask");
+      tab.focus();
+      tab.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    })()`);
+    const evidenceText = await waitFor(
+      () => page.eval(`document.activeElement?.id === "tab-evidence" && document.querySelector("#evidence-heading") ? document.body.innerText : ""`),
+      "the Evidence pane via ArrowRight",
+    );
+    assert.match(evidenceText, /doc-veltrix-a/);
+    assert.match(evidenceText, /doc-quenzil-retracted/);
+    assert.doesNotMatch(evidenceText, /\d\s*%|percent|confidence/i);
+
+    await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
+    const reviewText = await waitFor(
+      () => page.eval(`document.activeElement?.id === "tab-review" && document.querySelector("#review-heading") ? document.body.innerText : ""`),
+      "the Deep Review pane via ArrowRight",
+    );
+    assert.match(reviewText, /proto-synthetic-01/);
+    assert.match(reviewText, /PROPOSED/);
+    assert.match(reviewText, /CONFIRMED/);
+    assert.match(reviewText, /Moderate/);
+    assert.doesNotMatch(reviewText, /\d\s*%|percent|confidence/i);
+
+    await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
+    const packsText = await waitFor(
+      () => page.eval(`document.activeElement?.id === "tab-packs" && document.querySelector("#packs-heading") ? document.body.innerText : ""`),
+      "the Packs pane via ArrowRight",
+    );
+    assert.match(packsText, /pack-vs1a-synthetic/);
+    assert.match(packsText, /doc-tessarine-unknown-rights \(RIGHTS_UNRESOLVED\)/);
+    assert.doesNotMatch(packsText, /\d\s*%|percent|confidence/i);
+
+    await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
+    const privacyText = await waitFor(
+      () => page.eval(`document.activeElement?.id === "tab-privacy" && document.querySelector("#privacy-heading") ? document.body.innerText : ""`),
+      "the Privacy pane via ArrowRight",
+    );
+    assert.match(privacyText, /NETWORK_LOCKED/);
+    assert.match(privacyText, /SAFEVD-v1/);
+    assert.doesNotMatch(privacyText, /\d\s*%|percent|confidence/i);
+
+    await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }))`);
+    await waitFor(() => page.eval(`document.activeElement?.id === "tab-ask" && !!document.querySelector("#question")`), "Home returning to Ask tab");
+    passed("keyboard tab navigation opens Evidence, Deep Review, Packs and Privacy panes with no percentage");
+
+    // Live Arabic RTL toggle and RTL keyboard ArrowLeft navigation:
+    await page.eval(`document.querySelector("#locale-toggle").click()`);
+    const rtlState = await waitFor(
+      () => page.eval(`document.documentElement.dir === "rtl" && document.documentElement.lang === "ar" ? {
+        dir: document.documentElement.dir,
+        shellDir: document.querySelector(".workstation-shell")?.getAttribute("dir"),
+        askTab: document.querySelector("#tab-ask")?.textContent,
+      } : null`),
+      "RTL Arabic locale switch",
+    );
+    assert.equal(rtlState.dir, "rtl");
+    assert.equal(rtlState.shellDir, "rtl");
+    assert.equal(rtlState.askTab, "\u0627\u0644\u0627\u0633\u062A\u0639\u0644\u0627\u0645");
+    await page.eval(`(() => {
+      const tab = document.querySelector("#tab-ask");
+      tab.focus();
+      tab.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    })()`);
+    await waitFor(
+      () => page.eval(`document.activeElement?.id === "tab-evidence" && !!document.querySelector("#evidence-heading")`),
+      "RTL ArrowLeft advancing to Evidence tab",
+    );
+    await page.eval(`(() => {
+      document.querySelector("#locale-toggle").click();
+      document.querySelector("#tab-ask").click();
+    })()`);
+    await waitFor(
+      () => page.eval(`document.documentElement.dir === "ltr" && !!document.querySelector("#question")`),
+      "LTR English restoration",
+    );
+    passed("Arabic locale toggle switches document to RTL, reverses tab arrow direction, and restores English LTR");
+
     page.close();
     await driver.stop({ mustBeRunning: true });
     page = await driver.launch(dataDir);

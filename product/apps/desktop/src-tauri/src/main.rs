@@ -27,7 +27,10 @@ fn app_context<R: tauri::Runtime>() -> tauri::Context<R> {
 fn presentation_builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder
         .manage(ask_command::AskState::default())
-        .invoke_handler(tauri::generate_handler![ask_command::ask_question])
+        .invoke_handler(tauri::generate_handler![
+            ask_command::ask_question,
+            ask_command::workstation_overview
+        ])
 }
 
 /// WebView2 switches for every Windows build: wry 0.57's defaults (its disabled features and, with autoplay on,
