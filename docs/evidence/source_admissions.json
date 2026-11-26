@@ -514,6 +514,69 @@
           "bytes": 3797,
           "dest_path": "product/crates/safeevidence-contracts/tests/fixtures/t17/NOTICE",
           "modification": "none"
+        },
+        {
+          "source_path": "openmed/clinical/evidence_span_audit.py",
+          "git_blob_oid": "79a13c445b429ecfda63a21802c91b0d8b8739cd",
+          "bytes": 13626,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/clinical/grounding/calibration.py",
+          "git_blob_oid": "a733cee9266486b02391f5d298877e1df7086d17",
+          "bytes": 42809,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/clinical/grounding/candidate_generator.py",
+          "git_blob_oid": "0cd9142360a2d82edddff61a0ec6d8c88ca12539",
+          "bytes": 12820,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/clinical/grounding/linkers/base.py",
+          "git_blob_oid": "60d014d88583d18ab6218f390ff76f3d0b3be0e9",
+          "bytes": 4559,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/clinical/grounding/matcher.py",
+          "git_blob_oid": "4ee62046886bd942b34b8a400e16556c8816f8bf",
+          "bytes": 22194,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/clinical/grounding/multilingual.py",
+          "git_blob_oid": "3cef0df89dbacb7907eb7ec62d734a808fbbf47c",
+          "bytes": 17592,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/core/decoding/spans.py",
+          "git_blob_oid": "1059ba89a2645ca777648cebbcabdbf1c14ae2be",
+          "bytes": 46598,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/core/schemas/span.py",
+          "git_blob_oid": "84f57f012eb1c980199b42e908a3637ded46a91a",
+          "bytes": 12316,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "openmed/structured/offset_properties.py",
+          "git_blob_oid": "405195c704538c4fd3e6f74552f55b94e9bc2003",
+          "bytes": 22396,
+          "dest_path": null,
+          "modification": "not_copied"
         }
       ]
     },
@@ -956,6 +1019,1896 @@
           "bytes": 29226,
           "dest_path": "product/crates/safeevidence-linux-keyring-helper/src/secret_service_backend.rs",
           "modification": "adapted"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0013",
+      "packet": "T02",
+      "repo": "AbdulazizShehri/MedScale",
+      "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
+      "state": "REFERENCE_ONLY",
+      "copy_authorized": false,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "none (reference fallback only; T03 safeevidence-vault covers WP-03 key hierarchy)",
+      "assets": "none; pack_trust.rs and device_key.rs synthetic seeds excluded",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "crates/medscale-keys/Cargo.toml",
+          "git_blob_oid": "bb7b2b761b6d03c39aa2bdc45441b77facf55e4f",
+          "bytes": 641,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-keys/src/aead_wrap.rs",
+          "git_blob_oid": "13e830f7b4008b3a3b23b1a9daa2e1a5c862b215",
+          "bytes": 2239,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-keys/src/device_key.rs",
+          "git_blob_oid": "0f05011d5e91b6aa00fcb89ac9cfa8b36d9b8e27",
+          "bytes": 5434,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-keys/src/keystore.rs",
+          "git_blob_oid": "6d1d2b8937309998db593eee9593a546eb7c113b",
+          "bytes": 10219,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-keys/src/lib.rs",
+          "git_blob_oid": "69011606284849edca2f55fec219d5a1122fb00e",
+          "bytes": 1083,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-keys/src/pack_trust.rs",
+          "git_blob_oid": "673280b22c56405047199af6ae82f4aaf8b11658",
+          "bytes": 4084,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-keys/src/provider.rs",
+          "git_blob_oid": "cba0231a3f10817eef340a2968cc4d44da2a195f",
+          "bytes": 8538,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-keys/src/recovery.rs",
+          "git_blob_oid": "5a1f13d2930a6de6b0416765a58c41b461239720",
+          "bytes": 1757,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0014",
+      "packet": "T04",
+      "repo": "AbdulazizShehri/MedScale",
+      "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
+      "state": "REFERENCE_ONLY",
+      "copy_authorized": false,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "none (reference fallback only; T03 lease and SQLite IMMEDIATE lock cover WP-03)",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "crates/medscale-core/tests/lease_single_writer.rs",
+          "git_blob_oid": "19860cb706dbddb649f13ab224668eb6c96034ed",
+          "bytes": 2140,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-storage/src/claim.rs",
+          "git_blob_oid": "76e70f36f7c294ebed9db904d250f50f4aa109fa",
+          "bytes": 1263,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-storage/src/writer_lock.rs",
+          "git_blob_oid": "24272b9f9b315ec3dce9893c1a88ec1d7ab4aceb",
+          "bytes": 1713,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0015",
+      "packet": "T05",
+      "repo": "AbdulazizShehri/MedScale",
+      "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Cargo.lock closure review owed at admission (safeevidence-network is the sole crate permitted HTTP transport under TA-29)",
+      "assets": "none; fixture transport only in NETWORK_LOCKED mode",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "crates/medscale-contracts/src/network/mod.rs",
+          "git_blob_oid": "a5015d6799c42939c9a5311949071933da24ef82",
+          "bytes": 3019,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/network_broker_013.rs",
+          "git_blob_oid": "d1ac44b89284069f79c51892af23518ebc91fe61",
+          "bytes": 10358,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-network/Cargo.toml",
+          "git_blob_oid": "c5c136583ac5d6e696cbdf32e847b3cbf16d097f",
+          "bytes": 492,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-network/src/adapters.rs",
+          "git_blob_oid": "923fcec941259190da824ee944dcc0165313eea7",
+          "bytes": 2754,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-network/src/allowlist.rs",
+          "git_blob_oid": "ae645dd41e5e1f5a051e87ea8e11089775c3bc17",
+          "bytes": 3099,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-network/src/browse.rs",
+          "git_blob_oid": "edca0c203d3e0cff23d9b51b7c592841ee717317",
+          "bytes": 26825,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-network/src/lib.rs",
+          "git_blob_oid": "f066c1accb98acf553235b0cfe46a2df52ef0053",
+          "bytes": 3446,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-network/src/transport.rs",
+          "git_blob_oid": "33eb2482ced7d0c9df674d05319ecb7ea2a525c7",
+          "bytes": 2291,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0016",
+      "packet": "T07",
+      "repo": "AbdulazizShehri/MedScale",
+      "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Cargo.lock closure review owed at admission; pack_runtime.rs excluded per F8 (no candle/tract runtimes); pairs with T25 tough under EXT-05",
+      "assets": "none; item-level corpus/model pack rights checked independently",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "crates/medscale-contracts/src/packs/mod.rs",
+          "git_blob_oid": "cc449dd22465adaf7cbe56e361c4442c6c0c31f3",
+          "bytes": 8550,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/pack_signer_026.rs",
+          "git_blob_oid": "a2d539616ca356ff6fcf273ec1142b02a623426b",
+          "bytes": 4332,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/packs_008.rs",
+          "git_blob_oid": "139a769d8bfa646968161daa83f144df370bf3cc",
+          "bytes": 4472,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-pack/src/format.rs",
+          "git_blob_oid": "09353f8a7c2ffe4ba01440773c375978e5e81365",
+          "bytes": 10347,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-pack/src/runtime.rs",
+          "git_blob_oid": "b25e6ef56548f0411fa872ed61a3afea6ebf18fd",
+          "bytes": 1190,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-pack/src/store.rs",
+          "git_blob_oid": "bbccb97a888b9932f0f2d2f80971b06013f833c6",
+          "bytes": 4280,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0017",
+      "packet": "T09",
+      "repo": "AbdulazizShehri/MedScale",
+      "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Cargo.lock closure review owed at admission; WP-21 patient-context activation additionally gated on EXT-03 (Issue #4)",
+      "assets": "none; synthetic FHIR R4 test fixtures only",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "crates/medscale-contracts/src/fhir/mod.rs",
+          "git_blob_oid": "7ccc5081ba271c68b8b742650bb6395aeb07e6d0",
+          "bytes": 13216,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/fhir_interchange_020.rs",
+          "git_blob_oid": "37569d0377bc31ad19821662da713d57e00a1072",
+          "bytes": 5612,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-fhir/Cargo.toml",
+          "git_blob_oid": "6beaaf4c2ea0a7e55569d44bdc7eda8aceb4357a",
+          "bytes": 425,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-fhir/src/extractors/mod.rs",
+          "git_blob_oid": "33a737802f6adb5500ffce7e70cca42ac18fa6d0",
+          "bytes": 15240,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-fhir/src/lexical.rs",
+          "git_blob_oid": "b206033284060ccff9b10e3ff7fc0c71fa0a6fa1",
+          "bytes": 12272,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-fhir/src/lib.rs",
+          "git_blob_oid": "290582956c23d80ee5812df67f3459791a413743",
+          "bytes": 697,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-fhir/src/units/mod.rs",
+          "git_blob_oid": "90389ec2849fcdd17ecb7332fed5ae53d417ebb1",
+          "bytes": 3956,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0018",
+      "packet": "T10",
+      "repo": "AbdulazizShehri/MedScale",
+      "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "OS sandbox APIs (Windows AppContainer/Job, Linux Landlock/seccomp/rlimit, macOS Seatbelt); production launcher spike owed in WP-23a",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "crates/medscale-contracts/src/bin/os_sandbox_probe.rs",
+          "git_blob_oid": "fa061d5c59701be9378e96b21fd72fa3bcb48e83",
+          "bytes": 10849,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/os_sandbox/linux_rlimit.rs",
+          "git_blob_oid": "af9b39199acc7407c0b438b832a80ef1e8bc3db6",
+          "bytes": 2351,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/os_sandbox/linux_seccomp.rs",
+          "git_blob_oid": "e35937543eed44152b39e6f9b28b2b3f1a0ca315",
+          "bytes": 10294,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/os_sandbox/macos_app_sandbox.rs",
+          "git_blob_oid": "ba34f907e81b4fc7bb18b5ddc9ca801b55af1e77",
+          "bytes": 3318,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/os_sandbox/macos_seatbelt.rs",
+          "git_blob_oid": "efd0e98a0bf38009f98aa8dceb6e7426c6191ea4",
+          "bytes": 2905,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/os_sandbox/mod.rs",
+          "git_blob_oid": "df31186c81d523c0ef1c93ec56d13193d87a35aa",
+          "bytes": 38805,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/os_sandbox/windows_appcontainer.rs",
+          "git_blob_oid": "253e02535527588b24e47d8f330bee05a78a1aa3",
+          "bytes": 22086,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/os_sandbox/windows_job.rs",
+          "git_blob_oid": "08d496ba646bfbc797ee42dd7d5f75db1ca91d23",
+          "bytes": 3255,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/src/worker_policy/mod.rs",
+          "git_blob_oid": "8bbcdb436e824343e333b02fc47024a05e0e8742",
+          "bytes": 2042,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/tests/os_sandbox_030.rs",
+          "git_blob_oid": "740296b93ae23aa493cf3217a6473a6330f50d6c",
+          "bytes": 2571,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/tests/os_sandbox_031.rs",
+          "git_blob_oid": "f050a030c03e8a5a2c0af6a4a911793c26df5c10",
+          "bytes": 2326,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/tests/os_sandbox_033.rs",
+          "git_blob_oid": "0b33e34e066dce6acd8214176f2bed78f32040b3",
+          "bytes": 2121,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/tests/os_sandbox_038.rs",
+          "git_blob_oid": "2235e3ed1c6193f281322e952fb32e979ca11fcd",
+          "bytes": 2277,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/tests/os_sandbox_040.rs",
+          "git_blob_oid": "4b8174bb509322d92a3ae21e52e1858c0ed52135",
+          "bytes": 2510,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/tests/os_sandbox_041.rs",
+          "git_blob_oid": "5c49d191a29186a7477d18409a7a3aab21b01adf",
+          "bytes": 1846,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/tests/os_sandbox_052.rs",
+          "git_blob_oid": "8285486b5386f12f90f68d7ab0460dc35e06af67",
+          "bytes": 4022,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-contracts/tests/os_sandbox_053.rs",
+          "git_blob_oid": "e14a7ef2043462512bed170ad94ac26b95efefa5",
+          "bytes": 2354,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/medscale-core/tests/worker_policy_deny_default.rs",
+          "git_blob_oid": "6c212471a5a2a4de24e3020aceed95cf56b45123",
+          "bytes": 538,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0019",
+      "packet": "T15",
+      "repo": "TheHalfMoon/MedOrigin",
+      "source_commit": "ec8b1b6f7392b09ecbb023600b3a83cfff6f14a8",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Python standard library only across 38 pinned litdb files; runs inside D-03 sandboxed worker with fetches routed via T05 broker",
+      "assets": "synthetic test fixtures only; live PubMed/OpenAlex/Crossref/Europe PMC item rights gated per record",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "src/medscale/_layout.py",
+          "git_blob_oid": "2a275f124b7c7d228b0dd3bf50fa6e9704f0d138",
+          "bytes": 3056,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/__init__.py",
+          "git_blob_oid": "f1ee5e7ebceb5d1185ce3a40856cfc102117ced1",
+          "bytes": 2544,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/adapters.py",
+          "git_blob_oid": "4f492efd3142e9496ab869e6cdeb32d507bbe429",
+          "bytes": 7653,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/ai_triage.py",
+          "git_blob_oid": "6297409d3562b3d174d9941baaba44324ca5bebf",
+          "bytes": 18089,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/collaboration.py",
+          "git_blob_oid": "aa7397aa4ce34b74568ac046cb0a90c05a0fabbb",
+          "bytes": 13638,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/coverage.py",
+          "git_blob_oid": "aca3d18d45eb4bc0f970587657099ea468d7deff",
+          "bytes": 3058,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/dedupe.py",
+          "git_blob_oid": "6944727e1278074d7ab9a6c24ac9f57aa741e6e1",
+          "bytes": 6734,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/ingest.py",
+          "git_blob_oid": "9dc6f29f1c56c5e3fa9ce3dea88bc72d1beecacf",
+          "bytes": 4045,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/integrity.py",
+          "git_blob_oid": "f3b11cfa0ed11d4ab8a317b2f8a325340c2ce08e",
+          "bytes": 6525,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/lineage.py",
+          "git_blob_oid": "84c45ed958b1bb7863fb65ba2fcedecd7f1fa170",
+          "bytes": 3169,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/parsers.py",
+          "git_blob_oid": "70704f4b4ab01576b0b00360bbbf408faa8a6f3a",
+          "bytes": 11149,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/queries.py",
+          "git_blob_oid": "f465effb9470b3aa532c61aadd7f4d196014a7c8",
+          "bytes": 3399,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/records.py",
+          "git_blob_oid": "72e4d6391bbb6872e05fca0e4ce07f6390bd3e6e",
+          "bytes": 3105,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/review.py",
+          "git_blob_oid": "01d2e7ebf939626ddcaa2aec6297d2a18d95b45f",
+          "bytes": 11015,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/screening.py",
+          "git_blob_oid": "4c5adda2e55d7eb6c27df33f8549c41474838249",
+          "bytes": 2190,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/screening_log.py",
+          "git_blob_oid": "0b042cac72de3e0b5a524ba489b71e83cf520ff2",
+          "bytes": 4015,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/sources.py",
+          "git_blob_oid": "40206b5b516ebacd8172a1af4dd204a5e5064ff6",
+          "bytes": 2172,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/store.py",
+          "git_blob_oid": "c84d205d1b112e0d29ff24b7d9ca50a305a5a57d",
+          "bytes": 3897,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/triage_eval.py",
+          "git_blob_oid": "87ad2609807a5686021463c48dfae2826fc2485d",
+          "bytes": 5744,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/litdb/uncertain.py",
+          "git_blob_oid": "d85c4d00d43ed562cbedb7907177976457d9a4c1",
+          "bytes": 5137,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/provenance.py",
+          "git_blob_oid": "242aad5871261bdb242977e11bfb4b680209379d",
+          "bytes": 2297,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_adapters.py",
+          "git_blob_oid": "2dbc60fc2567e1d1b15f743a7494b3f432e70686",
+          "bytes": 3766,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_ai_triage.py",
+          "git_blob_oid": "1040e3329b393914aac1c2887075553da32b1f3f",
+          "bytes": 9746,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_coverage.py",
+          "git_blob_oid": "ef840d9df0b73bcc09d79b6496a60f3c424cafd9",
+          "bytes": 2888,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_dedupe.py",
+          "git_blob_oid": "694bad251f87f326eb38eaf4688811dae20ac5de",
+          "bytes": 3772,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_ingest.py",
+          "git_blob_oid": "92102c4860c910496ccd26995b3e54ef4e84d156",
+          "bytes": 2089,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_integrity.py",
+          "git_blob_oid": "e339d0256f63c6ff50de3f75609029e3c379ebe3",
+          "bytes": 3377,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_lineage.py",
+          "git_blob_oid": "0f01e2fe932d328e9bfae7176a2e1db0e3e7c146",
+          "bytes": 3517,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_parsers.py",
+          "git_blob_oid": "9c3f1ef4dee2e093a012d3c93115b4e796f8ed97",
+          "bytes": 7404,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_queries.py",
+          "git_blob_oid": "82d1ed8849d64e60464479a2baca8c38e874e71a",
+          "bytes": 1401,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_records.py",
+          "git_blob_oid": "8c7c3797eaa4d45ece34e4c07c13499690bfca97",
+          "bytes": 2338,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_review.py",
+          "git_blob_oid": "1d2af156c234a6e2102dce76ae71450b71a4ae57",
+          "bytes": 7386,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_screen_cli.py",
+          "git_blob_oid": "9809d894ec04df5ba42ec94965f020c7ec74f1f8",
+          "bytes": 4044,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_screening.py",
+          "git_blob_oid": "5fa9b2f928b9e2aa36738ac590cb10d1f7a9e060",
+          "bytes": 1790,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_screening_log.py",
+          "git_blob_oid": "05a686f70ad0fe29857b28819d0b64553cce0c74",
+          "bytes": 2374,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_sources.py",
+          "git_blob_oid": "697a7c5eb9c9e2fa3cd0b79b444ccd651ae3edb1",
+          "bytes": 2054,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_store.py",
+          "git_blob_oid": "166c87c74a1945caeeb8d13b62ca18d67212a080",
+          "bytes": 2243,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_litdb_uncertain.py",
+          "git_blob_oid": "f2eb742191a0302c25b1481cb82cb6afed839531",
+          "bytes": 5691,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0020",
+      "packet": "T16",
+      "repo": "AbdulazizShehri/safeOCR",
+      "source_commit": "d2e2ea815b17a7a3f0e59ce43dbdd160966e73a4",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE and NOTICE pinned",
+      "transitive": "Python standard library verification slice (ocr.py and test_ocr_adapters.py excluded per F11; no subprocess Tesseract)",
+      "assets": "synthetic labgold fixtures only",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "ce1cf4c68cdbdf95cc0b18da50ad34b8adbd91e7",
+          "bytes": 10385,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "NOTICE",
+          "git_blob_oid": "9d21137ce751dc73e18b89aa2546ba1c0c1a4540",
+          "bytes": 439,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/safeocr/contracts.py",
+          "git_blob_oid": "3c3271fbfad5a226424a8c6ea3e1f82a16e68174",
+          "bytes": 10103,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/safeocr/labgold.py",
+          "git_blob_oid": "42f64a2a19bf30feee76a6f4a64ada72452e6c60",
+          "bytes": 14069,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/safeocr/report.py",
+          "git_blob_oid": "51970da5bb4a8f6860f9dc16ad3296539782b0ec",
+          "bytes": 10331,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/safeocr/verification.py",
+          "git_blob_oid": "b7b28c04af8bd434f6aef7178a1a68a2f0625f05",
+          "bytes": 23519,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_foundation_contracts.py",
+          "git_blob_oid": "74982a807dff081af1ed2ceb8716bfcac1ded3b0",
+          "bytes": 6891,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_labgold.py",
+          "git_blob_oid": "99d285457b925ebef6d602dcbb30427b80a80671",
+          "bytes": 6919,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tests/test_verification.py",
+          "git_blob_oid": "5392ec6781d2038bd89eb1012d49346c5340de89",
+          "bytes": 20755,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0021",
+      "packet": "T18",
+      "repo": "asreview/asreview",
+      "source_commit": "79d568212b2b0a78f9fd7be3c5117dfb890489f9",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE pinned",
+      "transitive": "Pinned Python wheel closure (numpy/scipy/scikit-learn) owed at WP-14/WP-23a sandboxed research worker admission; web app excluded",
+      "assets": "none; SYNERGY benchmark evaluated under its own CC0-1.0 terms",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "9ad3443d42495208464f13809daf46c216b35e90",
+          "bytes": 11417,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/data/loader.py",
+          "git_blob_oid": "f5e62e479c4eb9b4d085dacfca12712e7059223c",
+          "bytes": 4902,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/data/record.py",
+          "git_blob_oid": "b093d54281660e1d70fbb8350f5c3bf3979a2a34",
+          "bytes": 7236,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/data/ris.py",
+          "git_blob_oid": "5d8a76dbe33e6f97402134e37acb03dd46a77b15",
+          "bytes": 9381,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/metrics.py",
+          "git_blob_oid": "d7b4dcefd32b5f2837bac6a76e6e30d8da3a15d8",
+          "bytes": 1764,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/models/__init__.py",
+          "git_blob_oid": "47181ac4dae17082006a5a262069ea7efb7fd6b8",
+          "bytes": 1024,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/models/_metadata.py",
+          "git_blob_oid": "a6eef6dc89c319bd031e0712868156799cba5caf",
+          "bytes": 1074,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/models/balancers.py",
+          "git_blob_oid": "694a2e2e5f6534947dfbf1f5f5871f3d3a424b3a",
+          "bytes": 1427,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/models/classifiers.py",
+          "git_blob_oid": "dfdca576c08b085d68767507fcd7b59754138f9f",
+          "bytes": 1843,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/models/cli.py",
+          "git_blob_oid": "946433c8fdb5a6dad85c06ba350a42e635d9a9c8",
+          "bytes": 1842,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/models/feature_extractors.py",
+          "git_blob_oid": "a58b5c7b302da3d91a716808fbfde80b7ec386b9",
+          "bytes": 7782,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/models/mixin.py",
+          "git_blob_oid": "bc8ccedca65c97381e56e268ff4055240981ec07",
+          "bytes": 1220,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/models/models.py",
+          "git_blob_oid": "20434bd7a1b9c827bfafcd899c4ba38e32870a12",
+          "bytes": 7560,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/models/queriers.py",
+          "git_blob_oid": "1a0cf5f7fd84ac35bf57af20348ae1ee3a37590f",
+          "bytes": 6066,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/models/stoppers.py",
+          "git_blob_oid": "e536df5decf4afe66776277774d271282016fa9d",
+          "bytes": 7072,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "asreview/simulation/simulate.py",
+          "git_blob_oid": "05ad2299594f70fa37b073ea0604e8bb26bda368",
+          "bytes": 14628,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0022",
+      "packet": "T19",
+      "repo": "statsmodels/statsmodels",
+      "source_commit": "b7ec3a7c1a448ed79d75489da4cde6c304c79a21",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "BSD-3-Clause",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Pinned Python wheel closure (numpy/scipy/patsy/pandas) owed at WP-16/WP-23a sandboxed research worker admission; R metafor (GPL>=2) remains dev-only oracle",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "statsmodels/stats/meta_analysis.py",
+          "git_blob_oid": "033b201ccb10fecf17e1850cb5fb9f049b56a0ae",
+          "bytes": 30727,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "statsmodels/stats/tests/test_meta.py",
+          "git_blob_oid": "632b7fa6dfe0adf692bdec8d7f35cb0bcd422a6c",
+          "bytes": 26120,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0023",
+      "packet": "T20",
+      "repo": "xberg-io/xberg",
+      "source_commit": "a46c9c9e8b568c71b5a1127978b52b3d5c211c69",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "MIT",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE pinned",
+      "transitive": "Separate safeevidence-docs Cargo workspace (D-01): xberg default-features=false features=[pdf-native] + xberg-paddle-ocr (ort gated on EXT-07); xberg-ffi and network/hf-hub features forbidden by TA-29",
+      "assets": "none in crate; OCR ONNX weights gated separately under T29 / EXT-07",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "bf9c31d988af07312842dd2071ae82e30c12f2c0",
+          "bytes": 1077,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/xberg-ffi/Cargo.toml",
+          "git_blob_oid": "f9534bb6896a9bea3ae2d908497a6cb22f7982bf",
+          "bytes": 8184,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/xberg-native-pdf/Cargo.toml",
+          "git_blob_oid": "b77884caf29a1bc1e82f8385414be7bbaeccf2f0",
+          "bytes": 5069,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/xberg-paddle-ocr/Cargo.toml",
+          "git_blob_oid": "b094e0e0c0274588154c8377c5c89967937f9f77",
+          "bytes": 2121,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/xberg-paddle-ocr/src/lib.rs",
+          "git_blob_oid": "0e59f1e1acfdb7bbe8f3ebcaca899b8e3518491d",
+          "bytes": 2034,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/xberg-paddle-ocr/src/ocr_lite.rs",
+          "git_blob_oid": "698d7df41febbd714252cf3a5f2f959b4a8229ee",
+          "bytes": 34022,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "crates/xberg/Cargo.toml",
+          "git_blob_oid": "db1baca4ffc93e010e503350893a63b9115343a2",
+          "bytes": 87497,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0024",
+      "packet": "T21",
+      "repo": "anush008/fastembed-rs",
+      "source_commit": "473fff39e0b0dfcb89603040a3b1b0e7d4f0934e",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE pinned",
+      "transitive": "fastembed default-features=false (disabling hf-hub and automatic ORT binary downloads); WP-00 gates ort/fastembed admission on first EXT-07 model-card clearance",
+      "assets": "none in crate; model weights gated on EXT-07",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "Cargo.toml",
+          "git_blob_oid": "ca649631c889b7222616f6a2d2c0edca7f36dad0",
+          "bytes": 3071,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "0e12330a4911346f52c71b63d8966382fbc4b4d4",
+          "bytes": 11338,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/models/reranking.rs",
+          "git_blob_oid": "10fa19fe2e3cf353fb57cd8bd4527bca611fe111",
+          "bytes": 3936,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/reranking/impl.rs",
+          "git_blob_oid": "21bd41804afce3238d67890a26ccf8606872f70d",
+          "bytes": 6471,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/text_embedding/impl.rs",
+          "git_blob_oid": "cd9004777fcfaf7b86d95bed1f3953e011f48498",
+          "bytes": 17251,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0025",
+      "packet": "T22",
+      "repo": "asg017/sqlite-vec",
+      "source_commit": "04d28bd21773981e2d266bbf6aa4efbd011eb4f6",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "MIT OR Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE-APACHE and LICENSE-MIT pinned",
+      "transitive": "C SQLite extension (v0.1.9 pre-1.0); gated on WP-07 maturity/fuzz tests and EXT-07 dense vector admission (exact Rust flat-scan fallback if rejected)",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE-APACHE",
+          "git_blob_oid": "abbef71fa08fc8040d469ea4e6e99f0ff8edd6cb",
+          "bytes": 10931,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "LICENSE-MIT",
+          "git_blob_oid": "9c106bc48c760f7ed9f5b8255dea7adeef029cbe",
+          "bytes": 1068,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "sqlite-vec.c",
+          "git_blob_oid": "7af3b6a71d207946bce346dda7c6adb3892580ba",
+          "bytes": 345529,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0026",
+      "packet": "T23",
+      "repo": "ncbi/MedCPT",
+      "source_commit": "11e129be74102c98d16a11c310b0b5ce74c1db5e",
+      "state": "RIGHTS_UNKNOWN",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "NOASSERTION",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; donor code LICENSE (US-Gov public domain) pinned",
+      "transitive": "Evaluation scripts reference PyTorch/transformers; Hugging Face Query/Article/Cross weights declare 'license: other' and remain blocked on EXT-07 model-card clearance",
+      "assets": "Hugging Face model weights (Query d83a36cc, Article d05a736d, Cross 71caf65d) blocked pending EXT-07 rights verification",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "b1b6d037b866697e72abb9cef07f6e15db8a7a12",
+          "bytes": 1240,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "evals/main.py",
+          "git_blob_oid": "9ef3237c8be0b133897053dd7a6032837fcabd73",
+          "bytes": 3024,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "evals/models.py",
+          "git_blob_oid": "221d802b770ef0aa0905d3719e0732844be1bc72",
+          "bytes": 2609,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "reranker/models.py",
+          "git_blob_oid": "506cc7fd530396ea209024fbc5fd4278b15f23b8",
+          "bytes": 880,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "retriever/models.py",
+          "git_blob_oid": "6960137f5013e68cae6844ad1b0ce42f43290b66",
+          "bytes": 1957,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0027",
+      "packet": "T24",
+      "repo": "mozilla/uniffi-rs",
+      "source_commit": "c31f4bc025c7a31eae56b49107f50e6d38e76bc7",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "MPL-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE pinned (MPL-2.0 file-level obligations)",
+      "transitive": "Cargo dependency closure for M5 mobile FFI crate (WP-22); gated on resolving EGM finding V5 (Tauri mobile reqwest/hyper)",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "a612ad9813b006ce81d1ee438dd784da99a54007",
+          "bytes": 16725,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "uniffi/Cargo.toml",
+          "git_blob_oid": "369becb9322aa4776b7731cf7ef524720e7dc804",
+          "bytes": 3520,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0028",
+      "packet": "T25",
+      "repo": "awslabs/tough",
+      "source_commit": "98d8eb8b2ce63515d9b4981c938ef6453c5b5771",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "MIT OR Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE-APACHE and LICENSE-MIT pinned",
+      "transitive": "Cargo dependency closure with local/broker transport only (default HTTP transport disabled per TA-29); gated on EXT-05 TUF signing key custody",
+      "assets": "none",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE-APACHE",
+          "git_blob_oid": "d645695673349e3947e8e5ae42332d0ac3164cd7",
+          "bytes": 11358,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "LICENSE-MIT",
+          "git_blob_oid": "503351e0d1ca145ca6c16520b3faaee3217c4559",
+          "bytes": 1112,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "tough/Cargo.toml",
+          "git_blob_oid": "0cc702df67b545db63af11ffb434fa8245931ba4",
+          "bytes": 1839,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0029",
+      "packet": "T26",
+      "repo": "HL7/ebm",
+      "source_commit": "6d29967cc20c07ca2870d25cd3f48a069a1a57bb",
+      "state": "REFERENCE_ONLY",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "NOASSERTION",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Specification reference only (FSH profile structure); SafeEvidence owns appraisal.rs internal schema and JSON crosswalk (WP-10); sushi-config.yaml asserts no SPDX code license",
+      "assets": "none copied",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "input/fsh/artifact-assessment/p-certainty-of-evidence.fsh",
+          "git_blob_oid": "fbdab408b67774be3b734a64479e591efcbbf3b3",
+          "bytes": 2305,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "input/fsh/artifact-assessment/p-recommendation-rating.fsh",
+          "git_blob_oid": "e9a6f81d20937b415ed8b66c145984be1df54049",
+          "bytes": 3398,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "input/fsh/artifact-assessment/p-risk-of-bias.fsh",
+          "git_blob_oid": "4a34827e5d2c890f0f2541968cd9d974eab35d4e",
+          "bytes": 2451,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "input/fsh/citation/p-journal-article-citation.fsh",
+          "git_blob_oid": "c9cd29e89fb9dcf4e94b59a519567adc7317d878",
+          "bytes": 3064,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "input/fsh/composition/p-comparative-evidence-report.fsh",
+          "git_blob_oid": "1da5d6e258d9a743ae161e48ca768671ca24abb2",
+          "bytes": 4402,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "input/fsh/composition/p-guideline.fsh",
+          "git_blob_oid": "11fdf12224994685cd542316b85d3c32148994c1",
+          "bytes": 1037,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "sushi-config.yaml",
+          "git_blob_oid": "562921b28ea68eaf800e21b5952a1df183b54492",
+          "bytes": 12315,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0030",
+      "packet": "T27",
+      "repo": "allenai/scifact",
+      "source_commit": "68b98a56d93e0f9da0d2aab4e6c3294699a0f72e",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; evaluator code Apache-2.0, claims CC-BY-4.0, abstracts ODC-By-1.0 attribution required",
+      "transitive": "Benchmark-only Python evaluator (bench/scifact/); dataset tarball separate from code repo and requires explicit CC-BY-4.0 / ODC-By-1.0 notice binding",
+      "assets": "SciFact claims (CC-BY-4.0) and abstracts (ODC-By-1.0) require separate dataset artifact admission",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE.md",
+          "git_blob_oid": "18a738e109d7e3b28935a75d2134c5ccd602f403",
+          "bytes": 542,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "verisci/evaluate/lib/data.py",
+          "git_blob_oid": "881a0e91eda3c853e35aa45c0d4dc76f404ccfa6",
+          "bytes": 8911,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "verisci/evaluate/lib/metrics.py",
+          "git_blob_oid": "e9b0b0ce40ff7a3ec4d43ffd3d302b6dd1acb6b5",
+          "bytes": 5738,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0031",
+      "packet": "T27b",
+      "repo": "dwadden/multivers",
+      "source_commit": "a6ce033f0e17ae38c1f102eae1ee4ca213fbbe2e",
+      "state": "RIGHTS_UNKNOWN",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "MIT",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; code MIT, checkpoint license unverified",
+      "transitive": "Benchmark-only qualification oracle (legacy PyTorch/Lightning stack); never shipped in product",
+      "assets": "MultiVerS model checkpoint license is RIGHTS_UNKNOWN (blocked under EXT-07)",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "b2dcc4d06642faf88abb0b24a442ebdcec2ffc92",
+          "bytes": 1069,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "multivers/metrics.py",
+          "git_blob_oid": "9512fd751950687157a4fada06b117ec177f77f1",
+          "bytes": 6047,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "multivers/model.py",
+          "git_blob_oid": "75bd39f90b21232241a67937467e81c77e5d466e",
+          "bytes": 16063,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "multivers/predict.py",
+          "git_blob_oid": "6c0746d683d81a225f92d26e8c8bd4ed0788ab5d",
+          "bytes": 3215,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "requirements.txt",
+          "git_blob_oid": "12bda7de92d88164a72e89ca962b8ae620630858",
+          "bytes": 257,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0032",
+      "packet": "T28",
+      "repo": "jayded/evidence-inference",
+      "source_commit": "a661e8c14f973398380c8865cf2f27a535aaaf6d",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "MIT",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; code/annotations MIT; underlying PMC Open Access articles carry per-article licenses",
+      "transitive": "Benchmark-only harness (bench/evidence-inference/) for WP-15 non-gating report; never shipped in product",
+      "assets": "PMC OA full-text articles require per-item license filtering before benchmark ingestion",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "65dfccb60c9e43e2527d262db5e6a4a2fb1047b2",
+          "bytes": 1116,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "evidence_inference/models/pipeline.py",
+          "git_blob_oid": "2a68f6c67a453d161e48d745c4c08fce6d41e18f",
+          "bytes": 72007,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "evidence_inference/preprocess/preprocessor.py",
+          "git_blob_oid": "a87366389b66a59967f2111e7a27a1518301469c",
+          "bytes": 16616,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0033",
+      "packet": "T28b",
+      "repo": "bwallace/RRnlp",
+      "source_commit": "e1a26b4ed1c8d65f2c2e2558dc9f0918572306d0",
+      "state": "RIGHTS_UNKNOWN",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "MIT",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; code MIT, Zenodo weights GPL-2.0, minimap UMLS-restricted",
+      "transitive": "Benchmark-only oracle; Zenodo 5139998/5939332 weights are GPL-2.0 and minimap/*.pck are UMLS-derived (never copied or distributed in SafeEvidence)",
+      "assets": "GPL-2.0 model weights and UMLS-restricted CUI maps are non-distributable under Apache-2.0",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "b3080e7c8164873dec24a99b97b27a107dc108eb",
+          "bytes": 1070,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "rrnlp/models/PICO_tagger.py",
+          "git_blob_oid": "5539841bb74f51242f00a6ae64a363164d1dce3c",
+          "bytes": 8505,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "rrnlp/models/RCT_classifier.py",
+          "git_blob_oid": "eb6c416645debe6bfb67cbb4231132768a979ff7",
+          "bytes": 6653,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "rrnlp/models/RoB_classifier.py",
+          "git_blob_oid": "53b6f3befc9520f3d49f5511552a4fefdb7e1629",
+          "bytes": 6345,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "rrnlp/models/sample_size_extractor.py",
+          "git_blob_oid": "1795b9d95559351cbbdbabb5c1d242cc90c0fb62",
+          "bytes": 18194,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "rrnlp/models/study_design_classifier.py",
+          "git_blob_oid": "f43137e7c2046ac3d1735544cd9ece21d9b16679",
+          "bytes": 4867,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "rrnlp/models/util/minimap/minimap.py",
+          "git_blob_oid": "eeabd508d20a8239ea092653ac2206f0893d604c",
+          "bytes": 6019,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "rrnlp/models/weights/weights_manifest.json",
+          "git_blob_oid": "374fa35cbf5cf9ed8ebe094f0bec615863fea8de",
+          "bytes": 1269,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0034",
+      "packet": "T28c",
+      "repo": "evidence-surveillance/es3",
+      "source_commit": "fa845217690e179d3f8151e97773aabc035d6cfe",
+      "state": "REFERENCE_ONLY",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "MIT",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Algorithm reference only; Flask/Celery/Postgres stack rejected; study/report linkage implemented greenfield in study_linkage.rs (WP-05)",
+      "assets": "none copied",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "87c53ade75726828c10e360dd70df747da15494f",
+          "bytes": 1078,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "bot.py",
+          "git_blob_oid": "bf4f1917ae34b934bbd0257f81bdeef68d929507",
+          "bytes": 34886,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "ecitmatch_tools.py",
+          "git_blob_oid": "259da6245a35071d52d51c7c92f0743a23525c50",
+          "bytes": 17354,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "update_trials.py",
+          "git_blob_oid": "080822a2face6713f58933efff3dc1640515b9cc",
+          "bytes": 1473,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0035",
+      "packet": "T28d",
+      "repo": "WengLab-InformaticsResearch/PICOX",
+      "source_commit": "f3351c4786bf197efacfcefc1c1e66c36c245842",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "MIT",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; repo MIT, PICO-corpus-output.zip underlying abstract terms verified separately",
+      "transitive": "Benchmark-only evaluation notebooks (no importable runtime module)",
+      "assets": "PICO-corpus-output.zip (2.73 MB) requires separate underlying corpus-rights check before copy",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "01b05244c82793364f778d9c95d5f39f55dd25c0",
+          "bytes": 1064,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "PICO-corpus-output.zip",
+          "git_blob_oid": "f75235c9d550f499821d91013306aeb94a13b705",
+          "bytes": 2725058,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "step_3_evaluate.ipynb",
+          "git_blob_oid": "5eaae616eac61c71222e7a5bb68771d5caca6d07",
+          "bytes": 12680,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0036",
+      "packet": "T29",
+      "repo": "PaddlePaddle/PaddleOCR",
+      "source_commit": "dab3fe35379033fdcb2d0e9572fac0b36c9a9ebf",
+      "state": "CANDIDATE",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md; code Apache-2.0, per-model ONNX cards reviewed under EXT-07",
+      "transitive": "Consumed only as ONNX artifacts via T20 xberg-paddle-ocr in safeevidence-docs worker; no Python Paddle framework shipped",
+      "assets": "Printed English + Arabic ONNX recognition/detection weights gated on EXT-07 per-model license card review",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "430edfa0cfcb59f15b7aa5457427d0faf2e40dac",
+          "bytes": 11376,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0037",
+      "packet": "T31",
+      "repo": "TheHalfMoon/MedOrigin",
+      "source_commit": "ec8b1b6f7392b09ecbb023600b3a83cfff6f14a8",
+      "state": "REFERENCE_ONLY",
+      "copy_authorized": false,
+      "basis": "FOUNDER_OWNED",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Reference only; superseded by SafeEvidence appraisal.rs GRADE/EBMonFHIR structures (WP-10)",
+      "assets": "none copied",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "src/medscale/evidence/grading.py",
+          "git_blob_oid": "86db919f505e4052294afe3abf1e310bb86fba90",
+          "bytes": 958,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/evidence/models.py",
+          "git_blob_oid": "9041858e0399c06f932ea3853f979e37f1120fb3",
+          "bytes": 6658,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "src/medscale/evidence_checks.py",
+          "git_blob_oid": "50a50b0c3cd2835e8341461a4c06d86ab3c2412f",
+          "bytes": 3885,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0038",
+      "packet": "T33",
+      "repo": "cqframework/clinical_quality_language",
+      "source_commit": "fb8055df5ff4a2e9be468b7953d37d7cb7bf3263",
+      "state": "REFERENCE_ONLY",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "Apache-2.0",
+      "decision_ref": null,
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "transitive": "Deferred out of V1 (P13 guideline computability; JVM excluded from V1 runtime)",
+      "assets": "none copied",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE",
+          "git_blob_oid": "5c304d1a4a7b439f767990bf1360d3283e45d0ee",
+          "bytes": 11324,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0039",
+      "packet": "T34",
+      "repo": "ijmarshall/robotreviewer",
+      "source_commit": "9a2781974c3edc6322b4fb329b1ea0348af7b8a1",
+      "state": "DENIED",
+      "copy_authorized": false,
+      "basis": "PUBLIC_LICENSE",
+      "license_spdx": "GPL-3.0-only",
+      "decision_ref": null,
+      "notices": "GPL-3.0-only; distribution denied in Apache-2.0 SafeEvidence without separate rightsholder grant",
+      "transitive": "External development/benchmark comparison oracle only; never copied, linked, or distributed",
+      "assets": "GPL-3.0 code and models denied for in-tree copy and distribution",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "LICENSE.txt",
+          "git_blob_oid": "20d40b6bceca3a6c0237d7455ebf1820aeff3680",
+          "bytes": 35146,
+          "dest_path": null,
+          "modification": "not_copied"
+        }
+      ]
+    },
+    {
+      "admission_id": "ADM-0040",
+      "packet": "T35",
+      "repo": "ijmarshall/trialstreamer",
+      "source_commit": "a97cb8332c039e228ef42188c9d966440894e354",
+      "state": "RIGHTS_UNKNOWN",
+      "copy_authorized": false,
+      "basis": "SEPARATE_PERMISSION_ASSERTED",
+      "license_spdx": "NOASSERTION",
+      "decision_ref": null,
+      "notices": "Repository contains no LICENSE file at pinned commit a97cb8332c03; blocked pending documented rightsholder grant",
+      "transitive": "Reference-only pending rights; minimap.py also touches UMLS conventions; zero bytes copied",
+      "assets": "all 23 pinned files blocked pending verified rightsholder license/grant",
+      "security_test_owner": "founder",
+      "files": [
+        {
+          "source_path": "README.md",
+          "git_blob_oid": "95406c54c56ff48286301de08b8486b9df75465d",
+          "bytes": 2089,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/PICO_BERT.py",
+          "git_blob_oid": "29aad38ae1a9d9fefcb786cd2e94b19e7990eb67",
+          "bytes": 5470,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/PICO_BERT_TF.py",
+          "git_blob_oid": "77a3467f85f3cae3bac39f5e9db955053b19cc5f",
+          "bytes": 955,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/PICO_BERT_batch.py",
+          "git_blob_oid": "8ff4193050f3354e24f2222544c39da4c2f1a0ca",
+          "bytes": 4294,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/PICO_search.py",
+          "git_blob_oid": "93577a6926a46f4f64c8198300118a918b315480",
+          "bytes": 2399,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/__init__.py",
+          "git_blob_oid": "09f5cfb02f530ebe51c28bf849c1bafe56ee4187",
+          "bytes": 102,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/__main__.py",
+          "git_blob_oid": "ecc78f47bdfc570d838668124e0af975efe6329c",
+          "bytes": 51,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/cnxapp.py",
+          "git_blob_oid": "2ccb869ce7b668a1718bfeeee191111b978a92dd",
+          "bytes": 18507,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/config.py",
+          "git_blob_oid": "44b4bedf1c81661321737525eb4ed9f94a12be1a",
+          "bytes": 1219,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/dbutil.py",
+          "git_blob_oid": "0961895fff92fbb2d3eaabcb79235af41cd80867",
+          "bytes": 8995,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/docs.py",
+          "git_blob_oid": "1150ae26a0c1133ba8f65a1167ebe775def78609",
+          "bytes": 527,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/ictrp.py",
+          "git_blob_oid": "a18aabf3a885aa9ac8b56ab101bbb67a9fc7777a",
+          "bytes": 11981,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/ictrp_csv.py",
+          "git_blob_oid": "55ab333e8098dc04cdcc081b5de5eea984894385",
+          "bytes": 10881,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/medrxiv_cov.py",
+          "git_blob_oid": "f245fdaca13c2d7fdfd4d8029532713eb040fed4",
+          "bytes": 4664,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/mendeley.py",
+          "git_blob_oid": "ecec13ca83029d88083083be853ebddff59f3278",
+          "bytes": 3413,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/minimap.py",
+          "git_blob_oid": "f1f9ece4dde0d916e556d17033f1dbcc8f507144",
+          "bytes": 6006,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/pubmed.py",
+          "git_blob_oid": "dae52b8004ff0ac5fb2859ea19f42396ddbdcaf1",
+          "bytes": 26635,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/readers/__init__.py",
+          "git_blob_oid": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+          "bytes": 0,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/readers/pmreader.py",
+          "git_blob_oid": "a99f089b55da82c197586856f7047883e14acc7e",
+          "bytes": 7123,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/readers/xmlbase.py",
+          "git_blob_oid": "9b5c19c42120bfe314e84e827740e3b7fb4dccca",
+          "bytes": 3033,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/ris.py",
+          "git_blob_oid": "d017cfed47ff146d59bddbc01a005cf301da3408",
+          "bytes": 5849,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/schwartz_hearst.py",
+          "git_blob_oid": "32d8a330849874502dbcd7ab4d77d9cd0c8f04f7",
+          "bytes": 9707,
+          "dest_path": null,
+          "modification": "not_copied"
+        },
+        {
+          "source_path": "trialstreamer/upw.py",
+          "git_blob_oid": "3a62380ed172df596441226cc1216e15e4771302",
+          "bytes": 2824,
+          "dest_path": null,
+          "modification": "not_copied"
         }
       ]
     }
