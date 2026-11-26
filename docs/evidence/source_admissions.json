@@ -28,7 +28,7 @@
           "git_blob_oid": "e1e019eb6e2000a49583c42eadc25411de78e9a0",
           "bytes": 1605,
           "dest_path": "product/crates/safeevidence-contracts/src/objects/authority_classes.rs",
-          "modification": "none"
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/src/objects/eval_proj_audit.rs",
@@ -42,7 +42,7 @@
           "git_blob_oid": "2e27748220544c9cbca66a7b690439ba072be937",
           "bytes": 909,
           "dest_path": "product/crates/safeevidence-contracts/src/objects/identity.rs",
-          "modification": "none"
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/src/objects/ids.rs",
@@ -706,7 +706,7 @@
       "license_spdx": "Apache-2.0",
       "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
       "notices": "THIRD_PARTY_NOTICES.md",
-      "transitive": "product/apps/desktop lockfiles; Tauri, WebView and npm trees are outside product/deny.toml and the TA-02 SBOM",
+      "transitive": "ADM-0011 (src-tauri/Cargo.lock under src-tauri/deny.toml) and ADM-0012 (package-lock.json); covered by TA-02 SBOM",
       "assets": "none; icons are generated plain squares",
       "security_test_owner": "founder",
       "files": [
@@ -958,6 +958,90 @@
           "modification": "adapted"
         }
       ]
+    }
+  ],
+  "crate_closures": [
+    {
+      "admission_id": "ADM-0010",
+      "packet": "CRATE-product-cargo",
+      "ecosystem": "cargo",
+      "lockfile": "product/Cargo.lock",
+      "lockfile_lf_sha256": "fa504397b2620b6e1131000c441d8bf4ee762477000241c50197d45488fd0e4c",
+      "lockfile_lf_bytes": 40856,
+      "package_count": 175,
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "PUBLIC_LICENSE",
+      "allowed_licenses": [
+        "MIT",
+        "Apache-2.0",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "ISC",
+        "Zlib",
+        "Unicode-3.0",
+        "MPL-2.0"
+      ],
+      "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
+      "policy_file": "product/deny.toml",
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "allowed_install_scripts_ignored": [],
+      "security_test_owner": "founder"
+    },
+    {
+      "admission_id": "ADM-0011",
+      "packet": "CRATE-desktop-cargo",
+      "ecosystem": "cargo",
+      "lockfile": "product/apps/desktop/src-tauri/Cargo.lock",
+      "lockfile_lf_sha256": "2ff4842260882dca7edb0172d47afebfcf3feb4814856cbeb8f66bb3508bd699",
+      "lockfile_lf_bytes": 116409,
+      "package_count": 460,
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "PUBLIC_LICENSE",
+      "allowed_licenses": [
+        "MIT",
+        "Apache-2.0",
+        "Apache-2.0 WITH LLVM-exception",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "ISC",
+        "Zlib",
+        "Unicode-3.0",
+        "MPL-2.0"
+      ],
+      "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
+      "policy_file": "product/apps/desktop/src-tauri/deny.toml",
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "allowed_install_scripts_ignored": [],
+      "security_test_owner": "founder"
+    },
+    {
+      "admission_id": "ADM-0012",
+      "packet": "CRATE-desktop-npm",
+      "ecosystem": "npm",
+      "lockfile": "product/apps/desktop/package-lock.json",
+      "lockfile_lf_sha256": "648883e2a11d0b8413d665b20733c0b66d5bb96cc140eb8127370ed991da7fb1",
+      "lockfile_lf_bytes": 48344,
+      "package_count": 82,
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "PUBLIC_LICENSE",
+      "allowed_licenses": [
+        "Apache-2.0",
+        "Apache-2.0 OR MIT",
+        "BSD-3-Clause",
+        "ISC",
+        "MIT",
+        "MPL-2.0"
+      ],
+      "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
+      "policy_file": "product/apps/desktop/package.json",
+      "notices": "THIRD_PARTY_NOTICES.md",
+      "allowed_install_scripts_ignored": [
+        "node_modules/fsevents"
+      ],
+      "security_test_owner": "founder"
     }
   ]
 }

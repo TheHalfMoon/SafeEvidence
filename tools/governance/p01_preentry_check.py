@@ -17,6 +17,13 @@ from pathlib import Path
 from p01_candidate_integrity import trusted_path_has_symlink, visible_markdown_lines
 
 ID_RE = re.compile(r"^\|\s*(CODEX-P00-\d{2}|OPUS-P00-\d{3})\s*\|")
+ISSUE_LINK_RE = re.compile(
+    r"\[#(?P<issue>[345])\]\(https://github\.com/TheHalfMoon/SafeEvidence/issues/(?P=issue)\)"
+)
+ASSIGNED_STATUS_RE = re.compile(
+    r"ASSIGNED — @[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])? "
+    r"\(https://github\.com/TheHalfMoon/SafeEvidence/issues/(?P<issue>[345])#issuecomment-[0-9]+\)\Z"
+)
 EXPECTED = {
     "CODEX": {f"CODEX-P00-{n:02d}" for n in range(7, 31)},
     "OPUS": {f"OPUS-P00-{n:03d}" for n in range(3, 20)},
@@ -157,6 +164,8 @@ def validate(
         problems.append(f"P01 tracker missing IDs: {','.join(missing)}")
     if extra:
         problems.append(f"P01 tracker unexpected IDs: {','.join(extra)}")
+    assigned_count = 0
+    unassigned_count = 0
     for key in sorted(expected_all & set(actual) & set(originals)):
         original = originals[key]
         tracked = actual[key]
@@ -169,22 +178,31 @@ def validate(
         ]:
             if original[orig_index] != tracked[tracker_index]:
                 problems.append(f"{key}: drift in {field} from original review")
-        if not re.fullmatch(
-            r"\[#(?P<issue>[345])\]\(https://github\.com/TheHalfMoon/SafeEvidence/issues/(?P=issue)\)",
-            tracked[3],
-        ):
+        issue_match = ISSUE_LINK_RE.fullmatch(tracked[3])
+        if not issue_match:
             problems.append(f"{key}: missing durable issue #3/#4/#5")
-        if tracked[4] != "OPEN — owner unassigned":
-            problems.append(f"{key}: unexpected status; human approval needs separate governance review")
+        if tracked[4] == "OPEN — owner unassigned":
+            unassigned_count += 1
+        else:
+            assigned_match = ASSIGNED_STATUS_RE.fullmatch(tracked[4])
+            if assigned_match and issue_match and assigned_match.group("issue") == issue_match.group("issue"):
+                assigned_count += 1
+            else:
+                problems.append(f"{key}: unexpected status; human approval needs separate governance review")
     charter = read(root, CHARTER, problems)
     entry = read(root, ENTRY, problems)
     rights = read(root, RIGHTS, problems)
     tracker = read(root, TRACKER, problems)
+    tracker_markers = (
+        ("OPEN_OWNER_ASSIGNMENT", "unassigned")
+        if unassigned_count > 0 or assigned_count == 0
+        else ("OWNER_ASSIGNED_PRE_ENTRY_PENDING",)
+    )
     for name, content, required in [
         (CHARTER, charter, ("DRAFT_UNAPPROVED", "NOT_SIGNED", "NOT_IDENTIFIED")),
         (ENTRY, entry, ("P01_PRE_ENTRY_GATES_PENDING", "PREPARED_NOT_ACTIVATED",
                          "UNAPPROVED", "BLOCKED")),
-        (TRACKER, tracker, ("OPEN_OWNER_ASSIGNMENT", "unassigned")),
+        (TRACKER, tracker, tracker_markers),
         (RIGHTS, rights, ("NO_ADMISSIONS", "VERIFIED_ALLOWED")),
     ]:
         # Hidden HTML comments and Markdown code fences are not active
@@ -198,6 +216,7 @@ def validate(
         "structure": "PASS" if not problems else "FAIL",
         "original_codex_p1": len(EXPECTED["CODEX"] & set(actual)),
         "original_opus_p1": len(EXPECTED["OPUS"] & set(actual)),
+        "assigned_owners_recorded": assigned_count,
         "named_human_approvals_verified": 0,
         "clinical_evaluation_verified": False,
         "source_imports_authorized": False,

@@ -6,16 +6,16 @@ Nothing here implies clinical validation, regulatory status or product readiness
 Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASSED`,
 `BLOCKED_EXTERNAL`, `ENGINEERING_COMPLETE`, `CLINICALLY_EVALUATED`, `RELEASE_QUALIFIED`.
 
-## Current state (2026-11-07)
+## Current state (2026-11-26)
 
 | Field | Value |
 |---|---|
-| `main` at last update | `dcbf3f3e425081e459a676ec5d085259c868e68c` |
-| Milestone | M0 open for its exit review; M1 VS-1 in progress, per the table below |
-| Active packet | WP-00 and WP-01 rows; WP-18a Ask view |
-| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30), ADM-0009 (T03's Linux helper); G01a baseline holds `NO_ADMISSIONS` |
-| Product code | T01 contracts; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice, TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
-| Next executable task | VS-1a under `plan-v1.5`: `plan-v1.3` lineage for assertions, once an assertion store exists; whether a shipped Linux build opens a listener during an Ask; WebView2 on Windows: repeat the captures after the switches, repeat the port 80 capture during an Ask in a build as it ships, then a founder ruling on closing the finding; no-socket capture on macOS, and of a shipped Windows build during an Ask; resource values; all VS-1a rows on one commit. Then VS-1: the T05 row (founder) and TA-21. M0 and M1 exit reviews follow those |
+| `main` at last update | `5ccecd7688f1d10fa8474a697d6b6670d8eafec8` |
+| Milestone | M0 admission/supply-chain engineering closing out; M1 VS-1 in progress, per the table below |
+| Active packet | WP-00, WP-01, WP-02 closeout; WP-03 domain separation & durability; WP-18a Ask view |
+| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30), ADM-0009 (T03's Linux helper), ADM-0010 (`CRATE-product-cargo`), ADM-0011 (`CRATE-desktop-cargo`), ADM-0012 (`CRATE-desktop-npm`); G01a baseline holds `NO_ADMISSIONS` |
+| Product code | T01 contracts with P00 confidence/proposal gates; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice with pre-open `-wal` page-size guard (`RUSTSEC-2026-0459`), TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
+| Next executable task | Separate `HIMSAT/` -> `SAFEVD/` vault cryptographic domains with independent non-Rust vectors; `plan-v1.3` assertion lineage and `CommitUnknown` reconciliation; full Ask outcome paths and WebView2/WebKitGTK E2E checks; M0 and M1 exit reviews; authorized `GREENFIELD_JUSTIFIED` M2/M3/M4 subsystems. Unadmitted donor slices (`T05`, `T07`, `T09`, `T10`, `T14`, `T15`, `T16`) remain `BLOCKED_EXTERNAL` (`EXT-01`) |
 
 Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `foundation-documents`, `preentry structure`,
 `synthetic-only`, `product` and `desktop`, the last four on Ubuntu, Windows and macOS.
@@ -82,16 +82,13 @@ without its `net` feature, on the three desktop targets. These read dependency t
 
 **T30 is narrower than WP-00 names:** only the tool-source audit is adapted. The donor's registry and its notice and SBOM generators are not copied, because
 `source_admission_check.py`, the T11 SBOM generator and `cargo deny` already do that work, and a second registry would have to be kept in sync. The audit runs in
-the governance tests. It does not cover shell scripts or the app's npm tree, and it lists named modules only, so `requests` would pass. No TA row relied on the
-donor's registry or generators.
+the governance tests and covers third-party HTTP/FFI/importlib modules (`requests`, `httpx`, `urllib3`, `aiohttp`, `ctypes`, `importlib`, `builtins`), bare dynamic-execution references (`eval`, `exec`, `compile`, `__import__`), and `os.system`/`popen`/`spawn*`/`exec*` helpers across `tools/ci` and `tools/governance`. It does not cover shell scripts; npm packages are audited separately by `ADM-0012` in `source_admission_check.py`.
 
-**Crate closures:** `plan-v1.1` B6 also lists crate closures keyed to `product/Cargo.lock`. No `CRATE-*` admission row exists. Today `Cargo.lock` is the exact closure
-and `cargo deny` enforces it. Whether that meets B6 is open for M0's exit review, not settled.
+**Crate closures (`plan-v1.1` B6):** `ADM-0010` (`CRATE-product-cargo`), `ADM-0011` (`CRATE-desktop-cargo`), and `ADM-0012` (`CRATE-desktop-npm`) in `docs/evidence/source_admissions.json` bind exact LF lockfile SHA-256 digests, package counts, registry sources, SPDX license allowlists, and `THIRD_PARTY_NOTICES.md` rows, validated fail-closed by `source_admission_check.py`.
 
 **T12:** the residue scan covers one store directory, live and closed, so `TA-05` is not claimed. Its MIME test returns at WP-13.
 
-**Desktop shell:** the Ask store's key is held by the OS protector, and answers survive a restart. Key loss is refused and has no recovery path yet, and only Windows runs its real protector in the native desktop tests. Native tests use Tauri's mock runtime. The end-to-end tests use real windows and real protectors on Windows and Ubuntu. TA-20, TA-21 and TA-22 are not claimed. The app's trees are outside TA-02's SBOM
-and `product/deny.toml`. Tauri pulls `reqwest` and `hyper` on Android and iOS: resolve before M5.
+**Desktop shell:** the Ask store's key is held by the OS protector, and answers survive a restart. Key loss is refused and has no recovery path yet, and only Windows runs its real protector in the native desktop tests. Native tests use Tauri's mock runtime. The end-to-end tests use real windows and real protectors on Windows and Ubuntu. TA-20, TA-21 and TA-22 are not claimed. Both `product/apps/desktop/src-tauri/Cargo.lock` and `product/apps/desktop/package-lock.json` are covered by `TA-02`'s CycloneDX SBOM and `src-tauri/deny.toml` (`desktop-ci.yml`). Tauri pulls `reqwest` and `hyper` on Android and iOS: resolve before M5.
 
 **`plan-v1.3` immutability:** tested against the keyed vault store in `safeevidence-proofstore`, with triggers and guarded SQL.
 **`plan-v1.3` lineage, for sources.** `ProofStore::amend` appends the contract's whole `AmendmentRecord`, and `amendment_records` reads it back exactly, also after a reopen. The prior and superseding sources keep their bytes. A reused record id, an empty rationale or author, or a missing source is refused. `source_bytes_cannot_be_replaced_under_an_existing_id` covers the second obligation. **Still owed before M1 exit:** the obligation names the prior *assertion*, and the contracts keep `ClinicalAssertion` apart from `SourceRecord`. No assertion store exists, so lineage for assertions returns with WP-03 or WP-12. Answers are invalidated, not amended, as P00 asks. A retraction still needs a stored superseding source, and is treated like a supersession. The store checks no record field's meaning beyond the ids, rationale and author being non-empty. The desktop keys its store folder on the schema as well as the fixture, so a schema change gets a new store rather than a refused one. The old folder stays behind.
@@ -112,13 +109,10 @@ T03 shares `HIMSAT/...` domain strings with the donor. Windows DPAPI entropy and
 therefore compatible across the two products. Separate these before any release; independent test
 vectors must be recomputed outside the code when that happens, and fixed wire offsets must not shift.
 
-Before WP-02 closes: T01 carries `ClinicalAssertion` and a `confidence` field, and
-`evidence/mod.rs` has a constructor that hardcodes `scale_corpus_generator_present: true`.
-All are inert today (no consumer or UI). They must be gated against the P00 contracts
-(no V1 clinical confidence percentage) before anything uses them.
+**WP-02 T01 gating:** `evidence/mod.rs` now sets `scale_corpus_generator_present: false` with `validate_non_clinical()`, and `Proposal`, `ClinicalAssertion`, and `IdentityAssertion` enforce `P00_DECISION_ASSURANCE_CONTRACT` via `validate_assured_surface()` / `validate_p00_contract()` so unpromoted proposals and heuristic `confidence` fields are rejected fail-closed on assured V1 surfaces.
 
 See `docs/reviews/EGM_PLAN_CHALLENGE_2026-11-05.md`. Six P0 plan and tooling defects
-are verified. `product/`, `product-ci.yml` and `plan-v1.1` A3, B1, B2 and B6 address most of them. **One half is still open:** A3 covers recording an admission, and `tools/governance/p01_preentry_check.py` still requires each gate to read "OPEN — owner unassigned", so naming an owner still fails CI. Whether the rest are fully corrected is for M0's exit review.
+are verified. `product/`, `product-ci.yml` and `plan-v1.1` A3, B1, B2 and B6 address them, and `tools/governance/p01_preentry_check.py` now accepts issue-comment-bound `ASSIGNED — @<owner> (https://github.com/TheHalfMoon/SafeEvidence/issues/<3|4|5>#issuecomment-<id>)` rows while keeping `p01_g01_activation = "BLOCKED"` and rejecting bare `APPROVED` states.
 
 ## Source imports
 

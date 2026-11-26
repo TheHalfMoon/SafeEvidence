@@ -166,3 +166,92 @@ fn only_committed_is_currently_assured() {
         assert_eq!(state.is_currently_assured(), state == ProofState::Committed);
     }
 }
+
+#[test]
+fn doctor_ready_base_never_claims_scale_corpus_generator_or_clinical_quality() {
+    use safeevidence_contracts::evidence::EvidenceCorpusDoctorStatus;
+
+    let status = EvidenceCorpusDoctorStatus::ready_base("synthetic-lexical", "0.1.0");
+    assert!(!status.scale_corpus_generator_present);
+    assert!(!status.clinical_quality_claimed);
+    assert!(!status.release_ready);
+    assert_eq!(status.validate_non_clinical(), Ok(()));
+
+    let mut invalid = status.clone();
+    invalid.scale_corpus_generator_present = true;
+    assert!(invalid.validate_non_clinical().is_err());
+}
+
+#[test]
+fn t01_proposal_and_confidence_fields_are_gated_from_assured_v1_surfaces() {
+    use safeevidence_contracts::AUTHORITY_SCHEMA_VERSION;
+    use safeevidence_contracts::assurance::AssuredSurfaceGateError;
+    use safeevidence_contracts::objects::{
+        AuthorityScopeId, ClinicalAssertion, IdentityAssertion, MedicalTime, ObjectHeader,
+        OpaqueId, ProducerKind, Proposal, RealmId, TimePrecision,
+    };
+
+    let header = ObjectHeader {
+        id: OpaqueId::new("obj-1"),
+        schema_version: AUTHORITY_SCHEMA_VERSION,
+        realm_id: RealmId::new("synthetic"),
+        authority_scope_id: AuthorityScopeId::new("local"),
+    };
+    let mut proposal = Proposal {
+        header: header.clone(),
+        subject_ref: Some(OpaqueId::new("subj-1")),
+        claim_kind: "finding".to_owned(),
+        payload: serde_json::json!({"direction": "improved"}),
+        confidence: Some(0.85),
+        evidence_refs: vec![OpaqueId::new("src-1")],
+        producer: ProducerKind::Rule,
+    };
+    assert_eq!(
+        proposal.validate_assured_surface(),
+        Err(AssuredSurfaceGateError::ProposalCannotReachAssuredSurface)
+    );
+    assert_eq!(proposal.validate_internal_candidate(), Ok(()));
+    proposal.confidence = Some(1.5);
+    assert_eq!(
+        proposal.validate_internal_candidate(),
+        Err(AssuredSurfaceGateError::InvalidProposalConfidence)
+    );
+
+    let mut assertion = ClinicalAssertion {
+        header: header.clone(),
+        subject_ref: OpaqueId::new("subj-1"),
+        claim_kind: "finding".to_owned(),
+        payload: serde_json::json!({"effect": "improved"}),
+        promoted_from_proposal_id: Some(OpaqueId::new("prop-1")),
+        authorized_by: OpaqueId::new("clinician-1"),
+        effective_time: None,
+        recorded_time: MedicalTime::new("2026-11-26T00:00:00Z", TimePrecision::Instant, false),
+    };
+    assert_eq!(assertion.validate_p00_contract(), Ok(()));
+    for bad_payload in [
+        serde_json::json!({"nested": {"confidence_pct": 92}}),
+        serde_json::json!({"nested": {"confidencePct": 92}}),
+        serde_json::json!({"nested": {"clinical-confidence": 0.9}}),
+    ] {
+        assertion.payload = bad_payload;
+        assert_eq!(
+            assertion.validate_p00_contract(),
+            Err(AssuredSurfaceGateError::ForbiddenConfidenceField)
+        );
+    }
+
+    let mut identity = IdentityAssertion {
+        header,
+        subject_id: OpaqueId::new("subj-1"),
+        identifier_system: "nct".to_owned(),
+        identifier_value: "NCT00000001".to_owned(),
+        confidence: None,
+        evidence_refs: vec![OpaqueId::new("src-1")],
+    };
+    assert_eq!(identity.validate_assured_surface(), Ok(()));
+    identity.confidence = Some(0.99);
+    assert_eq!(
+        identity.validate_assured_surface(),
+        Err(AssuredSurfaceGateError::ForbiddenConfidenceField)
+    );
+}

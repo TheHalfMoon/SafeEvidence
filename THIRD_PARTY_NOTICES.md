@@ -79,10 +79,14 @@ distribution must wait. No source is silently relicensed into Apache-2.0.
 | ADM-0007 | T12 privacy probes (adapted) | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/tests/privacy` |
 | ADM-0008 | T30 tool-source audit (adapted) | `TheHalfMoon/ottari` @ `73706029849bcbe51243624e37f03a1969dc74ca` | Apache-2.0 | `tools/governance/donor/tool_audit.py` |
 | ADM-0009 | T03 Linux Secret Service calls, as a helper process (adapted) | `TheHalfMoon/ottari` @ `73706029849bcbe51243624e37f03a1969dc74ca` | Apache-2.0 | `product/crates/safeevidence-linux-keyring-helper` |
+| ADM-0010 | Product Rust dependency closure (`CRATE-product-cargo`, 175 packages) | `crates.io` (`product/Cargo.lock`) | SPDX allowlist (`product/deny.toml`) | `product/Cargo.lock` |
+| ADM-0011 | Desktop Rust dependency closure (`CRATE-desktop-cargo`, 460 packages) | `crates.io` (`product/apps/desktop/src-tauri/Cargo.lock`) | SPDX allowlist (`product/apps/desktop/src-tauri/deny.toml`) | `product/apps/desktop/src-tauri/Cargo.lock` |
+| ADM-0012 | Desktop npm dependency closure (`CRATE-desktop-npm`, 82 packages; `--ignore-scripts`) | `registry.npmjs.org` (`product/apps/desktop/package-lock.json`) | MIT, Apache-2.0, Apache-2.0 OR MIT, BSD-3-Clause, ISC, MPL-2.0 | `product/apps/desktop/package-lock.json` |
 
-Runtime Rust dependencies keep their own licenses. `product/Cargo.lock` is the exact
-closure; `cargo deny check` enforces the allowlist in `product/deny.toml` in CI. A
-CycloneDX SBOM is generated and checked in CI (TA-02).
+Runtime Rust and npm dependencies keep their own licenses. `product/Cargo.lock`,
+`product/apps/desktop/src-tauri/Cargo.lock`, and `product/apps/desktop/package-lock.json`
+are the exact closures validated in CI by `source_admission_check.py`, `cargo deny check`,
+and the CycloneDX 1.5 SBOM generator (`safeevidence-release`, TA-02).
 
 Native code built into the vault through its Rust dependencies, each under its own license:
 SQLCipher (BSD-style, via `libsqlite3-sys`) and OpenSSL (Apache-2.0, via `openssl-src`).

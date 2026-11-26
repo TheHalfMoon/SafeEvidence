@@ -4,8 +4,11 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
 
 - Source: `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`, `crates/medscale-contracts/`, Apache-2.0.
 - Rights decision: https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204
-- Copied unchanged: `src/objects/*.rs`.
-- Adapted: `src/evidence/mod.rs` (one comment renamed; CRLF line endings normalized to LF);
+- Copied unchanged: `src/objects/{eval_proj_audit,ids,mod,record_semantics,scope,source,time_effect}.rs`.
+- Adapted: `src/evidence/mod.rs` (comment renamed; `scale_corpus_generator_present` set to `false` in `ready_base` with
+  `validate_non_clinical()` guard; CRLF line endings normalized to LF);
+  `src/objects/authority_classes.rs` and `src/objects/identity.rs` (added fail-closed `P00_DECISION_ASSURANCE_CONTRACT`
+  validation methods rejecting unpromoted `Proposal` records and heuristic `confidence` fields on assured V1 surfaces);
   `tests/object_*.rs` (crate name only).
 - `src/lib.rs` is SafeEvidence-written apart from `AUTHORITY_SCHEMA_VERSION` and its doc
   comment, copied from the donor's `lib.rs` (listed in the row, outside the frozen T01 pins).
@@ -16,7 +19,9 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
   always-failing overwrite stub. Exclusions: `docs/plan/PLAN_AMENDMENT_V1_3.md`.
 - `tests/fixtures/t17/` is admission `ADM-0004` (T17): the frozen fixture plus its source note, which is outside
   the frozen pins, with the donor's LICENSE and NOTICE. T17's span code and Python are not copied.
-- T01 still carries `ClinicalAssertion` and `confidence` fields; see the ledger's gating note.
+- T01's `ClinicalAssertion`, `Proposal.confidence`, and `IdentityAssertion.confidence` are gated against
+  `docs/P00_DECISION_ASSURANCE_CONTRACT.md` via `validate_assured_surface()` / `validate_p00_contract()` so no
+  unpromoted proposal or heuristic confidence percentage can enter an assured V1 surface.
 - `src/study.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED, transplant matrix §5).
   `src/assurance.rs` is SafeEvidence-written; it encodes the P00 contract vocabulary directly.
 - `src/proof.rs` is SafeEvidence-written from the P00 proof contract: shape only, with no atomic commit or verification.

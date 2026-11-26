@@ -34,7 +34,7 @@ The Ask command commits through `safeevidence-proofstore` first, and shows the s
   cover it.
 - A release build must enable `custom-protocol`, or Tauri uses `devCsp` and `devUrl`. Nothing here builds a release yet.
 - The proof store's rule for two committed proofs on one question is still owed. It is unreachable here, with one epoch and one grant.
-- The app's Rust and npm trees are outside TA-02's SBOM, `product/deny.toml` and the TA-03 isolated run. `tools/ci/ta29_desktop_denial.py`
+- The app's Rust (`src-tauri/Cargo.lock`, `ADM-0011`) and npm (`package-lock.json`, `ADM-0012`) trees are now covered by `source_admission_check.py`, `src-tauri/deny.toml` (`desktop-ci.yml`), and the `TA-02` CycloneDX SBOM (`safeevidence-release`), while remaining outside the `TA-03` OS-isolated run. `tools/ci/ta29_desktop_denial.py`
   checks TA-29's named clients on the three desktop targets. For the Linux target, `cargo tree -e normal` shows no `mio` or `socket2`, and the lockfile has no `zbus`,
   which moved to the separate helper.
 - Tauri pulls `reqwest` and `hyper` on Android and iOS, so this shell cannot pass TA-29 on mobile as it stands.

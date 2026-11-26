@@ -58,12 +58,42 @@ class ToolAuditTests(unittest.TestCase):
             self.assertFalse([item for item in found if "tests/" in item])
 
     def test_network_imports_are_flagged_in_each_form(self):
-        for source in ("import socket", "import urllib.request", "from http import client", "import os, ssl", "from ftplib import FTP"):
+        for source in (
+            "import socket",
+            "import urllib.request",
+            "from http import client",
+            "import os, ssl",
+            "from ftplib import FTP",
+            "import requests",
+            "import httpx",
+            "import urllib3",
+            "import aiohttp",
+            "import smtplib",
+            "import importlib",
+            "import ctypes",
+            "import _ctypes",
+            "import _socket",
+            "import runpy",
+            "import pty",
+            "import socketserver",
+            "import builtins",
+        ):
             with self.subTest(source=source):
                 self.assertTrue(check.audit_source(source, may_spawn=True))
 
     def test_dynamic_execution_is_flagged(self):
-        for source in ("eval('1')", "exec('1')", "compile('1', 'x', 'exec')", "__import__('socket')"):
+        for source in (
+            "eval('1')",
+            "exec('1')",
+            "compile('1', 'x', 'exec')",
+            "__import__('socket')",
+            "e = eval",
+            "b = __builtins__",
+            "import os\nos.system('echo x')",
+            "import os\nos.startfile('x')",
+            "import os as host_os\nhost_os.popen('echo x')",
+            "from os import popen",
+        ):
             with self.subTest(source=source):
                 self.assertTrue(check.audit_source(source))
 

@@ -232,6 +232,118 @@ class AdmissionTests(unittest.TestCase):
     def test_unknown_keys_deny(self):
         self.assertTrue(self.errors(self.mutated(extra="x")))
 
+    def test_repository_crate_closures_cover_product_and_desktop_locks(self):
+        repo_root = Path(__file__).resolve().parents[3]
+        self.assertEqual(check.validate(repo_root), [])
+        self.assertEqual(check.missing_notices(repo_root), [])
+        manifest = json.loads((repo_root / check.MANIFEST).read_text(encoding="utf-8"))
+        lockfiles = {row["lockfile"] for row in manifest["crate_closures"]}
+        self.assertEqual(
+            lockfiles,
+            {
+                "product/Cargo.lock",
+                "product/apps/desktop/src-tauri/Cargo.lock",
+                "product/apps/desktop/package-lock.json",
+            },
+        )
+
+    def test_crate_closure_tamper_unapproved_license_and_script_drift_deny(self):
+        cargo_lock = (
+            b'version = 4\n\n[[package]]\nname = "a"\nversion = "0.1.0"\n'
+            b'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+            b'checksum = "' + (b"b" * 64) + b'"\n'
+        )
+        deny_toml = b'[licenses]\nallow = ["MIT"]\n'
+        (self.root / "product/Cargo.lock").write_bytes(cargo_lock)
+        (self.root / "product/deny.toml").write_bytes(deny_toml)
+        good_closure = {
+            "admission_id": "ADM-0010",
+            "packet": "CRATE-product-cargo",
+            "ecosystem": "cargo",
+            "lockfile": "product/Cargo.lock",
+            "lockfile_lf_sha256": check.hashlib.sha256(cargo_lock).hexdigest(),
+            "lockfile_lf_bytes": len(cargo_lock),
+            "package_count": 1,
+            "state": "VERIFIED_ALLOWED",
+            "copy_authorized": True,
+            "basis": "PUBLIC_LICENSE",
+            "allowed_licenses": ["MIT"],
+            "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-1",
+            "policy_file": "product/deny.toml",
+            "notices": "THIRD_PARTY_NOTICES.md",
+            "allowed_install_scripts_ignored": [],
+            "security_test_owner": "founder",
+        }
+        (self.root / check.MANIFEST).write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "admissions": [good_row()],
+                    "crate_closures": [good_closure],
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.assertEqual(check.validate(self.root), [])
+
+        # CRLF checkout of an LF lockfile still passes.
+        (self.root / "product/Cargo.lock").write_bytes(cargo_lock.replace(b"\n", b"\r\n"))
+        self.assertEqual(check.validate(self.root), [])
+
+        # Tampered package count or unapproved git source fails closed.
+        bad_count = copy.deepcopy(good_closure)
+        bad_count["package_count"] = 2
+        (self.root / check.MANIFEST).write_text(
+            json.dumps({"schema_version": 1, "admissions": [], "crate_closures": [bad_count]}),
+            encoding="utf-8",
+        )
+        self.assertTrue(check.validate(self.root))
+
+        # npm closure rejects unapproved license or undeclared install script.
+        npm_lock = json.dumps(
+            {
+                "name": "app",
+                "lockfileVersion": 3,
+                "packages": {
+                    "": {"name": "app", "version": "0.0.0"},
+                    "node_modules/bad": {
+                        "version": "1.0.0",
+                        "resolved": "https://registry.npmjs.org/bad/-/bad-1.0.0.tgz",
+                        "integrity": "sha512-abc==",
+                        "license": "WTFPL",
+                        "hasInstallScript": True,
+                    },
+                },
+            }
+        ).encode("utf-8")
+        (self.root / "product/package-lock.json").write_bytes(npm_lock)
+        (self.root / "product/package.json").write_bytes(b"{}\n")
+        npm_closure = {
+            "admission_id": "ADM-0012",
+            "packet": "CRATE-desktop-npm",
+            "ecosystem": "npm",
+            "lockfile": "product/package-lock.json",
+            "lockfile_lf_sha256": check.hashlib.sha256(npm_lock).hexdigest(),
+            "lockfile_lf_bytes": len(npm_lock),
+            "package_count": 1,
+            "state": "VERIFIED_ALLOWED",
+            "copy_authorized": True,
+            "basis": "PUBLIC_LICENSE",
+            "allowed_licenses": ["MIT"],
+            "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-1",
+            "policy_file": "product/package.json",
+            "notices": "THIRD_PARTY_NOTICES.md",
+            "allowed_install_scripts_ignored": [],
+            "security_test_owner": "founder",
+        }
+        (self.root / check.MANIFEST).write_text(
+            json.dumps({"schema_version": 1, "admissions": [], "crate_closures": [npm_closure]}),
+            encoding="utf-8",
+        )
+        errs = check.validate(self.root)
+        self.assertTrue(any("license" in e for e in errs), errs)
+        self.assertTrue(any("install-script" in e for e in errs), errs)
+
 
 if __name__ == "__main__":
     unittest.main()

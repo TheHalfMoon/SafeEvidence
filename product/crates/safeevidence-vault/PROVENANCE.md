@@ -29,6 +29,13 @@ Admission `ADM-0003` (T03) in `docs/evidence/source_admissions.json`.
   turns recursive triggers on for every connection. Guarded calls run under a SQLite authorizer, using rusqlite's `hooks` feature,
   which adds no dependency. They limit statements to guard against bugs, not malicious
   in-process code.
+- SafeEvidence security hardening in `src/vault_sqlcipher.rs` (`RUSTSEC-2026-0459` / `CVE-2026-119375`):
+  `validate_preopen_wal_page_size` inspects `<path>` and any sibling `<path>-wal` (via lossless `OsString` sidecar
+  paths) before `Connection::open_with_flags` and `ATTACH DATABASE`, rejecting symlinks/non-files, non-empty `< 32`-byte
+  WALs, and any `-wal` header whose big-endian page size (`bytes 8..12`) is not `4096`; snapshot/rotation target
+  resolution also rejects dangling symlinks and pre-existing `-wal`/`-shm`/`-journal` sidecars; and
+  `enforce_b303_provider_and_temp_posture` pins codec `cipher_page_size == 4096` (`SqlCipherOpenError::PageSizePosture`),
+  so SQLCipher's page-level HMAC-SHA512 zeroes unauthenticated 4096-byte page buffers even across SQLite's lazy `-wal` open.
 - Two donor tests are corrected, for the same reason. `staged_byte_identity_mismatch_fails_before_sqlcipher_acceptance`
   and `staging_mutation_after_b505q_fails_before_local_copy_or_anchor` each wrote a fixed `0xff` over a random salt
   byte, so each failed about 1 run in 256 when the byte already held that value. Both now invert the byte.
