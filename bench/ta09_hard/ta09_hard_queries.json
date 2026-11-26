@@ -1,0 +1,839 @@
+{
+  "description": "Invented harder engineering fixture for TA-09 (`WP-07`). Compounds, conditions, populations and results do not exist. Not medical information.",
+  "queries": [
+    {
+      "query_id": "qh01",
+      "question": "Does veltrixamine help adults with glimmer syndrome?",
+      "qrels": {
+        "study-d-00ac20ca3f": 2,
+        "study-d-01f6a4b689": 2,
+        "study-d-42c4b2a1a4": 2,
+        "study-d-6310745325": 2,
+        "study-d-d64cf4bd71": 2,
+        "study-h-0aea792e74": 2,
+        "study-h-47eb195cb3": 2,
+        "study-h-4b8dcca699": 1
+      }
+    },
+    {
+      "query_id": "qh02",
+      "question": "Does orbalin help adults with glimmer syndrome?",
+      "qrels": {
+        "study-d-19676ed244": 2,
+        "study-d-4a6c7e997f": 2,
+        "study-d-5ac66bc237": 2,
+        "study-d-7955372446": 2,
+        "study-d-86c64b56f8": 2,
+        "study-h-6718b67e59": 1,
+        "study-h-76b2b2943d": 2,
+        "study-h-fad9046773": 2
+      }
+    },
+    {
+      "query_id": "qh03",
+      "question": "Does orbalin help children with glimmer syndrome?",
+      "qrels": {
+        "study-d-19676ed244": 1,
+        "study-d-4a6c7e997f": 1,
+        "study-d-5ac66bc237": 1,
+        "study-d-7955372446": 1,
+        "study-d-86c64b56f8": 1,
+        "study-h-6718b67e59": 2,
+        "study-h-76b2b2943d": 1,
+        "study-h-fad9046773": 1
+      }
+    },
+    {
+      "query_id": "qh04",
+      "question": "Does quenzil help adults with glimmer syndrome?",
+      "qrels": {
+        "study-d-081c7a4177": 2,
+        "study-d-4bffa612b2": 2,
+        "study-d-7d1a3eb1e1": 2,
+        "study-d-bf67f9816b": 2,
+        "study-d-db14843144": 2,
+        "study-h-0b818741a7": 1,
+        "study-h-327dbef6d3": 1,
+        "study-h-6d0a77ee1c": 2,
+        "study-h-b871f9b620": 2
+      }
+    },
+    {
+      "query_id": "qh05",
+      "question": "Does quenzil help children with glimmer syndrome?",
+      "qrels": {
+        "study-d-081c7a4177": 1,
+        "study-d-4bffa612b2": 1,
+        "study-d-7d1a3eb1e1": 1,
+        "study-d-bf67f9816b": 1,
+        "study-d-db14843144": 1,
+        "study-h-0b818741a7": 2,
+        "study-h-327dbef6d3": 1,
+        "study-h-6d0a77ee1c": 1,
+        "study-h-b871f9b620": 1
+      }
+    },
+    {
+      "query_id": "qh06",
+      "question": "Does tessarine help adults with glimmer syndrome?",
+      "qrels": {
+        "study-d-1f831d5c0e": 2,
+        "study-d-4d9b740198": 2,
+        "study-d-5919b3e438": 2,
+        "study-d-8948827af5": 2,
+        "study-d-98a08f8244": 2,
+        "study-h-14f96b22d4": 1,
+        "study-h-d0e0c59227": 2,
+        "study-h-d49a1e238b": 2,
+        "study-h-eb743263a1": 1
+      }
+    },
+    {
+      "query_id": "qh07",
+      "question": "Does tessarine help children with glimmer syndrome?",
+      "qrels": {
+        "study-d-1f831d5c0e": 1,
+        "study-d-4d9b740198": 1,
+        "study-d-5919b3e438": 1,
+        "study-d-8948827af5": 1,
+        "study-d-98a08f8244": 1,
+        "study-h-14f96b22d4": 2,
+        "study-h-d0e0c59227": 1,
+        "study-h-d49a1e238b": 1,
+        "study-h-eb743263a1": 1
+      }
+    },
+    {
+      "query_id": "qh08",
+      "question": "Does calvoride help adults with glimmer syndrome?",
+      "qrels": {
+        "study-d-9dc22ffa1f": 2,
+        "study-d-b85e23442a": 2,
+        "study-d-f02e45505f": 2,
+        "study-d-f10717597f": 2,
+        "study-d-f11165f555": 2,
+        "study-h-52e56f7593": 2,
+        "study-h-57438bb0e4": 2,
+        "study-h-7504a023f0": 1,
+        "study-h-fbfed67bd1": 1
+      }
+    },
+    {
+      "query_id": "qh09",
+      "question": "Does calvoride help children with glimmer syndrome?",
+      "qrels": {
+        "study-d-9dc22ffa1f": 1,
+        "study-d-b85e23442a": 1,
+        "study-d-f02e45505f": 1,
+        "study-d-f10717597f": 1,
+        "study-d-f11165f555": 1,
+        "study-h-52e56f7593": 1,
+        "study-h-57438bb0e4": 1,
+        "study-h-7504a023f0": 1,
+        "study-h-fbfed67bd1": 2
+      }
+    },
+    {
+      "query_id": "qh10",
+      "question": "Does nimbutrel help adults with glimmer syndrome?",
+      "qrels": {
+        "study-d-0a4d1eb0e3": 2,
+        "study-d-5663f97211": 2,
+        "study-d-8b510ab923": 2,
+        "study-d-a58f4c525e": 2,
+        "study-d-ab67cc6d9d": 2,
+        "study-h-544fa42e8b": 2,
+        "study-h-5f2815c355": 1,
+        "study-h-aeb4a5fc02": 2,
+        "study-h-e1cda9fad5": 1
+      }
+    },
+    {
+      "query_id": "qh11",
+      "question": "Does nimbutrel help children with glimmer syndrome?",
+      "qrels": {
+        "study-d-0a4d1eb0e3": 1,
+        "study-d-5663f97211": 1,
+        "study-d-8b510ab923": 1,
+        "study-d-a58f4c525e": 1,
+        "study-d-ab67cc6d9d": 1,
+        "study-h-544fa42e8b": 1,
+        "study-h-5f2815c355": 2,
+        "study-h-aeb4a5fc02": 1,
+        "study-h-e1cda9fad5": 1
+      }
+    },
+    {
+      "query_id": "qh12",
+      "question": "Does veltrixamine help adults with ember fatigue?",
+      "qrels": {
+        "study-d-4c37ba3835": 2,
+        "study-d-5aa8c71646": 2,
+        "study-d-6eaa69271e": 2,
+        "study-d-7082990445": 2,
+        "study-d-c99adf3102": 2,
+        "study-h-a72bb0d9a0": 2,
+        "study-h-f1a3383076": 2
+      }
+    },
+    {
+      "query_id": "qh13",
+      "question": "Does orbalin help adults with ember fatigue?",
+      "qrels": {
+        "study-d-1d54b69a09": 2,
+        "study-d-22d199538b": 2,
+        "study-d-451bd340c0": 2,
+        "study-d-69a2ee850a": 2,
+        "study-d-c10ca57cb6": 2,
+        "study-h-332c5ae1e9": 2,
+        "study-h-48e4f10b52": 2,
+        "study-h-610b709c39": 1,
+        "study-h-7c694f3823": 1
+      }
+    },
+    {
+      "query_id": "qh14",
+      "question": "Does orbalin help children with ember fatigue?",
+      "qrels": {
+        "study-d-1d54b69a09": 1,
+        "study-d-22d199538b": 1,
+        "study-d-451bd340c0": 1,
+        "study-d-69a2ee850a": 1,
+        "study-d-c10ca57cb6": 1,
+        "study-h-332c5ae1e9": 1,
+        "study-h-48e4f10b52": 1,
+        "study-h-610b709c39": 1,
+        "study-h-7c694f3823": 2
+      }
+    },
+    {
+      "query_id": "qh15",
+      "question": "Does quenzil help adults with ember fatigue?",
+      "qrels": {
+        "study-d-153fe378dd": 2,
+        "study-d-1864bda696": 2,
+        "study-d-5d5e5c65ac": 2,
+        "study-d-b1374feb55": 2,
+        "study-d-d583aaa918": 2,
+        "study-h-4eac5351dd": 1,
+        "study-h-bc97c43ccf": 2,
+        "study-h-c797a628ed": 2,
+        "study-h-cefdaa39b8": 1
+      }
+    },
+    {
+      "query_id": "qh16",
+      "question": "Does quenzil help children with ember fatigue?",
+      "qrels": {
+        "study-d-153fe378dd": 1,
+        "study-d-1864bda696": 1,
+        "study-d-5d5e5c65ac": 1,
+        "study-d-b1374feb55": 1,
+        "study-d-d583aaa918": 1,
+        "study-h-4eac5351dd": 2,
+        "study-h-bc97c43ccf": 1,
+        "study-h-c797a628ed": 1,
+        "study-h-cefdaa39b8": 1
+      }
+    },
+    {
+      "query_id": "qh17",
+      "question": "Does tessarine help adults with ember fatigue?",
+      "qrels": {
+        "study-d-09d5d64088": 2,
+        "study-d-3deae078ec": 2,
+        "study-d-7aeb5604e4": 2,
+        "study-d-9736e57076": 2,
+        "study-d-e2d007d4e2": 2,
+        "study-h-4d0fde768e": 2,
+        "study-h-6718796b97": 1,
+        "study-h-9b87b4e845": 2,
+        "study-h-ebc00295f0": 1
+      }
+    },
+    {
+      "query_id": "qh18",
+      "question": "Does tessarine help children with ember fatigue?",
+      "qrels": {
+        "study-d-09d5d64088": 1,
+        "study-d-3deae078ec": 1,
+        "study-d-7aeb5604e4": 1,
+        "study-d-9736e57076": 1,
+        "study-d-e2d007d4e2": 1,
+        "study-h-4d0fde768e": 1,
+        "study-h-6718796b97": 2,
+        "study-h-9b87b4e845": 1,
+        "study-h-ebc00295f0": 1
+      }
+    },
+    {
+      "query_id": "qh19",
+      "question": "Does calvoride help adults with ember fatigue?",
+      "qrels": {
+        "study-d-0614913b96": 2,
+        "study-d-4c9923521e": 2,
+        "study-d-6a7e441d31": 2,
+        "study-d-7d5a4922f4": 2,
+        "study-d-eb174b1e23": 2,
+        "study-h-abf3f0c5e6": 1,
+        "study-h-ba437f9674": 2,
+        "study-h-c79139efef": 2
+      }
+    },
+    {
+      "query_id": "qh20",
+      "question": "Does calvoride help children with ember fatigue?",
+      "qrels": {
+        "study-d-0614913b96": 1,
+        "study-d-4c9923521e": 1,
+        "study-d-6a7e441d31": 1,
+        "study-d-7d5a4922f4": 1,
+        "study-d-eb174b1e23": 1,
+        "study-h-abf3f0c5e6": 2,
+        "study-h-ba437f9674": 1,
+        "study-h-c79139efef": 1
+      }
+    },
+    {
+      "query_id": "qh21",
+      "question": "Does nimbutrel help adults with ember fatigue?",
+      "qrels": {
+        "study-d-049a0d5076": 2,
+        "study-d-1b01176c0d": 2,
+        "study-d-52761e36ce": 2,
+        "study-d-59bbdc1802": 2,
+        "study-d-f28e4e7bd1": 2,
+        "study-h-20db1d8a02": 1,
+        "study-h-5dd9c1e5e6": 2,
+        "study-h-773941b6ff": 2
+      }
+    },
+    {
+      "query_id": "qh22",
+      "question": "Does nimbutrel help children with ember fatigue?",
+      "qrels": {
+        "study-d-049a0d5076": 1,
+        "study-d-1b01176c0d": 1,
+        "study-d-52761e36ce": 1,
+        "study-d-59bbdc1802": 1,
+        "study-d-f28e4e7bd1": 1,
+        "study-h-20db1d8a02": 2,
+        "study-h-5dd9c1e5e6": 1,
+        "study-h-773941b6ff": 1
+      }
+    },
+    {
+      "query_id": "qh23",
+      "question": "Does veltrixamine help adults with hollow cough?",
+      "qrels": {
+        "study-d-7d51cb76d9": 2,
+        "study-d-a8c8b4321e": 2,
+        "study-d-c0695b1c38": 2,
+        "study-d-e4bd56d9c4": 2,
+        "study-d-edc0b95fbd": 2,
+        "study-h-2b1fed5b0f": 1,
+        "study-h-404531902e": 2,
+        "study-h-47dcf6d89b": 2
+      }
+    },
+    {
+      "query_id": "qh24",
+      "question": "Does orbalin help adults with hollow cough?",
+      "qrels": {
+        "study-d-30eed0f138": 2,
+        "study-d-95aa4fde64": 2,
+        "study-d-a9f3b29e8d": 2,
+        "study-d-e3d6d847e6": 2,
+        "study-d-e958e18944": 2,
+        "study-h-1aa5a16556": 2,
+        "study-h-6f0ad66d8c": 1,
+        "study-h-ad370e5567": 1,
+        "study-h-e3b1700e91": 2
+      }
+    },
+    {
+      "query_id": "qh25",
+      "question": "Does orbalin help children with hollow cough?",
+      "qrels": {
+        "study-d-30eed0f138": 1,
+        "study-d-95aa4fde64": 1,
+        "study-d-a9f3b29e8d": 1,
+        "study-d-e3d6d847e6": 1,
+        "study-d-e958e18944": 1,
+        "study-h-1aa5a16556": 1,
+        "study-h-6f0ad66d8c": 1,
+        "study-h-ad370e5567": 2,
+        "study-h-e3b1700e91": 1
+      }
+    },
+    {
+      "query_id": "qh26",
+      "question": "Does quenzil help adults with hollow cough?",
+      "qrels": {
+        "study-d-45b77d50b8": 2,
+        "study-d-873afb0b07": 2,
+        "study-d-89481f70cb": 2,
+        "study-d-abc7ad9151": 2,
+        "study-d-cf4aa53c85": 2,
+        "study-h-02b65d541a": 2,
+        "study-h-155600e4ba": 1,
+        "study-h-7067cb4a30": 2
+      }
+    },
+    {
+      "query_id": "qh27",
+      "question": "Does quenzil help children with hollow cough?",
+      "qrels": {
+        "study-d-45b77d50b8": 1,
+        "study-d-873afb0b07": 1,
+        "study-d-89481f70cb": 1,
+        "study-d-abc7ad9151": 1,
+        "study-d-cf4aa53c85": 1,
+        "study-h-02b65d541a": 1,
+        "study-h-155600e4ba": 2,
+        "study-h-7067cb4a30": 1
+      }
+    },
+    {
+      "query_id": "qh28",
+      "question": "Does tessarine help adults with hollow cough?",
+      "qrels": {
+        "study-d-14c91b83bb": 2,
+        "study-d-15a3866fb7": 2,
+        "study-d-9dbb2277e6": 2,
+        "study-d-b3d8b2273c": 2,
+        "study-d-c3fc099fab": 2,
+        "study-h-15241cc520": 2,
+        "study-h-7f936bc910": 2,
+        "study-h-a011333ea0": 1
+      }
+    },
+    {
+      "query_id": "qh29",
+      "question": "Does calvoride help adults with hollow cough?",
+      "qrels": {
+        "study-d-00cf38b874": 2,
+        "study-d-0d4b1bb8da": 2,
+        "study-d-4e400da526": 2,
+        "study-d-94beea86e3": 2,
+        "study-d-cf36273ff3": 2,
+        "study-h-1107de5f9b": 1,
+        "study-h-27a778d4c1": 2,
+        "study-h-8ef122d8ab": 2,
+        "study-h-ebc238b8ad": 1
+      }
+    },
+    {
+      "query_id": "qh30",
+      "question": "Does calvoride help children with hollow cough?",
+      "qrels": {
+        "study-d-00cf38b874": 1,
+        "study-d-0d4b1bb8da": 1,
+        "study-d-4e400da526": 1,
+        "study-d-94beea86e3": 1,
+        "study-d-cf36273ff3": 1,
+        "study-h-1107de5f9b": 2,
+        "study-h-27a778d4c1": 1,
+        "study-h-8ef122d8ab": 1,
+        "study-h-ebc238b8ad": 1
+      }
+    },
+    {
+      "query_id": "qh31",
+      "question": "Does nimbutrel help adults with hollow cough?",
+      "qrels": {
+        "study-d-2f3aab8d54": 2,
+        "study-d-54db7bce4d": 2,
+        "study-d-8772e9f22a": 2,
+        "study-d-a72c784d94": 2,
+        "study-d-e50762f48d": 2,
+        "study-h-4d28abbc3f": 2,
+        "study-h-5c86b004f3": 2
+      }
+    },
+    {
+      "query_id": "qh32",
+      "question": "Does veltrixamine help adults with marble rash?",
+      "qrels": {
+        "study-d-634c3130d1": 2,
+        "study-d-a641f6ef38": 2,
+        "study-d-b2c62c4622": 2,
+        "study-d-d2a17dc99b": 2,
+        "study-d-efc9d96404": 2,
+        "study-h-531e7665c0": 2,
+        "study-h-a772e99df7": 2,
+        "study-h-f6f7e7400a": 1
+      }
+    },
+    {
+      "query_id": "qh33",
+      "question": "Does orbalin help adults with marble rash?",
+      "qrels": {
+        "study-d-22687eed0a": 2,
+        "study-d-31bf4dbe1f": 2,
+        "study-d-4e3e3daaac": 2,
+        "study-d-726b66b86a": 2,
+        "study-d-ad9070b040": 2,
+        "study-h-852bc48305": 2,
+        "study-h-c54320d684": 1,
+        "study-h-c86b9ee590": 2
+      }
+    },
+    {
+      "query_id": "qh34",
+      "question": "Does orbalin help children with marble rash?",
+      "qrels": {
+        "study-d-22687eed0a": 1,
+        "study-d-31bf4dbe1f": 1,
+        "study-d-4e3e3daaac": 1,
+        "study-d-726b66b86a": 1,
+        "study-d-ad9070b040": 1,
+        "study-h-852bc48305": 1,
+        "study-h-c54320d684": 2,
+        "study-h-c86b9ee590": 1
+      }
+    },
+    {
+      "query_id": "qh35",
+      "question": "Does quenzil help adults with marble rash?",
+      "qrels": {
+        "study-d-3c320d64fb": 2,
+        "study-d-45e3c0ee42": 2,
+        "study-d-a325405164": 2,
+        "study-d-a511a6495d": 2,
+        "study-d-c69f8239ff": 2,
+        "study-h-506a1cfe9c": 2,
+        "study-h-93ce902be7": 2
+      }
+    },
+    {
+      "query_id": "qh36",
+      "question": "Does tessarine help adults with marble rash?",
+      "qrels": {
+        "study-d-549c87425d": 2,
+        "study-d-8562f30386": 2,
+        "study-d-856d4c580c": 2,
+        "study-d-b323942be7": 2,
+        "study-d-c32ddc7374": 2,
+        "study-h-2aa8b70fcb": 2,
+        "study-h-b1938ae03d": 1,
+        "study-h-e3f486173c": 2
+      }
+    },
+    {
+      "query_id": "qh37",
+      "question": "Does tessarine help children with marble rash?",
+      "qrels": {
+        "study-d-549c87425d": 1,
+        "study-d-8562f30386": 1,
+        "study-d-856d4c580c": 1,
+        "study-d-b323942be7": 1,
+        "study-d-c32ddc7374": 1,
+        "study-h-2aa8b70fcb": 1,
+        "study-h-b1938ae03d": 2,
+        "study-h-e3f486173c": 1
+      }
+    },
+    {
+      "query_id": "qh38",
+      "question": "Does calvoride help adults with marble rash?",
+      "qrels": {
+        "study-d-425074d920": 2,
+        "study-d-516f7555e2": 2,
+        "study-d-53c53bb4d7": 2,
+        "study-d-8d76bb798e": 2,
+        "study-d-9a838f90d9": 2,
+        "study-h-32d8cf7be2": 2,
+        "study-h-3aed9759f1": 2,
+        "study-h-f3512b8d4e": 1
+      }
+    },
+    {
+      "query_id": "qh39",
+      "question": "Does calvoride help children with marble rash?",
+      "qrels": {
+        "study-d-425074d920": 1,
+        "study-d-516f7555e2": 1,
+        "study-d-53c53bb4d7": 1,
+        "study-d-8d76bb798e": 1,
+        "study-d-9a838f90d9": 1,
+        "study-h-32d8cf7be2": 1,
+        "study-h-3aed9759f1": 1,
+        "study-h-f3512b8d4e": 2
+      }
+    },
+    {
+      "query_id": "qh40",
+      "question": "Does nimbutrel help adults with marble rash?",
+      "qrels": {
+        "study-d-7260e30fa0": 2,
+        "study-d-9a8df5fe98": 2,
+        "study-d-b967130daa": 2,
+        "study-d-df14cc2b1e": 2,
+        "study-d-fbf1bfc00f": 2,
+        "study-h-510251e462": 1,
+        "study-h-601d3cf140": 2,
+        "study-h-6fbc5602a4": 2
+      }
+    },
+    {
+      "query_id": "qh41",
+      "question": "Does veltrixamine help adults with quiet tremor?",
+      "qrels": {
+        "study-d-46a456e9d8": 2,
+        "study-d-4d8c321015": 2,
+        "study-d-617f80c00e": 2,
+        "study-d-70a9e73a4b": 2,
+        "study-d-d4a2be749d": 2,
+        "study-h-0e0b6f7a12": 1,
+        "study-h-25e5b17553": 2,
+        "study-h-68ecded55a": 1,
+        "study-h-b21bdbcf42": 2
+      }
+    },
+    {
+      "query_id": "qh42",
+      "question": "Does veltrixamine help children with quiet tremor?",
+      "qrels": {
+        "study-d-46a456e9d8": 1,
+        "study-d-4d8c321015": 1,
+        "study-d-617f80c00e": 1,
+        "study-d-70a9e73a4b": 1,
+        "study-d-d4a2be749d": 1,
+        "study-h-0e0b6f7a12": 2,
+        "study-h-25e5b17553": 1,
+        "study-h-68ecded55a": 1,
+        "study-h-b21bdbcf42": 1
+      }
+    },
+    {
+      "query_id": "qh43",
+      "question": "Does orbalin help adults with quiet tremor?",
+      "qrels": {
+        "study-d-4e4aebb4e9": 2,
+        "study-d-8a6c5651d2": 2,
+        "study-d-d3420b0518": 2,
+        "study-d-d5b51539dd": 2,
+        "study-d-f79e1cee9b": 2,
+        "study-h-77e644b680": 2,
+        "study-h-d2a9cfb71e": 2
+      }
+    },
+    {
+      "query_id": "qh44",
+      "question": "Does quenzil help adults with quiet tremor?",
+      "qrels": {
+        "study-d-0344560df7": 2,
+        "study-d-03f8132a84": 2,
+        "study-d-b0485c49ba": 2,
+        "study-d-c77be5914d": 2,
+        "study-d-f0f6d9b6d5": 2,
+        "study-h-581efc3cc3": 2,
+        "study-h-6822eba270": 2,
+        "study-h-d31c3e1ffa": 1
+      }
+    },
+    {
+      "query_id": "qh45",
+      "question": "Does tessarine help adults with quiet tremor?",
+      "qrels": {
+        "study-d-0a7eef3991": 2,
+        "study-d-a04d463dfb": 2,
+        "study-d-a647feffed": 2,
+        "study-d-a8fd23fc80": 2,
+        "study-d-f6ff8c61fc": 2,
+        "study-h-5491167daf": 2,
+        "study-h-6fff9740cd": 2,
+        "study-h-7f7641cdde": 1
+      }
+    },
+    {
+      "query_id": "qh46",
+      "question": "Does calvoride help adults with quiet tremor?",
+      "qrels": {
+        "study-d-0b60f2b35a": 2,
+        "study-d-2aae19be72": 2,
+        "study-d-79b642b8b4": 2,
+        "study-d-976fd817ec": 2,
+        "study-d-dba0cbd655": 2,
+        "study-h-08af271e19": 1,
+        "study-h-6d9ad145cd": 2,
+        "study-h-7ff1701eb0": 2
+      }
+    },
+    {
+      "query_id": "qh47",
+      "question": "Does calvoride help children with quiet tremor?",
+      "qrels": {
+        "study-d-0b60f2b35a": 1,
+        "study-d-2aae19be72": 1,
+        "study-d-79b642b8b4": 1,
+        "study-d-976fd817ec": 1,
+        "study-d-dba0cbd655": 1,
+        "study-h-08af271e19": 2,
+        "study-h-6d9ad145cd": 1,
+        "study-h-7ff1701eb0": 1
+      }
+    },
+    {
+      "query_id": "qh48",
+      "question": "Does nimbutrel help adults with quiet tremor?",
+      "qrels": {
+        "study-d-403f49a2b3": 2,
+        "study-d-902179d5a1": 2,
+        "study-d-9fce4f4007": 2,
+        "study-d-a00cf7f2e0": 2,
+        "study-d-aea43e7069": 2,
+        "study-h-11f8b26910": 1,
+        "study-h-39335eaa7e": 1,
+        "study-h-cea08f5e90": 2,
+        "study-h-dc17810102": 2
+      }
+    },
+    {
+      "query_id": "qh49",
+      "question": "Does nimbutrel help children with quiet tremor?",
+      "qrels": {
+        "study-d-403f49a2b3": 1,
+        "study-d-902179d5a1": 1,
+        "study-d-9fce4f4007": 1,
+        "study-d-a00cf7f2e0": 1,
+        "study-d-aea43e7069": 1,
+        "study-h-11f8b26910": 2,
+        "study-h-39335eaa7e": 1,
+        "study-h-cea08f5e90": 1,
+        "study-h-dc17810102": 1
+      }
+    },
+    {
+      "query_id": "qh50",
+      "question": "Does veltrixamine help adults with amber gait?",
+      "qrels": {
+        "study-d-5ab21000a0": 2,
+        "study-d-7eb5507965": 2,
+        "study-d-badfcacd4a": 2,
+        "study-d-d9bec99c3c": 2,
+        "study-d-daf796f369": 2,
+        "study-h-0fb4b46030": 2,
+        "study-h-1d45bdc0eb": 1,
+        "study-h-22c044dbee": 1,
+        "study-h-d07df96aac": 2
+      }
+    },
+    {
+      "query_id": "qh51",
+      "question": "Does veltrixamine help children with amber gait?",
+      "qrels": {
+        "study-d-5ab21000a0": 1,
+        "study-d-7eb5507965": 1,
+        "study-d-badfcacd4a": 1,
+        "study-d-d9bec99c3c": 1,
+        "study-d-daf796f369": 1,
+        "study-h-0fb4b46030": 1,
+        "study-h-1d45bdc0eb": 1,
+        "study-h-22c044dbee": 2,
+        "study-h-d07df96aac": 1
+      }
+    },
+    {
+      "query_id": "qh52",
+      "question": "Does orbalin help adults with amber gait?",
+      "qrels": {
+        "study-d-2f3832fac2": 2,
+        "study-d-440fa93183": 2,
+        "study-d-488e18ea91": 2,
+        "study-d-622f4106ed": 2,
+        "study-d-bda36030d1": 2,
+        "study-h-1268bb3b2e": 2,
+        "study-h-48ad80b0dd": 1,
+        "study-h-5b85551245": 2
+      }
+    },
+    {
+      "query_id": "qh53",
+      "question": "Does quenzil help adults with amber gait?",
+      "qrels": {
+        "study-d-22922343e5": 2,
+        "study-d-99c99cb45a": 2,
+        "study-d-af0f220630": 2,
+        "study-d-bdf56d614a": 2,
+        "study-d-ccb4ff9faa": 2,
+        "study-h-37f0e68d73": 2,
+        "study-h-5147fe134e": 2,
+        "study-h-8285b570a1": 1,
+        "study-h-9404df4b55": 1
+      }
+    },
+    {
+      "query_id": "qh54",
+      "question": "Does quenzil help children with amber gait?",
+      "qrels": {
+        "study-d-22922343e5": 1,
+        "study-d-99c99cb45a": 1,
+        "study-d-af0f220630": 1,
+        "study-d-bdf56d614a": 1,
+        "study-d-ccb4ff9faa": 1,
+        "study-h-37f0e68d73": 1,
+        "study-h-5147fe134e": 1,
+        "study-h-8285b570a1": 1,
+        "study-h-9404df4b55": 2
+      }
+    },
+    {
+      "query_id": "qh55",
+      "question": "Does tessarine help adults with amber gait?",
+      "qrels": {
+        "study-d-4c96508297": 2,
+        "study-d-6f9379bf5a": 2,
+        "study-d-bc64e21a48": 2,
+        "study-d-c2d8f93a6a": 2,
+        "study-d-d970f90c99": 2,
+        "study-h-c861b6f7f0": 2,
+        "study-h-d26ff6215d": 2
+      }
+    },
+    {
+      "query_id": "qh56",
+      "question": "Does calvoride help adults with amber gait?",
+      "qrels": {
+        "study-d-2bedeec026": 2,
+        "study-d-5f801bed46": 2,
+        "study-d-b62e290cfe": 2,
+        "study-d-e17da56dd2": 2,
+        "study-d-e7909aab01": 2,
+        "study-h-e5b64b874a": 2,
+        "study-h-ebf83fbb65": 2
+      }
+    },
+    {
+      "query_id": "qh57",
+      "question": "Does nimbutrel help adults with amber gait?",
+      "qrels": {
+        "study-d-0546e2c4e0": 2,
+        "study-d-5bf771ca2b": 2,
+        "study-d-5f0cd49c96": 2,
+        "study-d-805da4b7bf": 2,
+        "study-d-9cb4279920": 2,
+        "study-h-0474dd663b": 2,
+        "study-h-0ee1cee617": 2,
+        "study-h-bbd4e3b828": 1,
+        "study-h-d71aca4b39": 1
+      }
+    },
+    {
+      "query_id": "qh58",
+      "question": "Does nimbutrel help children with amber gait?",
+      "qrels": {
+        "study-d-0546e2c4e0": 1,
+        "study-d-5bf771ca2b": 1,
+        "study-d-5f0cd49c96": 1,
+        "study-d-805da4b7bf": 1,
+        "study-d-9cb4279920": 1,
+        "study-h-0474dd663b": 1,
+        "study-h-0ee1cee617": 1,
+        "study-h-bbd4e3b828": 1,
+        "study-h-d71aca4b39": 2
+      }
+    }
+  ]
+}

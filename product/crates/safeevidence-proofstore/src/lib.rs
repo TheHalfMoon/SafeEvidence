@@ -22,6 +22,8 @@ use safeevidence_vault::vault_sqlcipher::{
     SqlCipherTransactionError, open_sqlcipher_database,
 };
 
+pub mod surveillance;
+
 const SCHEMA: &[&str] = &[
     "CREATE TABLE authority (
     id INTEGER PRIMARY KEY CHECK (id = 1), epoch INTEGER NOT NULL, rights_grant TEXT NOT NULL)",
