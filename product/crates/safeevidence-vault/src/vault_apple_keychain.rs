@@ -34,8 +34,8 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use zeroize::Zeroizing;
 
-const LEGACY_RECORD_MAGIC: &[u8] = b"HIMSAT/APPLE/VRK/v1\0";
-const RECORD_MAGIC: &[u8] = b"HIMSAT/APPLE/PROTECTOR/v2\0";
+const LEGACY_RECORD_MAGIC: &[u8] = b"SAFEVD/APPLE/VRK/v1\0";
+const RECORD_MAGIC: &[u8] = b"SAFEVD/APPLE/PROTECTOR/v2\0";
 const PROTECTOR_ID_BYTES: usize = 16;
 const LEGACY_RECORD_BYTES: usize = LEGACY_RECORD_MAGIC.len() + 16 + 8 + 1 + 1 + KEY_MATERIAL_BYTES;
 const VAULT_OFFSET: usize = RECORD_MAGIC.len();
@@ -184,7 +184,7 @@ impl AppleKeychainProtector {
 
     fn writer_lock_path(&self, vault_id: VaultId) -> PathBuf {
         let mut hasher = Sha256::new();
-        hasher.update(b"HIMSAT/APPLE/FRESHNESS/LOCK/v1\0");
+        hasher.update(b"SAFEVD/APPLE/FRESHNESS/LOCK/v1\0");
         hasher.update(vault_id.as_bytes());
         let digest = hasher.finalize();
         const HEX: &[u8; 16] = b"0123456789abcdef";
@@ -1022,6 +1022,28 @@ mod tests {
         assert_eq!(
             map_security_error(SecurityFrameworkError::from_code(-50)),
             ProtectorError::Unavailable
+        );
+    }
+
+    #[test]
+    fn donor_apple_record_magics_fail_closed() {
+        let vrk = OwnedKeyMaterial::from_bytes([0x6e; 32]);
+        let policy = ProtectorPolicy::new(
+            AccessScope::SameUserAccount,
+            UserPresencePolicy::NotRequired,
+        );
+        let mut donor_current = encode_record(vault(0x46), generation(6), policy, &vrk);
+        donor_current[..6].copy_from_slice(b"HIMSAT");
+        assert_eq!(
+            record_binding(&donor_current),
+            Err(ProtectorError::CorruptOrTampered)
+        );
+
+        let mut donor_legacy = encode_legacy_record(vault(0x46), generation(6), policy, &vrk);
+        donor_legacy[..6].copy_from_slice(b"HIMSAT");
+        assert_eq!(
+            record_binding(&donor_legacy),
+            Err(ProtectorError::CorruptOrTampered)
         );
     }
 }

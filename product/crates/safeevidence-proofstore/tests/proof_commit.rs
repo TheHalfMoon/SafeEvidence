@@ -21,6 +21,9 @@ use safeevidence_vault::vault_keys::{
     KEY_MATERIAL_BYTES, KeyDerivationContext, KeyPurpose, OwnedKeyMaterial,
 };
 use safeevidence_vault::vault_lease::VaultLease;
+use safeevidence_vault::vault_sqlcipher::{
+    BackupSnapshotQuiescenceGuard, open_sqlcipher_database, snapshot_quiesced_sqlcipher_database,
+};
 
 const FIXTURE: &[u8] = include_bytes!("../../safeevidence-ask/fixtures/vs1a_corpus.json");
 const QUESTION: &str = "Does veltrixamine help adults with glimmer syndrome?";
@@ -798,4 +801,322 @@ fn losing_the_wal_after_a_kill_is_refused_by_open_existing() {
         open_existing(&db.path()),
         Err(StoreError::NotEstablished)
     ));
+}
+
+struct ChildGuard(Child);
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+#[test]
+fn kill_during_commits_recovers_through_open_existing() {
+    for kill_at in 1..=8 {
+        let db = TempDb::new();
+        let mut child = ChildGuard(spawn_writer(&db.0));
+        let deadline = Instant::now() + Duration::from_secs(180);
+        while acknowledged(&db.0) < kill_at {
+            assert!(Instant::now() < deadline, "writer stalled at {kill_at}");
+            assert!(child.0.try_wait().unwrap().is_none(), "writer exited early");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            child.0.try_wait().unwrap().is_none(),
+            "writer exited before the kill"
+        );
+        child.0.kill().expect("kill");
+        let _ = child.0.wait();
+        let acked = acknowledged(&db.0);
+
+        for entry in fs::read_dir(&db.0).unwrap() {
+            let entry = entry.unwrap();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with("ack") {
+                continue;
+            }
+            let bytes = fs::read(entry.path()).unwrap();
+            assert!(
+                !bytes
+                    .windows(KILLED_MARKER.len())
+                    .any(|w| w == KILLED_MARKER),
+                "answer text in {name} before open_existing at {kill_at}"
+            );
+        }
+
+        let mut store = open_existing(&db.path()).expect("open_existing recovers hot WAL");
+        for index in 0..acked {
+            let stored = store
+                .read(&format!("proof-{index}"))
+                .expect("acknowledged answer survives open_existing");
+            assert_eq!(stored.state, ProofState::Committed);
+            assert_eq!(
+                stored.final_text,
+                format!("synthetic answer {index}").into_bytes()
+            );
+            assert_eq!(
+                store.audit_events(&format!("proof-{index}")).unwrap(),
+                ["COMMITTED"]
+            );
+        }
+        match store.read(&format!("proof-{acked}")) {
+            Ok(stored) => {
+                assert_eq!(stored.state, ProofState::Committed);
+                assert_eq!(
+                    stored.final_text,
+                    format!("synthetic answer {acked}").into_bytes()
+                );
+                assert_eq!(
+                    store.audit_events(&format!("proof-{acked}")).unwrap(),
+                    ["COMMITTED"]
+                );
+            }
+            Err(StoreError::UnknownProof) => {
+                assert!(
+                    store
+                        .audit_events(&format!("proof-{acked}"))
+                        .unwrap()
+                        .is_empty()
+                );
+            }
+            Err(other) => panic!("open_existing recovery failed: {other:?}"),
+        }
+        assert!(matches!(
+            store.read(&format!("proof-{}", acked + 1)),
+            Err(StoreError::UnknownProof)
+        ));
+    }
+}
+
+/// Child entry holding an active SQLite IMMEDIATE write transaction across processes.
+#[test]
+#[ignore = "spawned by cross_process_writer_contention_returns_busy_and_preserves_durability"]
+fn writer_lock_holder_entry() {
+    if std::env::var("SAFEEVIDENCE_LOCK_CHILD").as_deref() != Ok("1") {
+        return;
+    }
+    let root = PathBuf::from(std::env::var("SAFEEVIDENCE_LOCK_ROOT").expect("root"));
+    let identity = VaultLeaseIdentity::new(
+        VaultId::from_bytes([0x41; VAULT_ID_BYTES]),
+        KeyGeneration::new(7).expect("generation"),
+    );
+    let lease = VaultLease::new(identity);
+    let context = KeyDerivationContext::new(
+        identity.vault_id(),
+        identity.key_generation(),
+        KeyPurpose::StructuredStore,
+    );
+    let mut handle = open_sqlcipher_database(
+        root.join("vault.db"),
+        lease.keyed_handle_lease(),
+        context,
+        &OwnedKeyMaterial::from_bytes([0x52; KEY_MATERIAL_BYTES]),
+    )
+    .expect("child open");
+    handle.configure_durable_store().expect("durable");
+    handle
+        .immediate_transaction(
+            |tx| -> Result<(), safeevidence_vault::vault_sqlcipher::GuardedSqlError> {
+                tx.execute(
+                    "INSERT INTO store_events (event, subject) VALUES ('LOCK_HELD', 'child')",
+                    [],
+                )?;
+                fs::write(root.join("lock.ready"), "1").expect("ready");
+                let deadline = Instant::now() + Duration::from_secs(60);
+                while !root.join("lock.release").exists() {
+                    assert!(Instant::now() < deadline, "lock holder timed out");
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Ok(())
+            },
+        )
+        .expect("child tx");
+}
+
+#[test]
+fn cross_process_writer_contention_returns_busy_and_preserves_durability() {
+    let db = TempDb::new();
+    let (manifest, text) = answer();
+    let mut store = at_fixture_epoch(&db.path());
+    store.commit(&manifest, &text).expect("initial commit");
+
+    let mut child = ChildGuard(
+        Command::new(std::env::current_exe().expect("test binary"))
+            .args([
+                "writer_lock_holder_entry",
+                "--exact",
+                "--nocapture",
+                "--ignored",
+            ])
+            .env("SAFEEVIDENCE_LOCK_CHILD", "1")
+            .env("SAFEEVIDENCE_LOCK_ROOT", &db.0)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn lock holder"),
+    );
+
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !db.0.join("lock.ready").exists() {
+        assert!(Instant::now() < deadline, "lock holder never became ready");
+        assert!(child.0.try_wait().unwrap().is_none(), "lock holder exited");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    // Concurrent reads succeed under WAL while another process holds the write lock.
+    assert_eq!(store.epoch().expect("concurrent epoch read"), EPOCH);
+    assert_eq!(
+        store
+            .read(&manifest.proof_id)
+            .expect("concurrent read")
+            .final_text,
+        text
+    );
+
+    // Concurrent write fails closed with StoreError::Busy without corrupting the database.
+    let second_text = b"second committed brief".to_vec();
+    let mut second = manifest.clone();
+    second.proof_id = "proof-contended".to_owned();
+    second.final_text_digest = DigestSha256::of(&second_text);
+    assert!(matches!(
+        store.commit(&second, &second_text),
+        Err(StoreError::Busy)
+    ));
+    assert!(matches!(
+        store.read("proof-contended"),
+        Err(StoreError::UnknownProof)
+    ));
+
+    // Release the child writer lock and verify subsequent commits succeed cleanly.
+    fs::write(db.0.join("lock.release"), "1").expect("release");
+    let status = child.0.wait().expect("wait child");
+    assert!(status.success(), "child writer exited cleanly");
+
+    let receipt = store
+        .commit(&second, &second_text)
+        .expect("commit after contention clears");
+    assert_eq!(receipt.state, ProofState::Committed);
+    assert!(!receipt.replayed);
+    drop(store);
+
+    let mut reopened = open_existing(&db.path()).expect("reopen after contention");
+    assert_eq!(
+        reopened.read("proof-contended").expect("stored").final_text,
+        second_text
+    );
+}
+
+struct ExclusiveTestQuiescence;
+
+impl BackupSnapshotQuiescenceGuard for ExclusiveTestQuiescence {
+    type Error = std::convert::Infallible;
+
+    fn assert_normal_writes_quiesced(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[test]
+fn checkpoint_then_hot_wal_kill_and_clean_snapshot_restore_preserve_answers() {
+    let db = TempDb::new();
+    let snapshot_dir = TempDb::new();
+    let clean_restore_dir = TempDb::new();
+    let (base_manifest, base_text) = answer();
+
+    // Phase 1: commit a pre-checkpoint answer and amendment, then quiesce + truncate-checkpoint via snapshot.
+    {
+        let mut store = at_fixture_epoch(&db.path());
+        let mut pre = base_manifest.clone();
+        pre.proof_id = "proof-pre-checkpoint".to_owned();
+        store.commit(&pre, &base_text).expect("commit pre");
+        store.put_source("s-prior", b"prior source").expect("prior");
+        store.put_source("s-next", b"next source").expect("next");
+        store
+            .amend(&amendment(
+                "am-restore",
+                "s-prior",
+                "s-next",
+                AmendmentKind::Supersession,
+            ))
+            .expect("amend");
+    }
+
+    let identity = VaultLeaseIdentity::new(
+        VaultId::from_bytes([0x41; VAULT_ID_BYTES]),
+        KeyGeneration::new(7).expect("generation"),
+    );
+    let lease = VaultLease::new(identity);
+    let context = KeyDerivationContext::new(
+        identity.vault_id(),
+        identity.key_generation(),
+        KeyPurpose::StructuredStore,
+    );
+    let vrk = OwnedKeyMaterial::from_bytes([0x52; KEY_MATERIAL_BYTES]);
+    let snapshot_file = snapshot_dir.0.join("vault.snapshot.db");
+    let mut guard = ExclusiveTestQuiescence;
+    let snapshot = snapshot_quiesced_sqlcipher_database(
+        &mut guard,
+        db.path(),
+        &snapshot_file,
+        lease.keyed_handle_lease(),
+        context,
+        &vrk,
+    )
+    .expect("quiesced snapshot");
+    assert!(snapshot.byte_length() >= 4096);
+
+    // Phase 2: restore the snapshot into a brand-new clean directory; wrong key fails closed and leaves bytes intact.
+    let restored_path = clean_restore_dir.path();
+    fs::copy(snapshot.path(), &restored_path).expect("copy snapshot to clean dir");
+    let before_wrong_key = fs::read(&restored_path).expect("restored bytes");
+    assert!(open_with_key(&restored_path, 0x99).is_err());
+    assert_eq!(
+        fs::read(&restored_path).expect("restored bytes after wrong key"),
+        before_wrong_key
+    );
+
+    let mut restored = open_existing(&restored_path).expect("open_existing on restored snapshot");
+    let stored_pre = restored
+        .read("proof-pre-checkpoint")
+        .expect("restored answer");
+    assert_eq!(stored_pre.state, ProofState::Committed);
+    assert_eq!(stored_pre.final_text, base_text);
+    assert_eq!(restored.amendments("s-prior").unwrap(), ["s-next"]);
+    drop(restored);
+
+    // Phase 3: spawn the hot-WAL writer on the checkpointed original DB, kill it mid-flight, and verify both
+    // the pre-checkpoint main-file answer and the post-checkpoint hot-WAL answers recover through open_existing.
+    let mut child = ChildGuard(spawn_writer(&db.0));
+    let deadline = Instant::now() + Duration::from_secs(180);
+    while acknowledged(&db.0) < 3 {
+        assert!(Instant::now() < deadline, "post-checkpoint writer stalled");
+        assert!(
+            child.0.try_wait().unwrap().is_none(),
+            "post-checkpoint writer exited early"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    child.0.kill().expect("kill");
+    let _ = child.0.wait();
+    let acked = acknowledged(&db.0);
+
+    let mut recovered = open_existing(&db.path()).expect("open_existing after checkpoint + kill");
+    assert_eq!(
+        recovered
+            .read("proof-pre-checkpoint")
+            .expect("pre-checkpoint answer survives")
+            .final_text,
+        base_text
+    );
+    for index in 0..acked {
+        assert_eq!(
+            recovered
+                .read(&format!("proof-{index}"))
+                .expect("post-checkpoint hot-WAL answer survives")
+                .final_text,
+            format!("synthetic answer {index}").into_bytes()
+        );
+    }
 }

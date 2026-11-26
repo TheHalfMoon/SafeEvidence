@@ -11,7 +11,7 @@ use getrandom::fill;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
-const RECORD_MAGIC: &[u8] = b"HIMSAT/ANDROID/VRK/v1\0";
+const RECORD_MAGIC: &[u8] = b"SAFEVD/ANDROID/VRK/v1\0";
 const PROTECTOR_ID_BYTES: usize = 16;
 const RECORD_BYTES: usize = RECORD_MAGIC.len() + 16 + 8 + 1 + 1 + KEY_MATERIAL_BYTES;
 

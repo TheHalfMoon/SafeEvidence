@@ -1345,7 +1345,7 @@ mod tests {
     const PASSPHRASE: &str = "correct horse battery staple";
     const RESTORE_BLOB_LOGICAL_ID: [u8; 16] = [0x61; 16];
     const RESTORE_BLOB_STORAGE_ID: [u8; 16] = [0x62; 16];
-    const RESTORE_BLOB_PLAINTEXT: &[u8] = b"HIMSAT_B505U_RESTORE_BLOB";
+    const RESTORE_BLOB_PLAINTEXT: &[u8] = b"SAFEVD_B505U_RESTORE_BLOB";
     static NEXT_TEMP: AtomicU64 = AtomicU64::new(1);
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]

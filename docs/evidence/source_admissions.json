@@ -237,14 +237,14 @@
           "git_blob_oid": "94fe48e19cdadb2553a86f52ef1a6e63a33263f2",
           "bytes": 35341,
           "dest_path": "product/crates/safeevidence-vault/src/vault_backup.rs",
-          "modification": "none"
+          "modification": "adapted"
         },
         {
           "source_path": "crates/himsat-core/src/vault_backup_bootstrap.rs",
           "git_blob_oid": "3d761b707ff60d5cd6d8541722480dc35227f595",
           "bytes": 17302,
           "dest_path": "product/crates/safeevidence-vault/src/vault_backup_bootstrap.rs",
-          "modification": "none"
+          "modification": "adapted"
         },
         {
           "source_path": "crates/himsat-core/src/vault_backup_creation.rs",
@@ -258,7 +258,7 @@
           "git_blob_oid": "863bcfe96806ac4f82095adfb08b2c9fa44c1123",
           "bytes": 31809,
           "dest_path": "product/crates/safeevidence-vault/src/vault_backup_index.rs",
-          "modification": "none"
+          "modification": "adapted"
         },
         {
           "source_path": "crates/himsat-core/src/vault_backup_packaging.rs",
@@ -307,7 +307,7 @@
           "git_blob_oid": "4d341cb14597745c6a23ca2901e01cb2c1bb4915",
           "bytes": 23161,
           "dest_path": "product/crates/safeevidence-vault/src/vault_blob.rs",
-          "modification": "none"
+          "modification": "adapted"
         },
         {
           "source_path": "crates/himsat-core/src/vault_deletion.rs",
@@ -356,7 +356,7 @@
           "git_blob_oid": "e0a7ae1c750552c6c5c9e4c3aa545ab14069469f",
           "bytes": 40042,
           "dest_path": "product/crates/safeevidence-vault/src/vault_manifest.rs",
-          "modification": "none"
+          "modification": "adapted"
         },
         {
           "source_path": "crates/himsat-core/src/vault_migration.rs",
@@ -384,7 +384,7 @@
           "git_blob_oid": "ce824f6548f2f53774de172864ecc6405c7f0f15",
           "bytes": 28921,
           "dest_path": "product/crates/safeevidence-vault/src/vault_recovery.rs",
-          "modification": "none"
+          "modification": "adapted"
         },
         {
           "source_path": "crates/himsat-core/src/vault_restore.rs",

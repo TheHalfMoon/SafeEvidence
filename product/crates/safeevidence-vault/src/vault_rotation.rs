@@ -2615,7 +2615,7 @@ mod tests {
             REAL_DB_MARKER
         );
 
-        let expected_blob_plaintext = b"HIMSAT_B503_REAL_BLOB_ROTATION_DATA_A271".to_vec();
+        let expected_blob_plaintext = b"SAFEVD_B503_REAL_BLOB_ROTATION_DATA_A271".to_vec();
         let source_blob_context =
             BoundedBlobContext::new(vault_id, REAL_BLOB_ID, source_generation);
         let mut ledger = NonceReservationLedger::new(vault_id);

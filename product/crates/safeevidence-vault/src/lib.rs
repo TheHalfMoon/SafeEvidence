@@ -3,6 +3,9 @@
 
 #![forbid(unsafe_code)]
 
+/// Canonical SafeEvidence cryptographic domain-separation version tag.
+pub const VAULT_DOMAIN_VERSION: &str = "SAFEVD-v1";
+
 /// Provider-neutral vault identity, freshness, lease identity, capability, and
 /// secret-protector contract surface.
 pub mod vault;

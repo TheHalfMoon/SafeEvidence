@@ -23,9 +23,9 @@ pub const MANIFEST_MAX_ENVELOPE_BYTES: usize = 16_777_325;
 pub const MANIFEST_MAX_GENERATIONS: usize = 64;
 pub const MANIFEST_MAX_OBJECTS: usize = 262_144;
 pub const MANIFEST_BLOB_AUTH_METADATA_BYTES: usize = 28;
-const ENVELOPE_DOMAIN: &[u8; 29] = b"\x00\x1bHIMSAT/MANIFEST/ENVELOPE/v1";
-const AAD_DOMAIN: &[u8; 24] = b"\x00\x16HIMSAT/MANIFEST/AAD/v1";
-const PLAINTEXT_DOMAIN: &[u8; 30] = b"\x00\x1cHIMSAT/MANIFEST/PLAINTEXT/v1";
+const ENVELOPE_DOMAIN: &[u8; 29] = b"\x00\x1bSAFEVD/MANIFEST/ENVELOPE/v1";
+const AAD_DOMAIN: &[u8; 24] = b"\x00\x16SAFEVD/MANIFEST/AAD/v1";
+const PLAINTEXT_DOMAIN: &[u8; 30] = b"\x00\x1cSAFEVD/MANIFEST/PLAINTEXT/v1";
 const ENVELOPE_VERSION: u16 = 1;
 const CIPHER_SUITE: u16 = 1;
 const AAD_SCHEMA: u16 = 1;
@@ -994,9 +994,9 @@ mod tests {
             base_manifest()
         );
         let expected_hash = ManifestHash::from_bytes([
-            0x64, 0x96, 0xd1, 0x17, 0x1c, 0xbd, 0xae, 0xbb, 0x01, 0xce, 0x7c, 0xff, 0x14, 0x84,
-            0xcd, 0x87, 0xe7, 0xea, 0x10, 0x73, 0x48, 0x88, 0xed, 0xb9, 0xa9, 0xe1, 0x44, 0xc5,
-            0xd2, 0x61, 0xd9, 0x44,
+            0x3a, 0x77, 0xef, 0x50, 0xb3, 0x5a, 0x70, 0x44, 0xa5, 0x34, 0x72, 0xbc, 0x8f, 0xa8,
+            0x9e, 0x77, 0x3e, 0x85, 0x99, 0x3f, 0x54, 0x71, 0xb0, 0x29, 0x92, 0x78, 0x21, 0x6a,
+            0xef, 0x62, 0x43, 0x73,
         ]);
         assert_eq!(manifest_hash(&envelope), expected_hash);
         let mut tampered = envelope.clone();

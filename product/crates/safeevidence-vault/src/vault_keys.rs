@@ -16,10 +16,10 @@ use zeroize::Zeroize;
 /// Canonical byte length of owned v1 VRK, Recovery KEK, and purpose-key buffers.
 pub const KEY_MATERIAL_BYTES: usize = 32;
 
-const STRUCTURED_DOMAIN: &[u8] = b"HIMSAT/004/STRUCTURED/v1";
-const BLOB_DOMAIN: &[u8] = b"HIMSAT/004/BLOB/v1";
-const MANIFEST_DOMAIN: &[u8] = b"HIMSAT/004/MANIFEST/v1";
-const MEDIA_CHUNK_DOMAIN: &[u8] = b"HIMSAT/005/MEDIA-CHUNK/v1";
+const STRUCTURED_DOMAIN: &[u8] = b"SAFEVD/004/STRUCTURED/v1";
+const BLOB_DOMAIN: &[u8] = b"SAFEVD/004/BLOB/v1";
+const MANIFEST_DOMAIN: &[u8] = b"SAFEVD/004/MANIFEST/v1";
+const MEDIA_CHUNK_DOMAIN: &[u8] = b"SAFEVD/005/MEDIA-CHUNK/v1";
 
 /// Reviewed v1 key purpose used to construct an HKDF `info` value.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -426,16 +426,16 @@ mod tests {
         let cases = [
             (
                 KeyPurpose::StructuredStore,
-                b"HIMSAT/004/STRUCTURED/v1".as_slice(),
+                b"SAFEVD/004/STRUCTURED/v1".as_slice(),
             ),
-            (KeyPurpose::BoundedBlob, b"HIMSAT/004/BLOB/v1".as_slice()),
+            (KeyPurpose::BoundedBlob, b"SAFEVD/004/BLOB/v1".as_slice()),
             (
                 KeyPurpose::FreshnessManifest,
-                b"HIMSAT/004/MANIFEST/v1".as_slice(),
+                b"SAFEVD/004/MANIFEST/v1".as_slice(),
             ),
             (
                 KeyPurpose::MediaChunk,
-                b"HIMSAT/005/MEDIA-CHUNK/v1".as_slice(),
+                b"SAFEVD/005/MEDIA-CHUNK/v1".as_slice(),
             ),
         ];
 
@@ -459,27 +459,26 @@ mod tests {
         // RFC 5869, no SafeEvidence code): salt is the 16 raw vault-id bytes
         // (`vector_vault_id`), IKM is vrk bytes `0..32`, info is
         // `domain || u64be(generation)`, output is the first 32 expanded bytes.
-        // The recipe was validated by reproducing the three committed 004
-        // vectors before deriving the MediaChunk vector below.
+        // Validated against the prior donor vectors before deriving SAFEVD/*.
         let vrk = vector_vrk();
         let generation =
             KeyGeneration::new(0x0102_0304_0506_0708).expect("test generation is non-zero");
         let cases = [
             (
                 KeyPurpose::StructuredStore,
-                "0a6857ca8e7804d89a825e7e5bc515bb4cad0e87f2ee6d0b67e54f0313d0808f",
+                "f50c5bae57f70343ff01d59b36f0795d01b05edb63f0423c572247aff266e2ad",
             ),
             (
                 KeyPurpose::BoundedBlob,
-                "602177c7d772ff6a69462540eb6612b105ec9b9f18115a024c3a410b0008e476",
+                "8b27f91e0753088d25edbfed1a8593a46685bcec0c14496f63f162455884df8d",
             ),
             (
                 KeyPurpose::FreshnessManifest,
-                "19540379cb9fd9b63cad8f3be133c0a985339bcfeb323c26b1bd95e20202d019",
+                "c4e70b30298bf609e532f89728bfff7c37014950f9fbc856d1d425553a037771",
             ),
             (
                 KeyPurpose::MediaChunk,
-                "7c41a72830f0568a8344ba657cc7c4de02ad631ea6163b4f721c6d8c034cd6d8",
+                "1754b23a6d5de6e28c831dbaeae6727921f159c997382e977595e452bbdac32b",
             ),
         ];
 
