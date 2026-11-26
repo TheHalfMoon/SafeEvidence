@@ -21,7 +21,7 @@ function FunnelTrace({ view }: { view: AskView }) {
           <ul>
             {view.excluded.map((item) => (
               <li key={item.docId}>
-                <code dir="ltr">{item.docId}</code>: {item.reason}
+                <code dir="ltr">{item.docId}</code> (<code dir="ltr">{item.reasonCode}</code>): {item.reason}
               </li>
             ))}
           </ul>

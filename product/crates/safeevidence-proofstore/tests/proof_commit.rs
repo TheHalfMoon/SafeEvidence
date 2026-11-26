@@ -11,8 +11,8 @@ use safeevidence_ask::{ask, load_corpus};
 use safeevidence_contracts::assurance::{ProofState, TerminalOutcome};
 use safeevidence_contracts::objects::DigestSha256;
 use safeevidence_contracts::objects::{
-    AmendmentKind, AmendmentRecord, AuthorityScopeId, MedicalTime, ObjectHeader, OpaqueId, RealmId,
-    TimePrecision,
+    AmendmentKind, AmendmentRecord, AuthorityScopeId, ClinicalAssertion, MedicalTime, ObjectHeader,
+    OpaqueId, RealmId, TimePrecision,
 };
 use safeevidence_contracts::proof::{AnswerProofManifest, ManifestDefect};
 use safeevidence_proofstore::{ProofStore, StoreError};
@@ -1119,4 +1119,214 @@ fn checkpoint_then_hot_wal_kill_and_clean_snapshot_restore_preserve_answers() {
             format!("synthetic answer {index}").into_bytes()
         );
     }
+}
+
+fn clinical_assertion(id: &str, effect: &str) -> ClinicalAssertion {
+    ClinicalAssertion {
+        header: ObjectHeader {
+            id: OpaqueId::new(id),
+            schema_version: 1,
+            realm_id: RealmId::new("realm-synthetic"),
+            authority_scope_id: AuthorityScopeId::new("scope-synthetic"),
+        },
+        subject_ref: OpaqueId::new("study-veltrix-a"),
+        claim_kind: "synthetic_effect".to_owned(),
+        payload: serde_json::json!({"summary": effect}),
+        promoted_from_proposal_id: Some(OpaqueId::new("prop-1")),
+        authorized_by: OpaqueId::new("synthetic-clinician"),
+        effective_time: None,
+        recorded_time: MedicalTime::new("1970-01-01T00:00:00Z", TimePrecision::Instant, false),
+    }
+}
+
+#[test]
+fn plan_v1_3_assertion_store_and_lineage_preserve_prior_bytes_across_reopen() {
+    let db = TempDb::new();
+    let first = clinical_assertion("assertion-1", "initial effect");
+    let second = clinical_assertion("assertion-2", "amended effect");
+    let third = clinical_assertion("assertion-3", "retracted effect");
+
+    let mut invalid_conf = clinical_assertion("assertion-bad", "bad");
+    invalid_conf.payload = serde_json::json!({"clinicalConfidence": 0.9});
+
+    let mut link1 = amendment(
+        "am-ca-1",
+        "assertion-1",
+        "assertion-2",
+        AmendmentKind::Supersession,
+    );
+    link1.recorded_time.timezone_offset_minutes = Some(180);
+    let link2 = amendment(
+        "am-ca-2",
+        "assertion-1",
+        "assertion-3",
+        AmendmentKind::Retraction,
+    );
+
+    {
+        let mut store = open(&db.path());
+        assert!(matches!(
+            store.put_assertion(&invalid_conf),
+            Err(StoreError::InvalidAssertion)
+        ));
+        store.put_assertion(&first).expect("store assertion-1");
+        store
+            .put_assertion(&first)
+            .expect("identical assertion is idempotent");
+        let mut conflicting = first.clone();
+        conflicting.payload = serde_json::json!({"summary": "mutated"});
+        assert!(matches!(
+            store.put_assertion(&conflicting),
+            Err(StoreError::AssertionConflict)
+        ));
+
+        store.put_assertion(&second).expect("store assertion-2");
+        store.put_assertion(&third).expect("store assertion-3");
+        store.amend_assertion(&link1).expect("amend 1->2");
+        store.amend_assertion(&link2).expect("amend 1->3");
+
+        assert!(matches!(
+            store.amend_assertion(&amendment(
+                "am-ca-1",
+                "assertion-2",
+                "assertion-3",
+                AmendmentKind::Supersession
+            )),
+            Err(StoreError::InvalidAmendment)
+        ));
+        assert!(matches!(
+            store.amend_assertion(&amendment(
+                "am-ca-missing",
+                "assertion-1",
+                "missing",
+                AmendmentKind::Supersession
+            )),
+            Err(StoreError::InvalidAmendment)
+        ));
+    }
+
+    let mut reopened = open_existing(&db.path()).expect("reopen");
+    assert_eq!(reopened.assertion("assertion-1").unwrap(), Some(first));
+    assert_eq!(reopened.assertion("assertion-2").unwrap(), Some(second));
+    assert_eq!(reopened.assertion("assertion-3").unwrap(), Some(third));
+    assert_eq!(reopened.assertion("missing").unwrap(), None);
+    assert_eq!(
+        reopened.assertion_amendments("assertion-1").unwrap(),
+        ["assertion-2", "assertion-3"]
+    );
+    assert_eq!(
+        reopened.assertion_amendment_records("assertion-1").unwrap(),
+        [link1, link2]
+    );
+}
+
+#[test]
+fn retracting_a_source_without_replacement_invalidates_committed_answers_and_blocks_new_commits() {
+    let db = TempDb::new();
+    let (manifest, text) = answer();
+    let cited = manifest.claims[0].spans[0].source_id.clone();
+    let time = MedicalTime::new("1970-01-02T00:00:00Z", TimePrecision::Instant, false);
+
+    let mut store = at_fixture_epoch(&db.path());
+    store.commit(&manifest, &text).expect("commit");
+    let before_bytes = store.source(&cited).unwrap().expect("cited source bytes");
+
+    assert!(matches!(
+        store.retract_source("missing-source", "fraud", "editor", &time),
+        Err(StoreError::InvalidRetraction)
+    ));
+    assert!(matches!(
+        store.retract_source(&cited, " ", "editor", &time),
+        Err(StoreError::InvalidRetraction)
+    ));
+
+    store
+        .retract_source(
+            &cited,
+            "post-publication data fabrication",
+            "editor-1",
+            &time,
+        )
+        .expect("retract source");
+    assert!(store.is_source_retracted(&cited).unwrap());
+    assert_eq!(
+        store.source(&cited).unwrap().as_deref(),
+        Some(before_bytes.as_slice()),
+        "retracted source keeps its bytes for audit"
+    );
+
+    let stored = store.read(&manifest.proof_id).expect("read invalidated");
+    assert_eq!(stored.state, ProofState::CurrentlyInvalidated);
+    assert_eq!(stored.final_text, text);
+
+    let mut second_manifest = manifest.clone();
+    second_manifest.proof_id = "proof-after-retraction".to_owned();
+    assert!(matches!(
+        store.commit(&second_manifest, &text),
+        Err(StoreError::SourceRetracted(id)) if id == cited
+    ));
+}
+
+#[test]
+fn commit_rejects_out_of_bounds_span_against_stored_source_bytes() {
+    let db = TempDb::new();
+    let (mut manifest, text) = answer();
+    let mut store = at_fixture_epoch(&db.path());
+    let cited = manifest.claims[0].spans[0].source_id.clone();
+    let source_len = store.source(&cited).unwrap().unwrap().len() as u64;
+    manifest.claims[0].spans[0].end_scalar = source_len + 10;
+    assert!(matches!(
+        store.commit(&manifest, &text),
+        Err(StoreError::InvalidSpanBounds(id)) if id == cited
+    ));
+    assert!(matches!(
+        store.read(&manifest.proof_id),
+        Err(StoreError::UnknownProof)
+    ));
+
+    // Multi-byte UTF-8 scalar vs byte mutant check: 13 Unicode scalars, 24 UTF-8 bytes.
+    let arabic_source = "\u{0627}\u{0644}\u{062c}\u{0631}\u{0639}\u{0629} \u{0665}\u{0660} \u{0645}\u{0644}\u{063a}";
+    assert_eq!(arabic_source.chars().count(), 13);
+    assert_eq!(arabic_source.len(), 24);
+    store
+        .put_source("doc-utf8", arabic_source.as_bytes())
+        .expect("utf8 source");
+    let (mut utf8_manifest, utf8_text) = answer();
+    utf8_manifest.proof_id = "proof-utf8-bounds".to_owned();
+    utf8_manifest.claims.truncate(1);
+    utf8_manifest.claims[0].spans[0] = safeevidence_contracts::proof::EvidenceSpan {
+        source_id: "doc-utf8".to_owned(),
+        source_version: "1".to_owned(),
+        source_digest: DigestSha256::of(arabic_source.as_bytes()),
+        start_scalar: 0,
+        // Within byte length (24) but beyond scalar count (13): must fail!
+        end_scalar: 14,
+    };
+    assert!(matches!(
+        store.commit(&utf8_manifest, &utf8_text),
+        Err(StoreError::InvalidSpanBounds(id)) if id == "doc-utf8"
+    ));
+    utf8_manifest.claims[0].spans[0].end_scalar = 13;
+    store
+        .commit(&utf8_manifest, &utf8_text)
+        .expect("exact scalar ceiling commits");
+
+    // Non-UTF-8 source bytes cannot back a scalar text span.
+    let raw_non_utf8 = b"\xff\xfe\xfd";
+    store
+        .put_source("doc-binary", raw_non_utf8)
+        .expect("binary source");
+    let mut bin_manifest = utf8_manifest;
+    bin_manifest.proof_id = "proof-bin-bounds".to_owned();
+    bin_manifest.claims[0].spans[0] = safeevidence_contracts::proof::EvidenceSpan {
+        source_id: "doc-binary".to_owned(),
+        source_version: "1".to_owned(),
+        source_digest: DigestSha256::of(raw_non_utf8),
+        start_scalar: 0,
+        end_scalar: 1,
+    };
+    assert!(matches!(
+        store.commit(&bin_manifest, &utf8_text),
+        Err(StoreError::InvalidSpanBounds(id)) if id == "doc-binary"
+    ));
 }

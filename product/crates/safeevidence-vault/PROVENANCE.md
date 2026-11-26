@@ -62,8 +62,9 @@ Admission `ADM-0003` (T03) in `docs/evidence/source_admissions.json`.
   returning `StoreError::Busy` while concurrent WAL reads proceed, `snapshot_quiesced_sqlcipher_database`
   (`PRAGMA wal_checkpoint(TRUNCATE)`) followed by clean-directory restore + wrong-key rejection, and
   post-checkpoint hot-WAL kill recovery. Still not covered: a kill before the first acknowledged commit,
-  a kill inside SQLite's C commit syscall, a crash during an active checkpoint, recovery to
-  `COMMIT_UNKNOWN` (scheduled for PR-B1), disk-full injection, key-loss recovery, and physical power loss.
+  a kill inside SQLite's C commit syscall, a crash during an active checkpoint, disk-full injection,
+  key-loss recovery, and physical power loss (`CommitUnknown` reconciliation is verified in desktop
+  `ask_command.rs`).
 
 SafeEvidence change to `src/vault_linux_secret_service.rs`: the founder chose a separate helper process (2026-11-06), so that the core stays socket-free. The record format, binding and policy
 checks stay here, and now compile on every OS. The Secret Service calls moved to `safeevidence-linux-keyring-helper`, reached over stdin and stdout through `safeevidence-keyring-wire`. Its tests

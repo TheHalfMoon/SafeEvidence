@@ -61,13 +61,19 @@ export type Citation = {
   sourceText: string;
 };
 
+export type ExcludedItem = {
+  docId: string;
+  reasonCode: Exclude<Reason, "NONE">;
+  reason: string;
+};
+
 export type AskView = {
   schemaVersion: 1;
   fixtureOnly: true;
   outcome: Outcome;
   reason: Reason;
   funnel: Funnel;
-  excluded: Array<{ docId: string; reason: string }>;
+  excluded: ExcludedItem[];
   brief: string | null;
   proofId: string | null;
   alreadyCommitted: boolean;
@@ -113,10 +119,23 @@ export function parseAskView(value: unknown): AskView {
     reason: reason as Reason,
     funnel: funnel as unknown as Funnel,
     excluded: excluded.map((item) => {
-      if (!isRecord(item) || typeof item.docId !== "string" || typeof item.reason !== "string") {
+      if (
+        !isRecord(item) ||
+        typeof item.docId !== "string" ||
+        item.docId.length === 0 ||
+        typeof item.reasonCode !== "string" ||
+        !Object.hasOwn(REASONS, item.reasonCode) ||
+        item.reasonCode === "NONE" ||
+        typeof item.reason !== "string" ||
+        item.reason.length === 0
+      ) {
         throw new Error("Invalid exclusion");
       }
-      return { docId: item.docId, reason: item.reason };
+      return {
+        docId: item.docId,
+        reasonCode: item.reasonCode as Exclude<Reason, "NONE">,
+        reason: item.reason,
+      };
     }),
     brief: brief as string | null,
     proofId: proofId as string | null,

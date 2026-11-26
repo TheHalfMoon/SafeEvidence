@@ -5,16 +5,20 @@ import { FUNNEL_STAGES, OUTCOMES, REASONS, parseAskView, spanSegments } from "./
 
 const funnel = { indexed: 4, retrieved: 3, citable: 3, rightsAdmissible: 3, applicable: 2, independentStudies: 2, verifiedClaims: 2 };
 const citation = { claimId: "c", sourceId: "s", sourceVersion: "1", startScalar: 0, endScalar: 3, sourceText: "abcd" };
+const exclusion = { docId: "doc-x", reasonCode: "APPLICABILITY_UNRESOLVED" as const, reason: "population children does not match adults" };
 const answer = {
-  schemaVersion: 1, fixtureOnly: true, outcome: "ANSWER_WITH_CAUTION", reason: "NONE", funnel, excluded: [],
+  schemaVersion: 1, fixtureOnly: true, outcome: "ANSWER_WITH_CAUTION", reason: "NONE", funnel, excluded: [exclusion],
   brief: "Synthetic brief", proofId: "vs1a-x", alreadyCommitted: false, citations: [citation],
 };
+const cleanAnswer = { ...answer, outcome: "ANSWER", excluded: [] };
 const refusal = { ...answer, outcome: "ABSTAIN", reason: "EVIDENCE_INSUFFICIENT", brief: null, proofId: null, citations: [] };
 
 test("answers and refusals both parse with their trace", () => {
   assert.deepEqual(parseAskView(answer), answer);
+  assert.deepEqual(parseAskView(cleanAnswer), cleanAnswer);
   assert.deepEqual(parseAskView(refusal), refusal);
   assert.equal(parseAskView(refusal).funnel.indexed, 4);
+  assert.equal(parseAskView(answer).excluded[0]?.reasonCode, "APPLICABILITY_UNRESOLVED");
 });
 
 test("mismatched or malformed responses are rejected, never assumed", () => {
@@ -30,6 +34,9 @@ test("mismatched or malformed responses are rejected, never assumed", () => {
     { ...answer, funnel: { ...funnel, verifiedClaims: "2" } },
     { ...answer, citations: [{ ...citation, endScalar: 5 }] },
     { ...answer, citations: [{ ...citation, startScalar: 3 }] },
+    { ...answer, excluded: [{ ...exclusion, reasonCode: "NONE" }] },
+    { ...answer, excluded: [{ ...exclusion, reasonCode: "MADE_UP" }] },
+    { ...answer, excluded: [{ ...exclusion, reason: "" }] },
   ]) {
     assert.throws(() => parseAskView(invalid));
   }

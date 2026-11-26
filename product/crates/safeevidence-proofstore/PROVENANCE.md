@@ -1,11 +1,8 @@
 # Provenance: safeevidence-proofstore
 
 SafeEvidence-written from `docs/P00_PROOF_ADMISSION_CONTRACT.md` (GREENFIELD_JUSTIFIED, transplant matrix §5). No donor code.
-It stores data through the T03 vault's lease-guarded handle.
+It stores data through the T03 vault's lease-guarded handle (`SAFEVD/` cryptographic domains).
 
-Not covered: power loss, disk full, restore (a stale `-wal` beside a restored file would replay; handle this before restore ships),
-a kill aimed inside a checkpoint, more than one writing process (no one-writer guard yet), retraction with no replacement, and
-cross-store `EvidenceSnapshot` or outbox work. Commit does not check span locations or `source_version`; verification owns those.
-A wrong key against a live WAL can merge that WAL into the main file while failing to open. There are no schema migrations yet, so
-a store from an earlier schema is refused. One proof ID holds one text, but two proofs may both read `Committed` for one question;
-the Ask view needs a rule for that. TA-05 and TA-14 are not claimed.
+Covered: atomic answer/manifest/audit commits, append-only SQLite triggers across all tables, UTF-8 scalar bounds verification on cited `EvidenceSpan`s against stored source bytes, superseding-free `retract_source` invalidation, `plan-v1.3` `ClinicalAssertion` storage and `AmendmentRecord` lineage (`put_assertion`, `assertion`, `amend_assertion`, `assertion_amendment_records`), `open_existing` 8-point process-kill recovery, cross-process `IMMEDIATE` writer lock contention (`StoreError::Busy`), and quiesced snapshot restore into a clean directory.
+
+Not covered: physical power loss, disk-full injection, a kill aimed inside SQLite's C commit or an active checkpoint, cross-store `EvidenceSnapshot` or outbox work, and `source_version` semantics beyond stored source digest/bytes. Pre-open `-wal` validation (`vault_sqlcipher.rs`) rejects foreign page sizes and snapshot/migration target sidecars, though a valid 4096-byte `-wal` deliberately copied beside a restored file would replay. There are no schema migrations yet, so a store from an earlier `SCHEMA_OBJECTS_SHA256` is refused (the desktop shell keys its store folder on `SCHEMA_OBJECTS_SHA256` and `VAULT_DOMAIN_VERSION`). One proof ID holds one text, though two proofs from different epochs may both exist in the store.

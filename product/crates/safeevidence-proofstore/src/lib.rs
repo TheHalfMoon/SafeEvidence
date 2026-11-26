@@ -11,7 +11,9 @@ use std::path::Path;
 
 use rusqlite::params;
 use safeevidence_contracts::assurance::ProofState;
-use safeevidence_contracts::objects::{AmendmentRecord, DigestSha256};
+use safeevidence_contracts::objects::{
+    AmendmentRecord, ClinicalAssertion, DigestSha256, MedicalTime,
+};
 use safeevidence_contracts::proof::{AnswerProofManifest, ManifestDefect, commit_defects};
 use safeevidence_vault::vault_keys::{KeyDerivationContext, OwnedKeyMaterial};
 use safeevidence_vault::vault_lease::KeyedHandleLease;
@@ -71,6 +73,26 @@ const SCHEMA: &[&str] = &[
     BEGIN SELECT RAISE(ABORT, 'append-only'); END",
     "CREATE TRIGGER store_events_no_delete BEFORE DELETE ON store_events
     BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TABLE source_retractions (
+    source_id TEXT PRIMARY KEY REFERENCES sources(source_id), rationale TEXT NOT NULL,
+    authorized_by TEXT NOT NULL, recorded_time TEXT NOT NULL)",
+    "CREATE TABLE assertions (
+    assertion_id TEXT PRIMARY KEY, digest TEXT NOT NULL, record TEXT NOT NULL)",
+    "CREATE TABLE assertion_amendments (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, record_id TEXT NOT NULL UNIQUE, prior_id TEXT NOT NULL,
+    superseding_id TEXT NOT NULL, record TEXT NOT NULL)",
+    "CREATE TRIGGER source_retractions_no_update BEFORE UPDATE ON source_retractions
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER source_retractions_no_delete BEFORE DELETE ON source_retractions
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER assertions_no_update BEFORE UPDATE ON assertions
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER assertions_no_delete BEFORE DELETE ON assertions
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER assertion_amendments_no_update BEFORE UPDATE ON assertion_amendments
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
+    "CREATE TRIGGER assertion_amendments_no_delete BEFORE DELETE ON assertion_amendments
+    BEGIN SELECT RAISE(ABORT, 'append-only'); END",
 ];
 
 /// SHA-256 of the stored names and text of every schema object. A store whose triggers or tables
@@ -78,7 +100,7 @@ const SCHEMA: &[&str] = &[
 /// that keys its store's location on this gets a new store when the schema changes. Change this
 /// only together with `SCHEMA`.
 pub const SCHEMA_OBJECTS_SHA256: &str =
-    "986cbbd50456a9a0a3092948d99957ddddd6906c622a38238ccf3610a7ddd290";
+    "c278d741a7736b1cbde3f619c9f44f03e17f9cc6f9a64dd5c39d57dd4ebc3ab2";
 
 #[derive(Debug)]
 pub enum StoreError {
@@ -119,12 +141,27 @@ pub enum StoreError {
     SourceNotAdmitted(String),
     /// A cited source was amended after this answer was verified.
     SourceAmended(String),
+    /// A cited source was retracted without supersession.
+    SourceRetracted(String),
+    /// A cited span lies outside the stored source's UTF-8 scalar bounds.
+    InvalidSpanBounds(String),
     /// One proof ID may never hold a different text or manifest.
     ConflictingProof,
     SourceConflict,
     InvalidAmendment,
+    InvalidAssertion,
+    AssertionConflict,
+    InvalidRetraction,
     EpochMustIncrease,
     UnknownProof,
+}
+
+impl StoreError {
+    /// Constructs an injected `CommitUnknown` error for callers that do not link `rusqlite` directly.
+    #[must_use]
+    pub const fn synthetic_commit_unknown() -> Self {
+        Self::CommitUnknown(rusqlite::Error::InvalidQuery)
+    }
 }
 
 impl From<GuardedSqlError> for StoreError {
@@ -235,6 +272,16 @@ fn is_amended(tx: &GuardedTransaction<'_>, source_id: &str) -> Result<bool, Stor
         .is_empty())
 }
 
+fn is_retracted(tx: &GuardedTransaction<'_>, source_id: &str) -> Result<bool, StoreError> {
+    Ok(!tx
+        .query(
+            "SELECT 1 FROM source_retractions WHERE source_id = ?1",
+            params![source_id],
+            |row| row.get::<_, i64>(0),
+        )?
+        .is_empty())
+}
+
 fn record_store_event(
     tx: &GuardedTransaction<'_>,
     event: &str,
@@ -269,12 +316,12 @@ fn standing(
             |row| row.get::<_, i64>(0),
         )?
         .is_empty();
-    let mut amended = false;
+    let mut source_invalidated = false;
     for (source_id, _) in cited_sources(manifest) {
-        amended |= is_amended(tx, source_id)?;
+        source_invalidated |= is_amended(tx, source_id)? || is_retracted(tx, source_id)?;
     }
     let (epoch, rights) = authority(tx)?;
-    if invalidated || amended || rights != manifest.rights_grant_version {
+    if invalidated || source_invalidated || rights != manifest.rights_grant_version {
         return Ok(ProofState::CurrentlyInvalidated);
     }
     if epoch == manifest.validity_epoch {
@@ -441,17 +488,41 @@ impl ProofStore {
                     if manifest.rights_grant_version != rights {
                         return Err(StoreError::RightsChanged);
                     }
-                    for (source_id, cited) in cited_sources(manifest) {
-                        let found = one(tx.query(
-                            "SELECT digest FROM sources WHERE source_id = ?1",
-                            params![source_id],
-                            |row| row.get::<_, String>(0),
-                        )?);
-                        if found.as_deref() != Some(cited.as_str()) {
-                            return Err(StoreError::SourceNotAdmitted(source_id.to_owned()));
-                        }
-                        if is_amended(tx, source_id)? {
-                            return Err(StoreError::SourceAmended(source_id.to_owned()));
+                    for claim in &manifest.claims {
+                        for span in &claim.spans {
+                            let source_id = span.source_id.as_str();
+                            let cited = span.source_digest.to_hex();
+                            let found = one(tx.query(
+                                "SELECT digest, bytes FROM sources WHERE source_id = ?1",
+                                params![source_id],
+                                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+                            )?);
+                            let Some((found_digest, bytes)) = found else {
+                                return Err(StoreError::SourceNotAdmitted(source_id.to_owned()));
+                            };
+                            if DigestSha256::of(&bytes).to_hex() != found_digest {
+                                return Err(StoreError::Corrupt(
+                                    "stored source bytes do not match their digest".to_owned(),
+                                ));
+                            }
+                            if found_digest != cited {
+                                return Err(StoreError::SourceNotAdmitted(source_id.to_owned()));
+                            }
+                            let Ok(source_text) = std::str::from_utf8(&bytes) else {
+                                return Err(StoreError::InvalidSpanBounds(source_id.to_owned()));
+                            };
+                            let total_scalars = source_text.chars().count() as u64;
+                            if span.start_scalar >= span.end_scalar
+                                || span.end_scalar > total_scalars
+                            {
+                                return Err(StoreError::InvalidSpanBounds(source_id.to_owned()));
+                            }
+                            if is_retracted(tx, source_id)? {
+                                return Err(StoreError::SourceRetracted(source_id.to_owned()));
+                            }
+                            if is_amended(tx, source_id)? {
+                                return Err(StoreError::SourceAmended(source_id.to_owned()));
+                            }
                         }
                     }
                     tx.execute(
@@ -616,6 +687,25 @@ impl ProofStore {
         )
     }
 
+    /// The current rights grant in force (`""` before one is set).
+    ///
+    /// # Errors
+    /// Fails on a lease or provider failure.
+    pub fn rights_grant(&mut self) -> Result<String, StoreError> {
+        flatten(
+            self.handle
+                .deferred_transaction(|tx| -> Result<String, StoreError> { Ok(authority(tx)?.1) }),
+        )
+    }
+
+    /// Whether `stored` binds the same canonical proof manifest as `candidate` (ignoring clock).
+    #[must_use]
+    pub fn matches_manifest(stored: &StoredAnswer, candidate: &AnswerProofManifest) -> bool {
+        let mut expected = candidate.clone();
+        expected.state = ProofState::Committed;
+        same_proof(&stored.manifest, &expected)
+    }
+
     /// Stores source bytes once. The same bytes again is a no-op; different bytes are refused.
     ///
     /// # Errors
@@ -645,19 +735,28 @@ impl ProofStore {
         )
     }
 
-    /// The stored bytes of a source.
+    /// The stored bytes of a source, verified against their SHA-256 digest.
     ///
     /// # Errors
-    /// Fails on a lease or provider failure.
+    /// Fails on a lease or provider failure, or `Corrupt` if stored bytes no longer match their digest.
     pub fn source(&mut self, source_id: &str) -> Result<Option<Vec<u8>>, StoreError> {
         flatten(
             self.handle
                 .deferred_transaction(|tx| -> Result<Option<Vec<u8>>, StoreError> {
-                    Ok(one(tx.query(
-                        "SELECT bytes FROM sources WHERE source_id = ?1",
+                    let row = one(tx.query(
+                        "SELECT digest, bytes FROM sources WHERE source_id = ?1",
                         params![source_id],
-                        |row| row.get::<_, Vec<u8>>(0),
-                    )?))
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+                    )?);
+                    let Some((digest, bytes)) = row else {
+                        return Ok(None);
+                    };
+                    if DigestSha256::of(&bytes).to_hex() != digest {
+                        return Err(StoreError::Corrupt(
+                            "stored source bytes do not match their digest".to_owned(),
+                        ));
+                    }
+                    Ok(Some(bytes))
                 }),
         )
     }
@@ -782,6 +881,244 @@ impl ProofStore {
                 }),
         )
     }
+
+    /// Retracts a stored source without requiring a superseding replacement source. Stored source
+    /// bytes stay unchanged, future commits citing this source are refused, and already-committed
+    /// proofs citing it transition to `CurrentlyInvalidated`.
+    ///
+    /// # Errors
+    /// Returns `InvalidRetraction` on empty metadata or an unknown source.
+    pub fn retract_source(
+        &mut self,
+        source_id: &str,
+        rationale: &str,
+        authorized_by: &str,
+        recorded_time: &MedicalTime,
+    ) -> Result<(), StoreError> {
+        if source_id.trim().is_empty()
+            || rationale.trim().is_empty()
+            || authorized_by.trim().is_empty()
+            || recorded_time.value.trim().is_empty()
+        {
+            return Err(StoreError::InvalidRetraction);
+        }
+        let encoded_time = serde_json::to_string(recorded_time)
+            .map_err(|error| StoreError::Corrupt(error.to_string()))?;
+        flatten(
+            self.handle
+                .immediate_transaction(|tx| -> Result<(), StoreError> {
+                    let exists = !tx
+                        .query(
+                            "SELECT 1 FROM sources WHERE source_id = ?1",
+                            params![source_id],
+                            |row| row.get::<_, i64>(0),
+                        )?
+                        .is_empty();
+                    if !exists {
+                        return Err(StoreError::InvalidRetraction);
+                    }
+                    let added = tx.execute(
+                        "INSERT OR IGNORE INTO source_retractions
+                         (source_id, rationale, authorized_by, recorded_time)
+                         VALUES (?1, ?2, ?3, ?4)",
+                        params![source_id, rationale, authorized_by, encoded_time],
+                    )?;
+                    if added > 0 {
+                        record_store_event(tx, "SOURCE_RETRACTED", source_id)?;
+                    }
+                    Ok(())
+                }),
+        )
+    }
+
+    /// Whether a stored source has been retracted via [`Self::retract_source`].
+    ///
+    /// # Errors
+    /// Fails on a lease or provider failure.
+    pub fn is_source_retracted(&mut self, source_id: &str) -> Result<bool, StoreError> {
+        flatten(
+            self.handle
+                .deferred_transaction(|tx| -> Result<bool, StoreError> {
+                    is_retracted(tx, source_id)
+                }),
+        )
+    }
+
+    /// Stores a promoted `ClinicalAssertion` once (`plan-v1.3`). Validates the P00 assurance
+    /// contract (explicit actor authority, non-empty scope/subject/claim fields, and zero
+    /// heuristic confidence fields). Storing identical JSON again is a no-op; storing a different
+    /// assertion under an existing ID is refused with `AssertionConflict`.
+    ///
+    /// # Errors
+    /// Returns `InvalidAssertion` on contract violation or `AssertionConflict` on mismatch.
+    pub fn put_assertion(&mut self, assertion: &ClinicalAssertion) -> Result<(), StoreError> {
+        assertion
+            .validate_p00_contract()
+            .map_err(|_| StoreError::InvalidAssertion)?;
+        let assertion_id = assertion.header.id.as_str();
+        let encoded = serde_json::to_string(assertion)
+            .map_err(|error| StoreError::Corrupt(error.to_string()))?;
+        let digest = DigestSha256::of(encoded.as_bytes()).to_hex();
+        flatten(
+            self.handle
+                .immediate_transaction(|tx| -> Result<(), StoreError> {
+                    let existing = one(tx.query(
+                        "SELECT digest FROM assertions WHERE assertion_id = ?1",
+                        params![assertion_id],
+                        |row| row.get::<_, String>(0),
+                    )?);
+                    match existing {
+                        Some(found) if found == digest => Ok(()),
+                        Some(_) => Err(StoreError::AssertionConflict),
+                        None => {
+                            tx.execute(
+                                "INSERT INTO assertions (assertion_id, digest, record)
+                                 VALUES (?1, ?2, ?3)",
+                                params![assertion_id, digest, encoded],
+                            )?;
+                            record_store_event(tx, "ASSERTION_STORED", assertion_id)
+                        }
+                    }
+                }),
+        )
+    }
+
+    /// Reads back a stored `ClinicalAssertion`, verifying its SHA-256 digest and P00 contract.
+    ///
+    /// # Errors
+    /// Fails on a lease/provider error or `Corrupt` if stored bytes were tampered with.
+    pub fn assertion(
+        &mut self,
+        assertion_id: &str,
+    ) -> Result<Option<ClinicalAssertion>, StoreError> {
+        flatten(self.handle.deferred_transaction(
+            |tx| -> Result<Option<ClinicalAssertion>, StoreError> {
+                let row = one(tx.query(
+                    "SELECT digest, record FROM assertions WHERE assertion_id = ?1",
+                    params![assertion_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )?);
+                let Some((digest, record)) = row else {
+                    return Ok(None);
+                };
+                if DigestSha256::of(record.as_bytes()).to_hex() != digest {
+                    return Err(StoreError::Corrupt(
+                        "assertion record does not match its digest".to_owned(),
+                    ));
+                }
+                let parsed: ClinicalAssertion = serde_json::from_str(&record)
+                    .map_err(|error| StoreError::Corrupt(error.to_string()))?;
+                parsed.validate_p00_contract().map_err(|_| {
+                    StoreError::Corrupt("stored assertion violates P00 contract".to_owned())
+                })?;
+                Ok(Some(parsed))
+            },
+        ))
+    }
+
+    /// Appends an `AmendmentRecord` linking two stored `ClinicalAssertion` objects (`plan-v1.3`).
+    /// Both the prior and superseding assertions remain stored with their exact bytes unchanged.
+    ///
+    /// # Errors
+    /// Returns `InvalidAmendment` if header/scope/rationale/author fields are empty, if both
+    /// assertions do not exist or are equal, or if `record.header.id` was already used.
+    pub fn amend_assertion(&mut self, record: &AmendmentRecord) -> Result<(), StoreError> {
+        let prior_id = record.prior_assertion_id.as_str();
+        let superseding_id = record.superseding_assertion_id.as_str();
+        let record_id = record.header.id.as_str();
+        if prior_id == superseding_id
+            || record_id.trim().is_empty()
+            || record
+                .header
+                .realm_id
+                .as_opaque()
+                .as_str()
+                .trim()
+                .is_empty()
+            || record
+                .header
+                .authority_scope_id
+                .as_opaque()
+                .as_str()
+                .trim()
+                .is_empty()
+            || record.rationale.trim().is_empty()
+            || record.authorized_by.as_str().trim().is_empty()
+            || record.recorded_time.value.trim().is_empty()
+        {
+            return Err(StoreError::InvalidAmendment);
+        }
+        let encoded = serde_json::to_string(record)
+            .map_err(|error| StoreError::Corrupt(error.to_string()))?;
+        flatten(
+            self.handle
+                .immediate_transaction(|tx| -> Result<(), StoreError> {
+                    let found = tx.query(
+                        "SELECT assertion_id FROM assertions WHERE assertion_id IN (?1, ?2)",
+                        params![prior_id, superseding_id],
+                        |row| row.get::<_, String>(0),
+                    )?;
+                    let reused = tx.query(
+                        "SELECT 1 FROM assertion_amendments WHERE record_id = ?1",
+                        params![record_id],
+                        |row| row.get::<_, i64>(0),
+                    )?;
+                    if found.len() != 2 || !reused.is_empty() {
+                        return Err(StoreError::InvalidAmendment);
+                    }
+                    tx.execute(
+                        "INSERT INTO assertion_amendments
+                         (record_id, prior_id, superseding_id, record)
+                         VALUES (?1, ?2, ?3, ?4)",
+                        params![record_id, prior_id, superseding_id, encoded],
+                    )?;
+                    record_store_event(tx, "ASSERTION_AMENDED", prior_id)
+                }),
+        )
+    }
+
+    /// The `AmendmentRecord` lineage for a `ClinicalAssertion`, oldest first, exactly as appended.
+    ///
+    /// # Errors
+    /// Fails on lease/provider failure or `Corrupt` if a stored record fails to parse.
+    pub fn assertion_amendment_records(
+        &mut self,
+        prior_id: &str,
+    ) -> Result<Vec<AmendmentRecord>, StoreError> {
+        let stored = flatten(self.handle.deferred_transaction(
+            |tx| -> Result<Vec<String>, StoreError> {
+                Ok(tx.query(
+                    "SELECT record FROM assertion_amendments WHERE prior_id = ?1 ORDER BY seq",
+                    params![prior_id],
+                    |row| row.get(0),
+                )?)
+            },
+        ))?;
+        stored
+            .iter()
+            .map(|text| {
+                serde_json::from_str(text).map_err(|error| StoreError::Corrupt(error.to_string()))
+            })
+            .collect()
+    }
+
+    /// Superseding assertion IDs recorded for `prior_id`, oldest first.
+    ///
+    /// # Errors
+    /// Fails on a lease or provider failure.
+    pub fn assertion_amendments(&mut self, prior_id: &str) -> Result<Vec<String>, StoreError> {
+        flatten(
+            self.handle
+                .deferred_transaction(|tx| -> Result<Vec<String>, StoreError> {
+                    Ok(tx.query(
+                        "SELECT superseding_id FROM assertion_amendments
+                         WHERE prior_id = ?1 ORDER BY seq",
+                        params![prior_id],
+                        |row| row.get(0),
+                    )?)
+                }),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -896,6 +1233,45 @@ mod tests {
         store
             .invalidate(&manifest.proof_id, "reason")
             .expect("invalidate");
+        store.put_source("s3", b"retracted").expect("source");
+        store
+            .retract_source(
+                "s3",
+                "retracted",
+                "actor",
+                &safeevidence_contracts::objects::MedicalTime::new(
+                    "1970-01-01T00:00:00Z",
+                    safeevidence_contracts::objects::TimePrecision::Instant,
+                    false,
+                ),
+            )
+            .expect("retract");
+        let make_assertion = |id: &str| ClinicalAssertion {
+            header: safeevidence_contracts::objects::ObjectHeader {
+                id: safeevidence_contracts::objects::OpaqueId::new(id),
+                schema_version: 1,
+                realm_id: safeevidence_contracts::objects::RealmId::new("realm-synthetic"),
+                authority_scope_id: safeevidence_contracts::objects::AuthorityScopeId::new(
+                    "scope-synthetic",
+                ),
+            },
+            subject_ref: safeevidence_contracts::objects::OpaqueId::new("subj-1"),
+            claim_kind: "synthetic_finding".to_owned(),
+            payload: serde_json::json!({"effect": "benefit"}),
+            promoted_from_proposal_id: None,
+            authorized_by: safeevidence_contracts::objects::OpaqueId::new("actor-1"),
+            effective_time: None,
+            recorded_time: safeevidence_contracts::objects::MedicalTime::new(
+                "1970-01-01T00:00:00Z",
+                safeevidence_contracts::objects::TimePrecision::Instant,
+                false,
+            ),
+        };
+        store.put_assertion(&make_assertion("ca-1")).expect("ca-1");
+        store.put_assertion(&make_assertion("ca-2")).expect("ca-2");
+        store
+            .amend_assertion(&synthetic_amendment("ca-1", "ca-2"))
+            .expect("amend assertion");
 
         for sql in [
             "UPDATE answers SET final_text = x'00'",
@@ -909,9 +1285,18 @@ mod tests {
             "UPDATE amendments SET record = 'X'",
             "UPDATE amendments SET record_id = 'X'",
             "DELETE FROM amendments",
+            "UPDATE source_retractions SET rationale = 'X'",
+            "DELETE FROM source_retractions",
+            "UPDATE assertions SET record = 'X'",
+            "DELETE FROM assertions",
+            "UPDATE assertion_amendments SET record = 'X'",
+            "DELETE FROM assertion_amendments",
             "INSERT OR REPLACE INTO answers (proof_id, final_text, final_text_digest, manifest) SELECT proof_id, x'00', final_text_digest, manifest FROM answers",
             "INSERT OR REPLACE INTO sources (source_id, digest, bytes) VALUES ('s1', 'x', x'00')",
             "INSERT OR REPLACE INTO amendments (seq, record_id, prior_id, superseding_id, record) VALUES (1, 'r', 'x', 'y', 'z')",
+            "INSERT OR REPLACE INTO source_retractions (source_id, rationale, authorized_by, recorded_time) VALUES ('s3', 'x', 'y', 'z')",
+            "INSERT OR REPLACE INTO assertions (assertion_id, digest, record) VALUES ('ca-1', 'x', 'y')",
+            "INSERT OR REPLACE INTO assertion_amendments (seq, record_id, prior_id, superseding_id, record) VALUES (1, 'r', 'x', 'y', 'z')",
             "DELETE FROM authority",
             "DELETE FROM store_events",
             "UPDATE store_events SET event = 'X'",
@@ -1335,6 +1720,9 @@ mod tests {
             "DROP TABLE invalidations",
             "DROP TABLE sources",
             "DROP TABLE amendments",
+            "DROP TABLE source_retractions",
+            "DROP TABLE assertions",
+            "DROP TABLE assertion_amendments",
             "DROP TABLE rights_grants",
             "DROP TABLE store_events",
         ]);

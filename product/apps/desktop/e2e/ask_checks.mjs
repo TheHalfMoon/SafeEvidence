@@ -22,6 +22,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 const ANSWERED = "Does veltrixamine help adults with glimmer syndrome?";
 const ASK_MORE = "Does veltrixamine help with glimmer syndrome?";
+const CONFLICT_QUESTION = "Does orbalin help adults with ember fatigue?";
+const RETRACTED_QUESTION = "Does quenzil help adults with hollow cough?";
+const BLOCKED_RIGHTS_QUESTION = "Does tessarine help adults with marble rash?";
+const ESCALATE_QUESTION = "Should I prescribe veltrixamine to my patient, an adult with glimmer syndrome?";
+const ARABIC_QUESTION = "\u0647\u0644 \u064A\u0633\u0627\u0639\u062F veltrixamine \u0627\u0644\u0628\u0627\u0644\u063A\u064A\u0646\u061F";
 const OUTSIDE_GRAMMAR = "What should I take?";
 // A question whose words appear nowhere in the app, so the storage scan can look for what the person typed.
 const TYPED_NONCE = "zqvortelinax";
@@ -116,6 +121,7 @@ export async function runAskChecks(driver) {
     assert.match(view.proofLine, /^Just committed as proof /);
     assert.ok(view.citations > 0);
     assert.equal(view.funnel, 7);
+    assert.match(view.body, /doc-veltrix-peds \(APPLICABILITY_UNRESOLVED\): population children does not match adults/);
     assert.doesNotMatch(view.body, /\d\s*%|confidence/i);
     passed("an answer shows its outcome, committed proof, citations and funnel, with no percentage");
     const answered = view;
@@ -158,6 +164,46 @@ export async function runAskChecks(driver) {
     assert.equal(view.outcome, "More information needed");
     assert.equal(view.brief, null);
     passed("a question missing its population asks for more");
+
+    await ask(page, CONFLICT_QUESTION);
+    view = await readView(page);
+    assert.equal(view.outcome, "The evidence conflicts");
+    assert.match(view.body, /Sources disagree on a material point\./);
+    assert.equal(view.brief, null);
+    assert.equal(view.proof, null);
+    assert.equal(view.citations, 0);
+    passed("conflicting independent studies show CONFLICT with no brief or proof");
+
+    await ask(page, RETRACTED_QUESTION);
+    view = await readView(page);
+    assert.equal(view.outcome, "No answer given");
+    assert.match(view.body, /A required source is invalid or retracted\./);
+    assert.match(view.body, /doc-quenzil-retracted \(SOURCE_INVALID_OR_RETRACTED\)/);
+    assert.equal(view.brief, null);
+    passed("retracted evidence abstains and shows its typed exclusion code");
+
+    await ask(page, BLOCKED_RIGHTS_QUESTION);
+    view = await readView(page);
+    assert.equal(view.outcome, "Blocked");
+    assert.match(view.body, /The rights to use a source are not established\./);
+    assert.match(view.body, /doc-tessarine-unknown-rights \(RIGHTS_UNRESOLVED\)/);
+    assert.equal(view.brief, null);
+    passed("unestablished source rights block presentation and show RIGHTS_UNRESOLVED");
+
+    await ask(page, ESCALATE_QUESTION);
+    view = await readView(page);
+    assert.equal(view.outcome, "Needs clinician review");
+    assert.match(view.body, /This needs a clinician's decision\./);
+    assert.equal(view.brief, null);
+    passed("patient-specific care requests escalate to clinician review");
+
+    await ask(page, ARABIC_QUESTION);
+    view = await readView(page);
+    assert.equal(view.outcome, "No answer given");
+    assert.match(view.body, /This language is not supported yet\./);
+    assert.equal(await page.eval(`document.querySelector(".asked span")?.getAttribute("dir")`), "auto");
+    assert.equal(view.brief, null);
+    passed("Arabic script abstains explicitly as unsupported language with dir=auto isolation");
 
     await ask(page, TYPED);
     view = await readView(page);
