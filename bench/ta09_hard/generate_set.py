@@ -2,9 +2,9 @@
 
 Standard library only. Every compound, condition, population and result is invented; nothing here
 is medical information. Unlike the small 52-report VS-1a `bench/ta09` set, this set constructs
-multi-study, distractor-heavy candidate pools (>55 FTS5 hits per query across shared-term background
-mentions, reference arms, multi-report studies, and abbreviated-condition misses) so both the
-`@10` (`nDCG@10`) and `@50` (`study-level recall@50`) cutoffs genuinely bind (`< 1.0`).
+multi-study, distractor-heavy candidate pools (17..=70 FTS5 hits per query across shared-term
+background mentions, reference arms, multi-report studies, and abbreviated-condition misses) so
+both the `@10` (`nDCG@10`) and `@50` (`study-level recall@50`) cutoffs genuinely bind (`< 1.0`).
 
 Usage: python bench/ta09_hard/generate_set.py <output directory>
 """
@@ -157,8 +157,8 @@ def build() -> tuple[dict, dict]:
 
     # 2. Shared-term distractors (grade 0 for other conditions/interventions): each distractor
     # evaluates ONE true (condition_a, intervention_a) while discussing background literature across
-    # two other conditions and two other interventions in its introduction sentence, creating >50
-    # FTS5 candidate hits per query so both @10 and @50 cutoffs genuinely bind!
+    # two other conditions and two other interventions in its introduction sentence, creating >15
+    # (17..=70) FTS5 candidate hits per query so both @10 and @50 cutoffs genuinely bind!
     for d_idx in range(180):
         c_true = CONDITIONS[d_idx % len(CONDITIONS)]
         i_true = INTERVENTIONS[(d_idx // len(CONDITIONS)) % len(INTERVENTIONS)]

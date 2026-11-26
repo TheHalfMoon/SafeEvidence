@@ -324,4 +324,44 @@ fn ta08_parallel_arabic_english_queries_exceed_090_recall_ratio_and_preserve_gua
     let unk = ask_bilingual(ar_unknown, &corpus);
     assert_eq!(unk.outcome, TerminalOutcome::Abstain);
     assert_eq!(unk.reason, ReasonCode::EvidenceInsufficient);
+
+    // 6. Guard 3 (`CONFLICT`) precedes Guard 4 (`ASK_MORE`) even when population is omitted:
+    let mut conflicting = corpus.clone();
+    conflicting.documents.push(BilingualDocument {
+        doc_id: "doc-bi-ar-conflict".to_owned(),
+        study_id: "study-bi-conflict-99".to_owned(),
+        language: TextLanguage::Ar,
+        title: "\u{062a}\u{062c}\u{0631}\u{0628}\u{0629} \u{0633}\u{0644}\u{0628}\u{064a}\u{0629}".to_owned(),
+        text: "\u{062a}\u{0644}\u{0642}\u{0649} \u{0627}\u{0644}\u{0628}\u{0627}\u{0644}\u{063a}\u{064a}\u{0646} \u{0641}\u{0644}\u{062a}\u{0631}\u{064a}\u{0643}\u{0633}\u{0627}\u{0645}\u{064a}\u{0646}. \u{0644}\u{0645} \u{062a}\u{062a}\u{062d}\u{0633}\u{0646} \u{062f}\u{0631}\u{062c}\u{0629} \u{0627}\u{0644}\u{0623}\u{0639}\u{0631}\u{0627}\u{0636} \u{0639}\u{0646}\u{062f} 12 \u{0627}\u{0633}\u{0628}\u{0648}\u{0639}\u{0627}.".to_owned(),
+        finding: "\u{0644}\u{0645} \u{062a}\u{062a}\u{062d}\u{0633}\u{0646} \u{062f}\u{0631}\u{062c}\u{0629} \u{0627}\u{0644}\u{0623}\u{0639}\u{0631}\u{0627}\u{0636} \u{0639}\u{0646}\u{062f} 12 \u{0627}\u{0633}\u{0628}\u{0648}\u{0639}\u{0627}.".to_owned(),
+        population_concept: "pop_adults".to_owned(),
+        condition_concept: "cond_glimmer".to_owned(),
+        intervention_concept: "int_veltrix".to_owned(),
+        direction: Direction::NoBenefit,
+        publication_state: PublicationState::Current,
+        rights: EvidenceCorpusRights::SyntheticOwned,
+    });
+    let conflict_missing_pop = ask_bilingual(ar_missing_pop, &conflicting);
+    assert_eq!(conflict_missing_pop.outcome, TerminalOutcome::Conflict);
+    assert_eq!(
+        conflict_missing_pop.reason,
+        ReasonCode::MaterialContradiction
+    );
+
+    // 7. Non-Current (Corrected) without retraction returns `CurrentnessUnknown` + typed Exclusion:
+    let mut corrected_only = corpus;
+    for d in &mut corrected_only.documents {
+        if d.condition_concept == "cond_glimmer" && d.intervention_concept == "int_veltrix" {
+            d.publication_state = PublicationState::Corrected;
+        }
+    }
+    let non_current = ask_bilingual(&pairs[0].2, &corrected_only);
+    assert_eq!(non_current.outcome, TerminalOutcome::Abstain);
+    assert_eq!(non_current.reason, ReasonCode::CurrentnessUnknown);
+    assert!(
+        non_current
+            .excluded
+            .iter()
+            .any(|e| e.reason == ReasonCode::CurrentnessUnknown)
+    );
 }

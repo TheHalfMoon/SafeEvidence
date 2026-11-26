@@ -161,7 +161,7 @@ fn has_non_en_ar_script(raw: &str) -> bool {
             '\u{0600}'..='\u{06FF}'
                 | '\u{0750}'..='\u{08FF}'
                 | '\u{FB50}'..='\u{FDFF}'
-                | '\u{FE70}'..='\u{FEFF}'
+                | '\u{FE70}'..='\u{FEFC}'
         )
     })
 }
@@ -409,7 +409,10 @@ fn validate_bilingual_corpus(corpus: &BilingualCorpus) -> Result<(), String> {
         if !seen.insert(doc.doc_id.as_str()) {
             return Err(format!("duplicate doc_id {}", doc.doc_id));
         }
-        if has_non_en_ar_script(&doc.text) || has_non_en_ar_script(&doc.finding) {
+        if has_non_en_ar_script(&doc.title)
+            || has_non_en_ar_script(&doc.text)
+            || has_non_en_ar_script(&doc.finding)
+        {
             return Err(format!(
                 "forbidden script or bidi control in {}",
                 doc.doc_id
@@ -524,6 +527,19 @@ pub fn ask_bilingual(question_text: &str, corpus: &BilingualCorpus) -> AskResult
         );
     }
 
+    let mut excluded = Vec::new();
+    for id in &retrieved {
+        if let Some(doc) = corpus.documents.iter().find(|d| &d.doc_id == id)
+            && (&doc.condition_concept != cond_id || &doc.intervention_concept != int_id)
+        {
+            excluded.push(Exclusion {
+                doc_id: doc.doc_id.clone(),
+                reason: ReasonCode::ApplicabilityUnresolved,
+                detail: "different condition or intervention".to_owned(),
+            });
+        }
+    }
+
     let matching: Vec<&BilingualDocument> = corpus
         .documents
         .iter()
@@ -534,11 +550,10 @@ pub fn ask_bilingual(question_text: &str, corpus: &BilingualCorpus) -> AskResult
             TerminalOutcome::Abstain,
             ReasonCode::EvidenceInsufficient,
             &funnel,
-            &[],
+            &excluded,
         );
     }
 
-    let mut excluded = Vec::new();
     if matching.iter().any(|d| !d.rights.admissible()) {
         for d in matching.iter().filter(|d| !d.rights.admissible()) {
             excluded.push(Exclusion {
@@ -568,40 +583,104 @@ pub fn ask_bilingual(question_text: &str, corpus: &BilingualCorpus) -> AskResult
         .map(|d| d.study_id.as_str())
         .collect();
 
-    let citable: Vec<&BilingualDocument> = matching
-        .iter()
-        .copied()
-        .filter(|d| {
-            !withdrawn_studies.contains(d.study_id.as_str()) && d.publication_state.citable()
-        })
-        .collect();
+    let mut citable = Vec::new();
+    for d in &matching {
+        if withdrawn_studies.contains(d.study_id.as_str()) {
+            excluded.push(Exclusion {
+                doc_id: d.doc_id.clone(),
+                reason: ReasonCode::SourceInvalidOrRetracted,
+                detail: "study has a retracted or withdrawn report".to_owned(),
+            });
+        } else if d.publication_state.citable() {
+            citable.push(*d);
+        } else {
+            excluded.push(Exclusion {
+                doc_id: d.doc_id.clone(),
+                reason: ReasonCode::CurrentnessUnknown,
+                detail: format!("publication state {:?} is not citable", d.publication_state),
+            });
+        }
+    }
     funnel.citable = citable.len();
     if citable.is_empty() {
-        return refuse(
-            TerminalOutcome::Abstain,
-            ReasonCode::SourceInvalidOrRetracted,
-            &funnel,
-            &excluded,
-        );
+        let any_withdrawn = matching
+            .iter()
+            .any(|d| withdrawn_studies.contains(d.study_id.as_str()));
+        let reason = if any_withdrawn {
+            ReasonCode::SourceInvalidOrRetracted
+        } else {
+            ReasonCode::CurrentnessUnknown
+        };
+        return refuse(TerminalOutcome::Abstain, reason, &funnel, &excluded);
+    }
+
+    fn group_study_dirs<'a>(
+        docs: &[&'a BilingualDocument],
+    ) -> BTreeMap<&'a str, BTreeSet<Direction>> {
+        let mut map: BTreeMap<&'a str, BTreeSet<Direction>> = BTreeMap::new();
+        for doc in docs {
+            map.entry(doc.study_id.as_str())
+                .or_default()
+                .insert(doc.direction);
+        }
+        map
     }
 
     let Some(pop_id) = &parsed.population_concept else {
-        let has_answerable = citable.iter().any(|d| retrieved.contains(&d.doc_id));
-        return if has_answerable {
-            refuse(
+        let populations: BTreeSet<&str> = citable
+            .iter()
+            .map(|d| d.population_concept.as_str())
+            .collect();
+        let has_conflict = populations.iter().any(|pop| {
+            let group: Vec<&BilingualDocument> = citable
+                .iter()
+                .copied()
+                .filter(|d| d.population_concept == *pop)
+                .collect();
+            let sdirs = group_study_dirs(&group);
+            let all_dirs: BTreeSet<Direction> = sdirs.values().flatten().copied().collect();
+            all_dirs.len() > 1 && sdirs.len() > 1
+        });
+        let has_answerable = populations.iter().any(|pop| {
+            let group: Vec<&BilingualDocument> = citable
+                .iter()
+                .copied()
+                .filter(|d| d.population_concept == *pop)
+                .collect();
+            let within_disagree = group_study_dirs(&group).values().any(|dirs| dirs.len() > 1);
+            !within_disagree && group.iter().any(|d| retrieved.contains(&d.doc_id))
+        });
+        if has_conflict {
+            return refuse(
+                TerminalOutcome::Conflict,
+                ReasonCode::MaterialContradiction,
+                &funnel,
+                &excluded,
+            );
+        }
+        if has_answerable {
+            return refuse(
                 TerminalOutcome::AskMore,
                 ReasonCode::MissingCriticalContext,
                 &funnel,
                 &excluded,
-            )
-        } else {
-            refuse(
-                TerminalOutcome::Abstain,
-                ReasonCode::EvidenceInsufficient,
-                &funnel,
-                &excluded,
-            )
-        };
+            );
+        }
+        for d in &citable {
+            if !retrieved.contains(&d.doc_id) {
+                excluded.push(Exclusion {
+                    doc_id: d.doc_id.clone(),
+                    reason: ReasonCode::EvidenceInsufficient,
+                    detail: "applicable, but lexical retrieval did not find it".to_owned(),
+                });
+            }
+        }
+        return refuse(
+            TerminalOutcome::Abstain,
+            ReasonCode::EvidenceInsufficient,
+            &funnel,
+            &excluded,
+        );
     };
 
     let applicable: Vec<&BilingualDocument> = citable
@@ -632,11 +711,7 @@ pub fn ask_bilingual(question_text: &str, corpus: &BilingualCorpus) -> AskResult
         );
     }
 
-    let mut study_dirs: BTreeMap<&str, BTreeSet<Direction>> = BTreeMap::new();
-    for doc in &applicable {
-        let dirs = study_dirs.entry(doc.study_id.as_str()).or_default();
-        dirs.insert(doc.direction);
-    }
+    let study_dirs = group_study_dirs(&applicable);
     funnel.independent_studies = study_dirs.len();
     let all_dirs: BTreeSet<Direction> = study_dirs.values().flatten().copied().collect();
     if all_dirs.len() > 1 && study_dirs.len() > 1 {
@@ -656,11 +731,18 @@ pub fn ask_bilingual(question_text: &str, corpus: &BilingualCorpus) -> AskResult
         );
     }
 
-    let retrieved_applicable: Vec<&BilingualDocument> = applicable
-        .iter()
-        .copied()
-        .filter(|d| retrieved.contains(&d.doc_id))
-        .collect();
+    let (retrieved_applicable, unretrieved): (Vec<&BilingualDocument>, Vec<&BilingualDocument>) =
+        applicable
+            .iter()
+            .copied()
+            .partition(|d| retrieved.contains(&d.doc_id));
+    for d in &unretrieved {
+        excluded.push(Exclusion {
+            doc_id: d.doc_id.clone(),
+            reason: ReasonCode::EvidenceInsufficient,
+            detail: "applicable, but lexical retrieval did not find it".to_owned(),
+        });
+    }
     if retrieved_applicable.is_empty() {
         return refuse(
             TerminalOutcome::Abstain,
@@ -670,12 +752,42 @@ pub fn ask_bilingual(question_text: &str, corpus: &BilingualCorpus) -> AskResult
         );
     }
 
+    let mut seen_excluded = BTreeSet::new();
+    excluded.retain(|ex| seen_excluded.insert(ex.doc_id.clone()));
+
+    let currentness_limited = matching.iter().any(|d| {
+        !d.publication_state.citable()
+            && (&d.population_concept == pop_id
+                || retrieved_applicable
+                    .iter()
+                    .any(|cited| cited.study_id == d.study_id))
+    });
+    let cross_language_used = retrieved_applicable
+        .iter()
+        .any(|d| d.language != parsed.language);
+    let appraised_clean = corpus.quality_appraised
+        && unretrieved.is_empty()
+        && !currentness_limited
+        && !cross_language_used;
+    let (applicability, answer_outcome) = if appraised_clean {
+        (ApplicabilityState::Applicable, TerminalOutcome::Answer)
+    } else {
+        (
+            ApplicabilityState::ApplicableWithLimits,
+            TerminalOutcome::AnswerWithCaution,
+        )
+    };
+
     let mut claims = Vec::new();
+    let second_header = if appraised_clean {
+        "Appraisal: synthetic study quality and applicability confirmed."
+    } else {
+        "Limits: synthetic bilingual fixture evidence; language mapping is glossary-bound."
+    };
     let mut lines = vec![
         "Synthetic bilingual evidence brief. Invented fixture data; not medical information."
             .to_owned(),
-        "Limits: synthetic bilingual fixture evidence; language mapping is glossary-bound."
-            .to_owned(),
+        second_header.to_owned(),
     ];
     for doc in &retrieved_applicable {
         let Ok(span) = project_bilingual_finding_span(doc) else {
@@ -736,9 +848,9 @@ pub fn ask_bilingual(question_text: &str, corpus: &BilingualCorpus) -> AskResult
             policy: "wp06-bilingual-guards-1".to_owned(),
             thresholds: "none".to_owned(),
         },
-        applicability: ApplicabilityState::ApplicableWithLimits,
+        applicability,
         contradiction: ContradictionState::None,
-        outcome: TerminalOutcome::AnswerWithCaution,
+        outcome: answer_outcome,
         reason: ReasonCode::None,
         post_verification_passed: true,
         verified_at_utc: "fixture-time".to_owned(),
@@ -759,7 +871,7 @@ pub fn ask_bilingual(question_text: &str, corpus: &BilingualCorpus) -> AskResult
     }
 
     AskResult {
-        outcome: TerminalOutcome::AnswerWithCaution,
+        outcome: answer_outcome,
         reason: ReasonCode::None,
         brief: Some(brief),
         manifest: Some(manifest),

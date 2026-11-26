@@ -233,26 +233,6 @@ pub fn verify_claim_against_source(
     let (claim_collapsed, claim_words) = normalize_words(trimmed);
     let claim_pairs = extract_number_unit_pairs(trimmed);
 
-    // Check if claim splices clauses from two different source sentences:
-    if source_sentences.len() >= 2 {
-        let matching_fragments = source_sentences
-            .iter()
-            .filter(|sentence| {
-                let (_, s_words) = normalize_words(sentence);
-                let shared = claim_words.intersection(&s_words).count();
-                shared >= 4 && !source_sentences.contains(&trimmed)
-            })
-            .count();
-        if matching_fragments >= 2
-            && !source_sentences
-                .iter()
-                .any(|s| extract_numeric_facets(s) != claim_nums)
-        {
-            // Continue specific facet checks first; fall back to CrossSentenceSplice if all single-sentence
-            // facets fail to match one sentence.
-        }
-    }
-
     let any_sentence = |pred: &dyn Fn(&str) -> bool| source_sentences.iter().any(|s| pred(s));
 
     if !any_sentence(&|s| extract_numeric_facets(s) == claim_nums) {

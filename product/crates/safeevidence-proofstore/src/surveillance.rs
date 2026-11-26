@@ -13,6 +13,7 @@
 //!    refresh without explicit per-query opt-in, and reject patient-specific narrative (`TA-30`).
 
 use safeevidence_contracts::assurance::ProofState;
+use safeevidence_contracts::bilingual::{NormalizedText, is_forbidden_bidi_control};
 use safeevidence_contracts::objects::DigestSha256;
 pub use safeevidence_contracts::surveillance::{
     AlertCauseCode, SavedWatchQuery, SurveillanceAlert, SurveillanceUpdateEvent, WatchRegistry,
@@ -53,9 +54,12 @@ impl From<BoundedBlobError> for SurveillanceError {
 
 fn contains_patient_narrative(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
-    const FORBIDDEN: &[&str] = &[
+    const FORBIDDEN_EN: &[&str] = &[
         "my patient",
         "this patient",
+        "my child",
+        "my mother",
+        "my father",
         "mrn",
         "dob",
         "date of birth",
@@ -65,26 +69,60 @@ fn contains_patient_narrative(text: &str) -> bool {
         "yo male",
         "yo female",
     ];
-    FORBIDDEN.iter().any(|needle| lower.contains(needle))
+    const FORBIDDEN_AR: &[&str] = &[
+        "\u{0645}\u{0631}\u{064a}\u{0636}\u{064a}",
+        "\u{0647}\u{0630}\u{0627} \u{0627}\u{0644}\u{0645}\u{0631}\u{064a}\u{0636}",
+        "\u{0637}\u{0641}\u{0644}\u{064a}",
+        "\u{0648}\u{0627}\u{0644}\u{062f}\u{064a}",
+        "\u{0648}\u{0627}\u{0644}\u{062f}\u{062a}\u{064a}",
+        "\u{0647}\u{0644} \u{0627}\u{0635}\u{0641}",
+        "\u{0647}\u{0644} \u{0627}\u{0639}\u{0637}\u{064a}",
+    ];
+    if FORBIDDEN_EN.iter().any(|needle| lower.contains(needle)) {
+        return true;
+    }
+    let Ok(norm) = NormalizedText::build(text) else {
+        return true;
+    };
+    let collapsed = norm
+        .as_str()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    FORBIDDEN_AR.iter().any(|raw_ar| {
+        NormalizedText::build(raw_ar).map_or(true, |nar| collapsed.contains(nar.as_str()))
+    })
 }
 
-/// Registers a `SavedWatchQuery` after verifying it carries no patient-specific free-text
-/// narrative (`TA-30` / `P00 D7`).
-pub fn register_watch(
-    registry: &mut WatchRegistry,
-    watch: SavedWatchQuery,
-) -> Result<(), SurveillanceError> {
-    if watch.watch_id.trim().is_empty() {
+fn has_unsafe_query_chars(text: &str) -> bool {
+    text.chars()
+        .any(|c| c.is_control() || c == '"' || is_forbidden_bidi_control(c))
+}
+
+fn validate_watch_safety(watch: &SavedWatchQuery) -> Result<(), SurveillanceError> {
+    if watch.watch_id.trim().is_empty()
+        || watch.canonical_pico_query.trim().is_empty()
+        || watch.condition.trim().is_empty()
+        || watch.intervention.trim().is_empty()
+    {
         return Err(SurveillanceError::Serialization(
-            "watch_id must not be empty".to_owned(),
+            "watch_id, canonical_pico_query, condition, and intervention must be non-empty"
+                .to_owned(),
         ));
     }
-    if registry
-        .watches
-        .iter()
-        .any(|w| w.watch_id == watch.watch_id)
+    if has_unsafe_query_chars(&watch.watch_id)
+        || has_unsafe_query_chars(&watch.canonical_pico_query)
+        || has_unsafe_query_chars(&watch.condition)
+        || has_unsafe_query_chars(&watch.intervention)
+        || watch
+            .population
+            .as_deref()
+            .is_some_and(has_unsafe_query_chars)
     {
-        return Err(SurveillanceError::DuplicateWatchId(watch.watch_id));
+        return Err(SurveillanceError::Serialization(
+            "watch fields must not contain quotes, control characters, or BiDi overrides"
+                .to_owned(),
+        ));
     }
     if contains_patient_narrative(&watch.canonical_pico_query)
         || contains_patient_narrative(&watch.condition)
@@ -94,15 +132,34 @@ pub fn register_watch(
             .as_deref()
             .is_some_and(contains_patient_narrative)
     {
-        return Err(SurveillanceError::PatientNarrativeForbidden(watch.watch_id));
+        return Err(SurveillanceError::PatientNarrativeForbidden(
+            watch.watch_id.clone(),
+        ));
+    }
+    Ok(())
+}
+
+/// Registers a `SavedWatchQuery` after verifying it carries no patient-specific free-text
+/// narrative (`TA-30` / `P00 D7`).
+pub fn register_watch(
+    registry: &mut WatchRegistry,
+    watch: SavedWatchQuery,
+) -> Result<(), SurveillanceError> {
+    validate_watch_safety(&watch)?;
+    if registry
+        .watches
+        .iter()
+        .any(|w| w.watch_id == watch.watch_id)
+    {
+        return Err(SurveillanceError::DuplicateWatchId(watch.watch_id));
     }
     registry.watches.push(watch);
     Ok(())
 }
 
 /// Produces a sanitized outbound query preview ONLY when `outbound_opt_in == true` and zero
-/// patient narrative is present (`TA-30`). Never opens a socket; returns data for user-visible
-/// preview only.
+/// patient narrative or unsafe characters exist across any field (`TA-30`). Never opens a socket;
+/// returns data for user-visible preview only.
 pub fn prepare_outbound_preview(
     registry: &WatchRegistry,
     watch_id: &str,
@@ -117,11 +174,7 @@ pub fn prepare_outbound_preview(
             watch.watch_id.clone(),
         ));
     }
-    if contains_patient_narrative(&watch.canonical_pico_query) {
-        return Err(SurveillanceError::PatientNarrativeForbidden(
-            watch.watch_id.clone(),
-        ));
-    }
+    validate_watch_safety(watch)?;
     Ok(format!(
         "condition=\"{}\" AND intervention=\"{}\"",
         watch.condition.trim(),

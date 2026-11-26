@@ -410,7 +410,10 @@ impl CertaintyAssessment {
                 return Err(AppraisalError::EmptyDomainReason(name.to_owned()));
             }
         }
-        if self.domains.has_any_downgrade() && self.domains.has_any_upgrade() {
+        if self.domains.has_any_upgrade()
+            && (self.starting_design == StartingDesign::RandomizedTrial
+                || self.domains.has_any_downgrade())
+        {
             return Err(AppraisalError::UpgradeForbiddenAfterDowngrade);
         }
         let expected = self.domains.compute_certainty(self.starting_design);
@@ -653,7 +656,7 @@ pub fn export_certainty_to_ebmonfhir_json(
         confirmed_at_utc,
         generator,
         content: vec![EbmFhirContent {
-            information_type: " rating".trim().to_owned(),
+            information_type: "rating".to_owned(),
             summary: assessment.summary_rationale.clone(),
             classifier: vec![concept(
                 "http://hl7.org/fhir/certainty-rating",
@@ -787,6 +790,11 @@ pub fn validate_ebmonfhir_assessment(
             "top-level summary rationale must not be empty".to_owned(),
         ));
     }
+    if content.classifier.is_empty() {
+        return Err(AppraisalError::SchemaValidation(
+            "top-level classifier must not be empty".to_owned(),
+        ));
+    }
     match content.workflow_status.as_str() {
         "CONFIRMED" => {
             if content
@@ -815,6 +823,11 @@ pub fn validate_ebmonfhir_assessment(
             "certainty-of-evidence profile requires all 8 GRADE domain components".to_owned(),
         ));
     }
+    if resource.meta.profile[0] == EBMONFHIR_ROB_PROFILE && content.components.len() < 4 {
+        return Err(AppraisalError::SchemaValidation(
+            "risk-of-bias profile requires at least 4 domain components".to_owned(),
+        ));
+    }
     for component in &content.components {
         if component.summary.trim().is_empty() {
             return Err(AppraisalError::SchemaValidation(
@@ -830,7 +843,7 @@ pub fn validate_ebmonfhir_assessment(
     Ok(())
 }
 
-///Builds a validated `SummaryOfFindingsRow` from a `CertaintyAssessment` (`WP-10`).
+/// Builds a validated `SummaryOfFindingsRow` from a `CertaintyAssessment` (`WP-10`).
 pub fn build_summary_of_findings_row(
     assessment: &CertaintyAssessment,
     outcome_definition: &str,

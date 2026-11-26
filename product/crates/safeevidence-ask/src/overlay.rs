@@ -193,19 +193,35 @@ pub fn build_rights_admissible_manifest(
     rights_uri: &str,
     corpus: &Corpus,
 ) -> Result<EvidenceCorpusManifest, OverlayError> {
+    let withdrawn_studies: BTreeSet<&str> = corpus
+        .documents
+        .iter()
+        .filter(|d| {
+            matches!(
+                d.publication_state,
+                PublicationState::Retracted | PublicationState::Withdrawn
+            )
+        })
+        .map(|d| d.study_id.as_str())
+        .collect();
+
     let mut pack_docs = Vec::new();
+    let mut has_open_license = false;
+    let mut has_public_domain = false;
     for doc in &corpus.documents {
         if !doc.rights.admissible() {
             continue;
         }
-        if matches!(
-            doc.publication_state,
-            PublicationState::Retracted | PublicationState::Withdrawn
-        ) {
+        if withdrawn_studies.contains(doc.study_id.as_str()) {
             continue;
         }
         if !doc.publication_state.citable() {
             continue;
+        }
+        match doc.rights {
+            EvidenceCorpusRights::OpenLicense => has_open_license = true,
+            EvidenceCorpusRights::PublicDomain => has_public_domain = true,
+            _ => {}
         }
         pack_docs.push(EvidenceCorpusDocument {
             doc_id: doc.doc_id.clone(),
@@ -225,12 +241,19 @@ pub fn build_rights_admissible_manifest(
         .map(|d| format!("{}:{}", d.doc_id, d.content_digest.to_hex()))
         .collect::<Vec<_>>()
         .join("\n");
+    let pack_rights = if has_open_license {
+        EvidenceCorpusRights::OpenLicense
+    } else if has_public_domain {
+        EvidenceCorpusRights::PublicDomain
+    } else {
+        EvidenceCorpusRights::SyntheticOwned
+    };
 
     Ok(EvidenceCorpusManifest {
         corpus_id: corpus_id.to_owned(),
         version: version.to_owned(),
         content_digest: DigestSha256::of(joined_digests.as_bytes()),
-        rights: EvidenceCorpusRights::SyntheticOwned,
+        rights: pack_rights,
         rights_uri: rights_uri.to_owned(),
         documents: pack_docs,
     })

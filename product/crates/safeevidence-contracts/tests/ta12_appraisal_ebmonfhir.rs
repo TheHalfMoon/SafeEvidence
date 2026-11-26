@@ -227,13 +227,22 @@ fn ta12_certainty_enforces_domain_reasons_human_actor_gate_and_ebmonfhir_schema(
         })
     ));
 
-    let mut upgrade_with_downgrade = confirmed;
+    let mut upgrade_with_downgrade = confirmed.clone();
     upgrade_with_downgrade
         .domains
         .large_magnitude_of_effect
         .step = UpgradeStep::PlusOne;
     assert_eq!(
         upgrade_with_downgrade.validate(),
+        Err(AppraisalError::UpgradeForbiddenAfterDowngrade)
+    );
+
+    // Upgrade on a RandomizedTrial without downgrades is also forbidden under GRADE (`NB-2`):
+    let mut rct_upgrade = confirmed;
+    rct_upgrade.domains.indirectness.step = DowngradeStep::None;
+    rct_upgrade.domains.large_magnitude_of_effect.step = UpgradeStep::PlusOne;
+    assert_eq!(
+        rct_upgrade.validate(),
         Err(AppraisalError::UpgradeForbiddenAfterDowngrade)
     );
 }

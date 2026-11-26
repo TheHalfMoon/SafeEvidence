@@ -69,7 +69,7 @@ fn ta06_overlay_replay_is_byte_deterministic_evicts_retracted_and_excludes_unkno
 
     let batches = vec![
         ValidityOverlayBatch {
-            target_epoch: 2,
+            target_epoch: baseline.validity_epoch + 1,
             rights_grant_version: None,
             operations: vec![
                 ValidityDeltaOp::UpsertDocument { document: new_doc },
@@ -81,7 +81,7 @@ fn ta06_overlay_replay_is_byte_deterministic_evicts_retracted_and_excludes_unkno
             ],
         },
         ValidityOverlayBatch {
-            target_epoch: 3,
+            target_epoch: baseline.validity_epoch + 2,
             rights_grant_version: Some("synthetic-owned-2".to_owned()),
             operations: vec![
                 ValidityDeltaOp::DeleteDocument {
@@ -106,7 +106,10 @@ fn ta06_overlay_replay_is_byte_deterministic_evicts_retracted_and_excludes_unkno
         first_replay.canonical_digest,
         second_replay.canonical_digest
     );
-    assert_eq!(first_replay.corpus.validity_epoch, 3);
+    assert_eq!(
+        first_replay.corpus.validity_epoch,
+        baseline.validity_epoch + 2
+    );
 
     // 2. Retracted study (`doc-veltrix-a` + sibling `doc-veltrix-a-followup`) and deleted
     // `doc-veltrix-peds` are absent from `active_index_doc_ids`:
@@ -149,13 +152,15 @@ fn ta06_overlay_replay_is_byte_deterministic_evicts_retracted_and_excludes_unkno
         "doc-veltrix-a-followup",
         "doc-veltrix-peds",
         "doc-orbalin-new",
-        "doc-no-rights",
+        "doc-tessarine-unknown-rights",
     ] {
         assert!(
             !pack.documents.iter().any(|d| d.doc_id == forbidden),
             "forbidden doc {forbidden} leaked into built pack"
         );
     }
+    let pack_ids: Vec<&str> = pack.documents.iter().map(|d| d.doc_id.as_str()).collect();
+    assert_eq!(pack_ids, vec!["doc-orbalin-a", "doc-orbalin-b"]);
 }
 
 #[test]
@@ -231,6 +236,31 @@ fn ta19_and_ta30_surveillance_emits_cause_named_alert_preserves_historic_bytes_a
     assert!(matches!(
         register_watch(&mut registry, bad_patient_watch),
         Err(SurveillanceError::PatientNarrativeForbidden(_))
+    ));
+
+    // Also verify `prepare_outbound_preview` re-validates `condition`/`intervention` and Arabic
+    // patient narrative even if a deserialized struct bypassed `register_watch` (`B-4`):
+    let mut bypassed = WatchRegistry {
+        watches: vec![SavedWatchQuery {
+            watch_id: "watch-ar-patient".to_owned(),
+            canonical_pico_query: "glimmer query".to_owned(),
+            condition: "\u{0645}\u{0631}\u{064a}\u{0636}\u{064a}".to_owned(),
+            intervention: "veltrixamine".to_owned(),
+            population: None,
+            linked_proof_id: None,
+            cited_source_ids: vec![],
+            outbound_opt_in: true,
+        }],
+        alerts: vec![],
+    };
+    assert!(matches!(
+        prepare_outbound_preview(&bypassed, "watch-ar-patient"),
+        Err(SurveillanceError::PatientNarrativeForbidden(_))
+    ));
+    bypassed.watches[0].condition = "glimmer \"injected\"".to_owned();
+    assert!(matches!(
+        prepare_outbound_preview(&bypassed, "watch-ar-patient"),
+        Err(SurveillanceError::Serialization(_))
     ));
 
     // Encrypt and round-trip the watch registry through `SAFEVD/` bounded vault AEAD blob:

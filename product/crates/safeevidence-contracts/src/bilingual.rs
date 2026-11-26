@@ -38,9 +38,8 @@ pub struct NormalizedText {
     raw_to_norm_index: Vec<Option<usize>>,
 }
 
-/// Returns `true` if `ch` is an explicit BiDi directional control or isolate character that could
-/// make displayed text read differently from lexical checks (`U+061C`, `U+200E`, `U+200F`,
-/// `U+202A..=U+202E`, `U+2066..=U+2069`).
+/// Returns `true` if `ch` is an explicit BiDi directional control, isolate, or zero-width
+/// no-break space (`U+061C`, `U+200E`, `U+200F`, `U+202A..=U+202E`, `U+2066..=U+2069`, `U+FEFF`).
 #[must_use]
 pub const fn is_forbidden_bidi_control(ch: char) -> bool {
     matches!(
@@ -50,6 +49,7 @@ pub const fn is_forbidden_bidi_control(ch: char) -> bool {
             | '\u{200F}'
             | '\u{202A}'..='\u{202E}'
             | '\u{2066}'..='\u{2069}'
+            | '\u{FEFF}'
     )
 }
 
@@ -98,18 +98,19 @@ pub const fn canonicalize_scalar(ch: char) -> char {
     }
 }
 
-/// Returns `true` when `text` contains at least one Arabic-script letter (`U+0600..=U+08FF`,
-/// `U+FB50..=U+FDFF`, `U+FE70..=U+FEFF`).
+/// Returns `true` when `text` contains at least one Arabic-script character (`U+0600..=U+08FF`,
+/// `U+FB50..=U+FDFF`, `U+FE70..=U+FEFC`).
 #[must_use]
 pub fn contains_arabic_script(text: &str) -> bool {
     text.chars().any(|ch| {
-        matches!(
-            ch,
-            '\u{0600}'..='\u{06FF}'
-                | '\u{0750}'..='\u{08FF}'
-                | '\u{FB50}'..='\u{FDFF}'
-                | '\u{FE70}'..='\u{FEFF}'
-        )
+        !is_forbidden_bidi_control(ch)
+            && matches!(
+                ch,
+                '\u{0600}'..='\u{06FF}'
+                    | '\u{0750}'..='\u{08FF}'
+                    | '\u{FB50}'..='\u{FDFF}'
+                    | '\u{FE70}'..='\u{FEFC}'
+            )
     })
 }
 

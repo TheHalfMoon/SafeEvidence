@@ -198,6 +198,17 @@ pub fn resolve_study_linkage(
             if records[left].contribution_kind == ContributionKind::PrimaryStudy
                 && records[right].contribution_kind == ContributionKind::PrimaryStudy
             {
+                let same_report = records[left]
+                    .report_id
+                    .0
+                    .same_entity(&records[right].report_id.0);
+                let same_pmid = matches!(
+                    (
+                        records[left].pmid.as_deref().and_then(normalize_token),
+                        records[right].pmid.as_deref().and_then(normalize_token),
+                    ),
+                    (Some(a), Some(b)) if a == b
+                );
                 let shared_arm = records[left]
                     .arms
                     .iter()
@@ -206,7 +217,7 @@ pub fn resolve_study_linkage(
                     (&records[left].human_confirmed_study, &records[right].human_confirmed_study),
                     (Some(a), Some(b)) if a.0.same_entity(&b.0)
                 );
-                if shared_arm || same_human {
+                if same_report || same_pmid || shared_arm || same_human {
                     union_roots(&mut parents, left, right);
                 }
             }
@@ -291,7 +302,11 @@ pub fn resolve_study_linkage(
         {
             signals.push("trial_registration");
         }
-        if record.parent_report_version.is_some() {
+        if record
+            .parent_report_version
+            .as_ref()
+            .is_some_and(|pv| version_to_index.contains_key(&version_key(pv)))
+        {
             signals.push("parent_report_version");
         }
         if members.len() > 1
@@ -376,13 +391,17 @@ pub fn resolve_study_linkage(
         let mut matched_component_indices: BTreeSet<usize> = BTreeSet::new();
 
         if record.contribution_kind != ContributionKind::PrimaryStudy {
+            let mut matched_by_reg: BTreeSet<StudyId> = BTreeSet::new();
+            let mut matched_by_pmid: BTreeSet<StudyId> = BTreeSet::new();
             for reg in &record.included_registrations {
                 if let Some(norm) = normalize_token(reg)
                     && let Some(targets) = reg_to_primary_indices.get(&norm)
                 {
                     for &target_idx in targets {
                         let target_root = find_root(&mut parents, target_idx);
-                        contained_studies.insert(cluster_study_id[&target_root].clone());
+                        let sid = cluster_study_id[&target_root].clone();
+                        contained_studies.insert(sid.clone());
+                        matched_by_reg.insert(sid);
                         matched_component_indices.insert(target_idx);
                     }
                 }
@@ -394,7 +413,9 @@ pub fn resolve_study_linkage(
                     for &target_idx in targets {
                         if records[target_idx].contribution_kind == ContributionKind::PrimaryStudy {
                             let target_root = find_root(&mut parents, target_idx);
-                            contained_studies.insert(cluster_study_id[&target_root].clone());
+                            let sid = cluster_study_id[&target_root].clone();
+                            contained_studies.insert(sid.clone());
+                            matched_by_pmid.insert(sid);
                             matched_component_indices.insert(target_idx);
                         }
                     }
@@ -420,12 +441,12 @@ pub fn resolve_study_linkage(
                     .unwrap_or_else(|| Known::Unknown {
                         reason: "component result not indexed".to_owned(),
                     });
-                let status = if record.included_registrations.is_empty()
-                    || record.included_pmids.is_empty()
+                let status = if matched_by_reg.contains(included_study)
+                    && matched_by_pmid.contains(included_study)
                 {
-                    LinkStatus::Proposed
-                } else {
                     LinkStatus::Corroborated
+                } else {
+                    LinkStatus::Proposed
                 };
                 review_links.push(ReviewIncludedStudyLink {
                     review: review_id.clone(),
@@ -559,22 +580,55 @@ impl LinkageResolution {
         &self,
         selected_results: &[ResultId],
     ) -> Result<PoolingDecision, PoolingRefusal> {
-        let wanted: BTreeSet<(String, String, u32)> = selected_results
+        if selected_results.is_empty() {
+            return Err(PoolingRefusal::PoolingRefusedUnitOfAnalysis { results: vec![] });
+        }
+        let withdrawn_studies: BTreeSet<(String, String)> = self
+            .version_links
             .iter()
-            .map(|id| (id.0.scope.clone(), id.0.id.clone(), id.0.version))
-            .collect();
-        let subset: Vec<SynthesisInput> = self
-            .synthesis_inputs
-            .iter()
-            .filter(|input| {
-                wanted.contains(&(
-                    input.result.0.scope.clone(),
-                    input.result.0.id.clone(),
-                    input.result.0.version,
-                ))
+            .zip(self.study_links.iter())
+            .filter(|(vlink, _)| {
+                matches!(
+                    vlink.publication_state,
+                    PublicationState::Retracted | PublicationState::Withdrawn
+                )
             })
-            .cloned()
+            .map(|(_, slink)| (slink.study.0.scope.clone(), slink.study.0.id.clone()))
             .collect();
+
+        let mut subset = Vec::with_capacity(selected_results.len());
+        let mut refused_early: BTreeSet<ResultId> = BTreeSet::new();
+        let mut seen_entities: BTreeSet<(String, String)> = BTreeSet::new();
+
+        for wanted_id in selected_results {
+            if !seen_entities.insert((wanted_id.0.scope.clone(), wanted_id.0.id.clone())) {
+                refused_early.insert(wanted_id.clone());
+            }
+            let pos = self
+                .synthesis_inputs
+                .iter()
+                .position(|input| input.result == *wanted_id);
+            let Some(idx) = pos else {
+                refused_early.insert(wanted_id.clone());
+                continue;
+            };
+            let vlink = &self.version_links[idx];
+            let slink = &self.study_links[idx];
+            if !vlink.publication_state.citable()
+                || slink.status == LinkStatus::Rejected
+                || withdrawn_studies
+                    .contains(&(slink.study.0.scope.clone(), slink.study.0.id.clone()))
+            {
+                refused_early.insert(wanted_id.clone());
+            }
+            subset.push(self.synthesis_inputs[idx].clone());
+        }
+
+        if !refused_early.is_empty() {
+            return Err(PoolingRefusal::PoolingRefusedUnitOfAnalysis {
+                results: refused_early.into_iter().collect(),
+            });
+        }
         decide_pooling(&subset, &self.overlap_links)
     }
 }

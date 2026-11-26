@@ -449,8 +449,17 @@ fn ta07_multi_report_benchmark_achieves_unit_precision_and_recall_with_zero_doub
         .unwrap();
     assert_eq!(s2_link.status, LinkStatus::Proposed);
 
-    // 3. T28c review/IPD containment links resolved to both Study 1 and Study 2:
+    // 3. T28c review/IPD containment links resolved to both Study 1 and Study 2, with
+    // per-study corroboration (`pooled_ipd` matched both NCT + PMID -> Corroborated;
+    // `sys_review` matched NCT-only on Study 1 and PMID-only on Study 2 -> Proposed):
     assert_eq!(resolution.review_links.len(), 4);
+    for rlink in &resolution.review_links {
+        if rlink.review.0.id == "rep-ipd-1" {
+            assert_eq!(rlink.status, LinkStatus::Corroborated);
+        } else {
+            assert_eq!(rlink.status, LinkStatus::Proposed);
+        }
+    }
 
     // 4. Outcome switch after registration caught on `rep-s1-subgroup`:
     assert_eq!(resolution.outcome_discrepancies.len(), 1);
@@ -510,6 +519,27 @@ fn ta07_multi_report_benchmark_achieves_unit_precision_and_recall_with_zero_doub
             "must refuse dependent pair {invalid_pair:?}"
         );
     }
+
+    // 7b. Subset pooling also refuses duplicate ResultIds, unknown ResultIds, and non-citable
+    // (Superseded / Corrected / Retracted) report versions!
+    assert!(matches!(
+        resolution.decide_subset_pooling(&[
+            ResultId(sid("res-s2-primary", 1)),
+            ResultId(sid("res-s2-primary", 1)),
+        ]),
+        Err(PoolingRefusal::PoolingRefusedUnitOfAnalysis { .. })
+    ));
+    assert!(matches!(
+        resolution.decide_subset_pooling(&[
+            ResultId(sid("res-s2-primary", 1)),
+            ResultId(sid("res-unknown-ghost", 1)),
+        ]),
+        Err(PoolingRefusal::PoolingRefusedUnitOfAnalysis { .. })
+    ));
+    assert!(matches!(
+        resolution.decide_subset_pooling(&[ResultId(sid("res-s1-preprint", 1))]),
+        Err(PoolingRefusal::PoolingRefusedUnitOfAnalysis { .. })
+    ));
 
     // 8. Supplying a named shared CovarianceRef across `s3_low` + `s3_high` permits covariance-aware
     // pooling (`requires_covariance_method == true`), whereas missing denominator fails closed!
