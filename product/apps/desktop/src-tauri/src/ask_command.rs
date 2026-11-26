@@ -12,6 +12,7 @@ use safeevidence_ask::{AskResult, Corpus, Funnel, ask, load_corpus};
 use safeevidence_contracts::assurance::{ProofState, ReasonCode, TerminalOutcome};
 use safeevidence_contracts::objects::DigestSha256;
 use safeevidence_proofstore::{ProofStore, SCHEMA_OBJECTS_SHA256, StoreError};
+use safeevidence_vault::VAULT_DOMAIN_VERSION;
 use safeevidence_vault::vault_keys::{KeyDerivationContext, KeyPurpose};
 use safeevidence_vault::vault_lease::VaultLease;
 use serde::Serialize;
@@ -102,6 +103,8 @@ fn store_dir(data_dir: &Path) -> PathBuf {
 fn store_key() -> String {
     let mut basis = DigestSha256::of(FIXTURE).to_hex();
     basis.push_str(SCHEMA_OBJECTS_SHA256);
+    basis.push(':');
+    basis.push_str(VAULT_DOMAIN_VERSION);
     DigestSha256::of(basis.as_bytes()).to_hex()[..16].to_owned()
 }
 
@@ -662,8 +665,18 @@ mod tests {
             .into_owned();
         let mut basis = DigestSha256::of(FIXTURE).to_hex();
         basis.push_str(SCHEMA_OBJECTS_SHA256);
+        basis.push(':');
+        basis.push_str(VAULT_DOMAIN_VERSION);
         let expected = DigestSha256::of(basis.as_bytes()).to_hex();
         assert_eq!(name, format!("{STORE_DIR_PREFIX}{}", &expected[..16]));
+        let mut legacy_basis = DigestSha256::of(FIXTURE).to_hex();
+        legacy_basis.push_str(SCHEMA_OBJECTS_SHA256);
+        let legacy = DigestSha256::of(legacy_basis.as_bytes()).to_hex();
+        assert_ne!(
+            name,
+            format!("{STORE_DIR_PREFIX}{}", &legacy[..16]),
+            "domain separation isolates pre-SAFEVD-v1 local synthetic stores"
+        );
         let fixture_only = DigestSha256::of(FIXTURE).to_hex();
         assert_ne!(name, format!("{STORE_DIR_PREFIX}{}", &fixture_only[..16]));
     }

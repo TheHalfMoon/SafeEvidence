@@ -10,12 +10,12 @@ Vocabulary: `NOT_STARTED`, `IMPLEMENTED_UNTESTED`, `TESTED_FAILED`, `TESTED_PASS
 
 | Field | Value |
 |---|---|
-| `main` at last update | `5ccecd7688f1d10fa8474a697d6b6670d8eafec8` |
+| `main` at last update | `e08684d824cf20cd737dc0353cc0860582991ce7` (PR #91) |
 | Milestone | M0 admission/supply-chain engineering closing out; M1 VS-1 in progress, per the table below |
-| Active packet | WP-00, WP-01, WP-02 closeout; WP-03 domain separation & durability; WP-18a Ask view |
-| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30), ADM-0009 (T03's Linux helper), ADM-0010 (`CRATE-product-cargo`), ADM-0011 (`CRATE-desktop-cargo`), ADM-0012 (`CRATE-desktop-npm`); G01a baseline holds `NO_ADMISSIONS` |
-| Product code | T01 contracts with P00 confidence/proposal gates; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice with pre-open `-wal` page-size guard (`RUSTSEC-2026-0459`), TA-05 not claimed; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
-| Next executable task | Separate `HIMSAT/` -> `SAFEVD/` vault cryptographic domains with independent non-Rust vectors; `plan-v1.3` assertion lineage and `CommitUnknown` reconciliation; full Ask outcome paths and WebView2/WebKitGTK E2E checks; M0 and M1 exit reviews; authorized `GREENFIELD_JUSTIFIED` M2/M3/M4 subsystems. Unadmitted donor slices (`T05`, `T07`, `T09`, `T10`, `T14`, `T15`, `T16`) remain `BLOCKED_EXTERNAL` (`EXT-01`) |
+| Active packet | WP-03 domain separation & durability; WP-12 / WP-18a Ask outcomes & lineage |
+| Admissions | ADM-0001 (T01), ADM-0002 (T11 `deny.toml` and SBOM generator), ADM-0003 (T03, separated to `SAFEVD/`), ADM-0004 (T17 fixture), ADM-0005 (T13, no code copied), ADM-0006 (T36), ADM-0007 (T12), ADM-0008 (T30), ADM-0009 (T03's Linux helper), ADM-0010 (`CRATE-product-cargo`), ADM-0011 (`CRATE-desktop-cargo`), ADM-0012 (`CRATE-desktop-npm`); G01a baseline holds `NO_ADMISSIONS` |
+| Product code | T01 contracts with P00 confidence/proposal gates; WP-02 decision vocabulary, proof states and pooling guard. TA-04 passed as narrowed by `plan-v1.3`; T03 vault slice separated to `SAFEVD/` cryptographic domains with pre-open `-wal` page-size guard (`RUSTSEC-2026-0459`) and expanded `open_existing`/contention/snapshot-restore durability tests; headless Ask over an invented fixture, with an atomic proof commit in the keyed vault |
+| Next executable task | `plan-v1.3` assertion lineage and `CommitUnknown` reconciliation; full Ask outcome paths and WebView2/WebKitGTK E2E checks; M0 and M1 exit reviews; authorized `GREENFIELD_JUSTIFIED` M2/M3/M4 subsystems. Unadmitted donor slices (`T05`, `T07`, `T09`, `T10`, `T14`, `T15`, `T16`) remain `BLOCKED_EXTERNAL` (`EXT-01`) |
 
 Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `foundation-documents`, `preentry structure`,
 `synthetic-only`, `product` and `desktop`, the last four on Ubuntu, Windows and macOS.
@@ -53,11 +53,11 @@ Required checks on `main` (founder decisions, 2026-11-05 and 2026-11-06): `found
 - **TA-14** `TESTED_PASSED` with injected faults, as `plan-v1.1` §C allows while no worker exists (PR #74). Crash and timeout at the brief, verification and commit boundaries are reason-coded refusals with no text. Text must cite exactly the admitted claims. `tests/answer_faults.rs` also covers the other clauses: generator off gives the template brief, each claim has a span, support label and validity epoch, and nothing from Ask is labelled committed. The real worker clauses return with WP-12's generator. Real process kills through the desktop session, an injected `CommitUnknown`, and how `read()` maps errors after a commit are untested.
 
 **TA-05 for VS-1** `TESTED_PASSED` under `plan-v1.5`'s reading (an engineering reading the founder can overrule), on invented data:
-- Kills just after each of eight acknowledged commits, through the vault open API, lose no acknowledged answer and leave nothing partial.
+- Kills just after each of eight acknowledged commits, through both `ProofStore::open` and `ProofStore::open_existing`, lose no acknowledged answer and leave nothing partial.
+- Cross-process `IMMEDIATE` writer lock contention returns `StoreError::Busy` while concurrent WAL reads proceed, and `snapshot_quiesced_sqlcipher_database` (`PRAGMA wal_checkpoint(TRUNCATE)`) restores cleanly into an isolated directory while rejecting wrong keys without mutating bytes; post-checkpoint hot-WAL kills recover both main-file and WAL answers.
 - A plaintext scan looks for answer text in every file a killed store left, its WAL included, before anything reopens it. The live and closed scans also cover sources, the brief and identifiers.
 - Every donor test changed since admission is named in the vault's `PROVENANCE.md`. A redaction check the move to the helper dropped is restored.
-- Not covered: a kill inside SQLite's own commit or before the first acknowledged commit, a crash during a checkpoint, recovery to `COMMIT_UNKNOWN`, lock contention between processes, power loss, and a restart through `open_existing`, which the app uses.
-- Disk-full, restore into a clean directory and key loss stay owed at WP-03's full TA-05.
+- Not covered: a kill before the first acknowledged commit, a kill inside SQLite's own C commit syscall, a crash during an active checkpoint, recovery to `COMMIT_UNKNOWN` (owed in PR-B1), disk-full injection, key-loss recovery, and physical power loss.
 
 **No-socket capture, Linux** (evidence for VS-1a, `plan-v1.1` §C, not a TA-21 pass): in a few runs under `strace -ff`, the app, the keyring helper and WebKit's processes made no internet-family call outside loopback and no direct DNS lookup. On each launch the test build binds a loopback listening socket, in the app's own process, which it and its web process connect to. A build as it ships, without WebDriver automation and with incognito, made no internet-family bind, connect or accept and no send to an address over 30 seconds of startup and idle (run 42414388764). That is consistent with the listener coming from the automation setup, but the runs differ in more than automation, and the shipped-style run asked no question. The test runs with WebDriver automation on and without incognito. Processes outside the traced tree, packets and io_uring are not covered. Windows and macOS are not captured by strace.
 
@@ -105,9 +105,7 @@ any release. TA-03 passes only when its controls pass in CI on all three OSes on
 **Sequencing breach:** T03 merged before TA-03 and TA-04 passed, ahead of the frozen WP-01 and WP-02
 exits it depends on. Publication cannot be undone. WP-01, WP-02, M0 and M1 exit stay open until both pass.
 
-T03 shares `HIMSAT/...` domain strings with the donor. Windows DPAPI entropy and recovery envelopes are
-therefore compatible across the two products. Separate these before any release; independent test
-vectors must be recomputed outside the code when that happens, and fixed wire offsets must not shift.
+**Vault cryptographic domain separation (`ADM-0003`):** all `HIMSAT/...` domain separators and wire-magic strings across `safeevidence-vault` have been separated to the equal-length 6-byte `SAFEVD/...` namespace (`VAULT_DOMAIN_VERSION = "SAFEVD-v1"`), preserving fixed wire offsets, with independent non-Rust test vectors and cross-product rejection tests (`tests/domain_separation.rs`) covering HKDF purpose/backup keys, bounded blobs, freshness manifests, Argon2id recovery envelopes, Android Keystore records, and live Windows DPAPI entropy/records. Desktop synthetic store directories include `VAULT_DOMAIN_VERSION` in `store_key()` so pre-migration local folders stay untouched.
 
 **WP-02 T01 gating:** `evidence/mod.rs` now sets `scale_corpus_generator_present: false` with `validate_non_clinical()`, and `Proposal`, `ClinicalAssertion`, and `IdentityAssertion` enforce `P00_DECISION_ASSURANCE_CONTRACT` via `validate_assured_surface()` / `validate_p00_contract()` so unpromoted proposals and heuristic `confidence` fields are rejected fail-closed on assured V1 surfaces.
 

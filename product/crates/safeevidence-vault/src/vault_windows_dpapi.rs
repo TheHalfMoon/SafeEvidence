@@ -21,9 +21,9 @@ use windows_permissions::constants::{
 use windows_permissions::wrappers::GetSecurityInfo;
 use winsafe::{self as w, co};
 use zeroize::Zeroizing;
-const RECORD_MAGIC: &[u8] = b"HIMSAT/WINDOWS/DPAPI/VRK/v1\0";
-const OWNER_TAG: &[u8] = b"HIMSAT/APP/v1\0";
-const ENTROPY_MAGIC: &[u8] = b"HIMSAT/WINDOWS/DPAPI/ENTROPY/v1\0";
+const RECORD_MAGIC: &[u8] = b"SAFEVD/WINDOWS/DPAPI/VRK/v1\0";
+const OWNER_TAG: &[u8] = b"SAFEVD/APP/v1\0";
+const ENTROPY_MAGIC: &[u8] = b"SAFEVD/WINDOWS/DPAPI/ENTROPY/v1\0";
 const PROTECTOR_ID_BYTES: usize = 16;
 const RECORD_BYTES: usize =
     RECORD_MAGIC.len() + OWNER_TAG.len() + 16 + 8 + 1 + 1 + KEY_MATERIAL_BYTES;

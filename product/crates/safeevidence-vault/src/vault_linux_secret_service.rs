@@ -25,8 +25,8 @@ use std::sync::mpsc::{Receiver, TryRecvError, sync_channel};
 use std::time::Duration;
 use zeroize::Zeroizing;
 
-const RECORD_MAGIC: &[u8] = b"HIMSAT/LINUX/SECRET-SERVICE/VRK/v1\0";
-const OWNER_TAG: &[u8] = b"HIMSAT/APP/v1\0";
+const RECORD_MAGIC: &[u8] = b"SAFEVD/LINUX/SECRET-SERVICE/VRK/v1\0";
+const OWNER_TAG: &[u8] = b"SAFEVD/APP/v1\0";
 const RECORD_BYTES: usize =
     RECORD_MAGIC.len() + OWNER_TAG.len() + 16 + 8 + 1 + 1 + KEY_MATERIAL_BYTES;
 const HELPER_NAME: &str = "safeevidence-linux-keyring-helper";
@@ -902,6 +902,20 @@ mod tests {
         assert_eq!(
             validate_record_binding(&clean, vault(0x21), Some(generation(3)), other_policy),
             Err(ProtectorError::PolicyMismatch)
+        );
+
+        let mut donor_magic = clean;
+        donor_magic[..6].copy_from_slice(b"HIMSAT");
+        assert_eq!(
+            decode_record(&donor_magic, vault(0x21), generation(3), policy).map(|_| ()),
+            Err(ProtectorError::CorruptOrTampered)
+        );
+
+        let mut donor_owner = clean;
+        donor_owner[RECORD_MAGIC.len()..RECORD_MAGIC.len() + 6].copy_from_slice(b"HIMSAT");
+        assert_eq!(
+            decode_record(&donor_owner, vault(0x21), generation(3), policy).map(|_| ()),
+            Err(ProtectorError::CorruptOrTampered)
         );
     }
 }

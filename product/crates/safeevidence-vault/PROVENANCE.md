@@ -6,15 +6,19 @@ Admission `ADM-0003` (T03) in `docs/evidence/source_admissions.json`.
 - Rights and publication decisions (D2, D4): https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204
 - File list verified against the freeze commitment
   `f24789f513b17f79bf65bfc720b8fe4513861b6ee07f47581b948d08a33fe5dd` (37 files, 1,130,618 bytes).
-- Copied and renamed: 29 `src/vault*.rs` modules and 5 tests. Product identifiers are renamed,
-  including the Linux Secret Service namespace. Android's is a test constant, Apple's service name
-  is caller-supplied, and Windows has no namespace, so the rename adds no separation on those three.
-- Not renamed, deliberately: `HIMSAT/...` byte strings. They are cryptographic domain separators and
-  wire magic. Binary formats use fixed offsets, and independent test vectors depend on these bytes.
-- **Known limit: domains are shared with the donor product.** Separation relies on independent keys,
-  and is not complete. Windows DPAPI uses the same user master key and entropy formula in both
-  products. Recovery keys derive from passphrase and salt, with compatible envelopes, so a passphrase
-  reused across products crosses them. Tracked in `docs/IMPLEMENTATION_LEDGER.md`.
+- Copied and renamed: 29 `src/vault*.rs` modules and 5 tests. Product identifiers and all cryptographic
+  domain separators / wire-magic prefixes are separated from `HIMSAT/...` to the equal-length 6-byte
+  `SAFEVD/...` namespace (`VAULT_DOMAIN_VERSION = "SAFEVD-v1"`), preserving every fixed wire offset across
+  HKDF purpose/backup keys, bounded blobs, freshness manifests, Argon2id recovery envelopes, portable
+  backups, Android Keystore, Apple Keychain, Linux Secret Service, and Windows DPAPI records/entropy.
+  Independent deterministic vectors were recomputed outside Rust (`hmac`/`hashlib`/`cryptography` RFC 5869,
+  `HChaCha20` + `ChaCha20Poly1305`, and `Argon2id` 64 MiB/3/4) after verifying 8/8 bit-for-bit reproduction
+  of the donor vectors, and `tests/domain_separation.rs` (plus OS-record unit tests) proves authentic donor
+  `HIMSAT/...` envelopes, forged-header envelopes, and same-user Windows DPAPI ciphertexts fail closed.
+  Recovery envelopes preserve the fixed 16-byte raw salt layout (`SALT_OFFSET = 75`), so separation is
+  enforced pre-KDF by `ENVELOPE_DOMAIN_PREFIX` (`InvalidDomain`) and cryptographically under header forgery
+  by XChaCha20-Poly1305's `AAD_DOMAIN_PREFIX` (`RecoveryAuthenticationFailed`). Desktop synthetic stores
+  bind `VAULT_DOMAIN_VERSION` into `store_key()` so pre-migration local folders remain untouched.
 - Not copied: `crates/himsat-events/src/lib.rs` (no slice code uses it) and
   `tests/b005d_journal_kill.rs` (tests the excluded media journal).
 - Added: `tests/sqlcipher_kill_recovery.rs`, written for SafeEvidence. It tests hard process kills against
@@ -52,13 +56,14 @@ Admission `ADM-0003` (T03) in `docs/evidence/source_admissions.json`.
     `tests/native_keyring.rs`, as `native_keyring_phase_1_store_and_inspect` and
     `native_keyring_phase_2_restart_unlock_delete_and_lock`, with a new phase 1b between them.
   - `src/lib.rs` dropped the donor's `build_identity_is_deterministic` at admission, with the identity it tested.
-- **TA-05 for VS-1, under `plan-v1.5`'s reading:** kills just after each of eight acknowledged commits, through the
-  vault open API, in `safeevidence-proofstore`'s `kill_during_commits_loses_no_acknowledged_answer`. That test also
-  scans every file a killed store left, its WAL included, for answer text before anything reopens it. Not covered:
-  a kill inside SQLite's own commit or before the first acknowledged commit, a crash during a checkpoint (none happens
-  in the test), recovery to `COMMIT_UNKNOWN`, lock contention between processes, and power loss. The restart uses
-  `ProofStore::open`, while the app reopens with `open_existing`. Disk-full, restore-to-clean and key loss are not
-  carried, and stay owed at WP-03's full TA-05.
+- **TA-05 durability & contention evidence (`safeevidence-proofstore/tests/proof_commit.rs`):** kills just
+  after each of eight acknowledged commits through `ProofStore::open` and `ProofStore::open_existing`,
+  pre-reopen plaintext scans across `vault.db` and `-wal`, cross-process `IMMEDIATE` writer lock contention
+  returning `StoreError::Busy` while concurrent WAL reads proceed, `snapshot_quiesced_sqlcipher_database`
+  (`PRAGMA wal_checkpoint(TRUNCATE)`) followed by clean-directory restore + wrong-key rejection, and
+  post-checkpoint hot-WAL kill recovery. Still not covered: a kill before the first acknowledged commit,
+  a kill inside SQLite's C commit syscall, a crash during an active checkpoint, recovery to
+  `COMMIT_UNKNOWN` (scheduled for PR-B1), disk-full injection, key-loss recovery, and physical power loss.
 
 SafeEvidence change to `src/vault_linux_secret_service.rs`: the founder chose a separate helper process (2026-11-06), so that the core stays socket-free. The record format, binding and policy
 checks stay here, and now compile on every OS. The Secret Service calls moved to `safeevidence-linux-keyring-helper`, reached over stdin and stdout through `safeevidence-keyring-wire`. Its tests
