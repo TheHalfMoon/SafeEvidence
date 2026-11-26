@@ -23,6 +23,15 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
   `docs/P00_DECISION_ASSURANCE_CONTRACT.md` via `validate_assured_surface()` / `validate_p00_contract()` so no
   unpromoted proposal or heuristic confidence percentage can enter an assured V1 surface.
 - `src/study.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED, transplant matrix §5).
+  `src/study_linkage.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-05` + `T28c` `REFERENCE`
+  registry/PMID/review containment algorithm; `T15` `litdb` fuzzy title dedupe is not copied and
+  remains fenced on `EXT-01`).
+  `src/appraisal.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-10` + `T26` `HL7/ebm`
+  `STANDARD_REFERENCE` JSON export crosswalk).
+  `src/bilingual.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-06` Unicode scalar
+  normalization and bidirectional coordinate projection, tested against `ADM-0004` `T17` fixtures).
+  `src/surveillance.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-17` watch-query and
+  cause-named surveillance alert schemas).
   `src/assurance.rs` is SafeEvidence-written; it encodes the P00 contract vocabulary directly.
 - `src/proof.rs` is SafeEvidence-written from the P00 proof contract: shape only, with no atomic commit or verification.
 - `decide_pooling` checks independence declarations only. It has no population or timepoint

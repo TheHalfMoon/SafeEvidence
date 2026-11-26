@@ -21,16 +21,20 @@ use safeevidence_contracts::proof::{
     ProofComponents, SupportLabel, commit_defects,
 };
 use safeevidence_contracts::study::{Known, PublicationState, ScopedId, StudyId};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub mod bilingual_ask;
+pub mod overlay;
+pub mod perturbation;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Direction {
     Benefit,
     NoBenefit,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Document {
     pub doc_id: String,
@@ -46,7 +50,7 @@ pub struct Document {
     pub rights: EvidenceCorpusRights,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Corpus {
     pub description: String,
