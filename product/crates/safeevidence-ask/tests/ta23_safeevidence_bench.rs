@@ -67,6 +67,7 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
             "ta17-extraction-and-assurance",
             "ta27-prompt-injection",
             "ta13-assurance-calibration",
+            "ta15-native-pdf-and-safeocr",
         ]
     );
     for split in &run_a.body.splits {

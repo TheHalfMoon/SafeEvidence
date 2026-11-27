@@ -302,13 +302,13 @@ fn pdf_contains_active_action(bytes: &[u8]) -> bool {
                     && end < bytes.len()
                     && matches!(
                         bytes[end],
-                        b'\0' | b'\t' | b'\n' | b'\x0c' | b'\r' | b' ' | b'(' | b'<' | b'['
+                        b'\0' | b'\t' | b'\n' | b'\x0c' | b'\r' | b' ' | b'(' | b'<' | b'[' | b'%'
                     );
                 let aa_active = decoded.as_slice() == b"AA"
                     && end < bytes.len()
                     && matches!(
                         bytes[end],
-                        b'\0' | b'\t' | b'\n' | b'\x0c' | b'\r' | b' ' | b'<'
+                        b'\0' | b'\t' | b'\n' | b'\x0c' | b'\r' | b' ' | b'<' | b'%'
                     );
                 if long_active || js_active || aa_active {
                     return true;

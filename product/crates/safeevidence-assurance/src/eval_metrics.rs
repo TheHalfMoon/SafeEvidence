@@ -210,8 +210,13 @@ pub fn evaluate_calibration(
         };
         nll_terms.push(nll);
 
-        let raw_bin = (s * m_f64).floor() as usize;
-        let b = raw_bin.min(bin_count - 1);
+        let mut b = ((s * m_f64).floor() as usize).min(bin_count - 1);
+        while b > 0 && s < (b as f64 / m_f64) {
+            b -= 1;
+        }
+        while b + 1 < bin_count && s >= ((b + 1) as f64 / m_f64) {
+            b += 1;
+        }
         bin_scores[b].push(s);
         if y {
             bin_positives[b] += 1;

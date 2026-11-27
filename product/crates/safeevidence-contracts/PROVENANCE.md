@@ -47,6 +47,16 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
   fenced on `EXT-01`).
   `src/assurance.rs` is SafeEvidence-written; it encodes the P00 contract vocabulary directly.
 - `src/proof.rs` is SafeEvidence-written from the P00 proof contract: shape only, with no atomic commit or verification.
+- `src/network/mod.rs` is admission `ADM-0015` (T05, `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`,
+  Apache-2.0, `ADR-0004`): adapted network mode, allowlist, broker decision, and `TA-30` preview receipt contracts.
+- `src/packs/mod.rs` is admission `ADM-0016` (T07, `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`,
+  Apache-2.0, `ADR-0004`): adapted Pack v0 manifest, content-addressed entry, and anti-rollback state contracts.
+- `src/fhir/mod.rs` is admission `ADM-0017` (T09, `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`,
+  Apache-2.0, `ADR-0004`): adapted FHIR R4 interchange, loss-aware diagnostic, and non-clinical scope refusal contracts.
+- `src/worker_policy/mod.rs`, `src/os_sandbox/*.rs`, `src/bin/os_sandbox_probe.rs`, `fixtures/worker.entitlements.plist`,
+  `tests/os_sandbox_030_*.rs`..`tests/os_sandbox_053_*.rs`, and `tests/worker_policy_deny_default.rs` are admission
+  `ADM-0018` (T10, `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`, Apache-2.0, `ADR-0004`):
+  adapted cross-platform OS worker sandbox plans, probes, and deny-by-default worker supervision policy (`TA-26`).
 - `decide_pooling` checks independence declarations only. It has no population or timepoint
   input, and is not statistical validation. Refusing overlap chains across groups awaits a
   statistician's ruling.

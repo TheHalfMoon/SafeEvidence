@@ -1,0 +1,16 @@
+[package]
+name = "safeevidence-docs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+hex = "=0.4.3"
+safeevidence-contracts = { version = "=0.0.0", path = "../safeevidence-contracts" }
+safeevidence-fhir = { version = "=0.0.0", path = "../safeevidence-fhir" }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+sha2 = "=0.11.0"
+thiserror = "=2.0.21"

@@ -79,9 +79,14 @@ distribution must wait. No source is silently relicensed into Apache-2.0.
 | ADM-0007 | T12 privacy probes, doctor axes, and hostile-MIME tests (adapted) | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/tests/privacy` |
 | ADM-0008 | T30 tool-source audit (adapted) | `TheHalfMoon/ottari` @ `73706029849bcbe51243624e37f03a1969dc74ca` | Apache-2.0 | `tools/governance/donor/tool_audit.py` |
 | ADM-0009 | T03 Linux Secret Service calls, as a helper process (adapted) | `TheHalfMoon/ottari` @ `73706029849bcbe51243624e37f03a1969dc74ca` | Apache-2.0 | `product/crates/safeevidence-linux-keyring-helper` |
-| ADM-0010 | Product Rust dependency closure (`CRATE-product-cargo`, 175 packages) | `crates.io` (`product/Cargo.lock`) | SPDX allowlist (`product/deny.toml`) | `product/Cargo.lock` |
-| ADM-0011 | Desktop Rust dependency closure (`CRATE-desktop-cargo`, 460 packages) | `crates.io` (`product/apps/desktop/src-tauri/Cargo.lock`) | SPDX allowlist (`product/apps/desktop/src-tauri/deny.toml`) | `product/apps/desktop/src-tauri/Cargo.lock` |
+| ADM-0010 | Product Rust dependency closure (`CRATE-product-cargo`, 179 packages) | `crates.io` (`product/Cargo.lock`) | SPDX allowlist (`product/deny.toml`) | `product/Cargo.lock` |
+| ADM-0011 | Desktop Rust dependency closure (`CRATE-desktop-cargo`, 462 packages) | `crates.io` (`product/apps/desktop/src-tauri/Cargo.lock`) | SPDX allowlist (`product/apps/desktop/src-tauri/deny.toml`) | `product/apps/desktop/src-tauri/Cargo.lock` |
 | ADM-0012 | Desktop npm dependency closure (`CRATE-desktop-npm`, 82 packages; `--ignore-scripts`) | `registry.npmjs.org` (`product/apps/desktop/package-lock.json`) | MIT, Apache-2.0, Apache-2.0 OR MIT, BSD-3-Clause, ISC, MPL-2.0 | `product/apps/desktop/package-lock.json` |
+| ADM-0015 | T05 network broker, SSRF URL/IP defense, and `TA-30` preview receipt (adapted) | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/crates/safeevidence-contracts`, `product/crates/safeevidence-network` |
+| ADM-0016 | T07 content-addressed Pack v0 format, store, and monotonic anti-rollback (adapted; `runtime.rs` excluded) | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/crates/safeevidence-contracts`, `product/crates/safeevidence-pack` |
+| ADM-0017 | T09 FHIR R4 lexical gate, UCUM subset pin, and closed extractors for synthetic research fixtures (adapted) | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/crates/safeevidence-contracts`, `product/crates/safeevidence-fhir` |
+| ADM-0018 | T10 OS worker sandbox plans, probes, and deny-by-default supervision policy (adapted) | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/crates/safeevidence-contracts` |
+| ADM-0020 | T16 SafeOCR critical-number, decimal, unit, and negation verification (Rust port + verbatim notices) | `AbdulazizShehri/safeOCR` @ `d2e2ea815b17a7a3f0e59ce43dbdd160966e73a4` | Apache-2.0 | `product/crates/safeevidence-docs` |
 
 Runtime Rust and npm dependencies keep their own licenses. `product/Cargo.lock`,
 `product/apps/desktop/src-tauri/Cargo.lock`, and `product/apps/desktop/package-lock.json`

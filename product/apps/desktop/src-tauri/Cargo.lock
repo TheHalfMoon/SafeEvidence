@@ -2755,6 +2755,7 @@ dependencies = [
  "rusqlite",
  "safeevidence-assurance",
  "safeevidence-contracts",
+ "safeevidence-docs",
  "serde",
  "serde_json",
 ]
@@ -2770,6 +2771,7 @@ dependencies = [
 name = "safeevidence-contracts"
 version = "0.0.0"
 dependencies = [
+ "libc",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -2789,6 +2791,30 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+]
+
+[[package]]
+name = "safeevidence-docs"
+version = "0.0.0"
+dependencies = [
+ "hex",
+ "safeevidence-contracts",
+ "safeevidence-fhir",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "safeevidence-fhir"
+version = "0.0.0"
+dependencies = [
+ "safeevidence-contracts",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

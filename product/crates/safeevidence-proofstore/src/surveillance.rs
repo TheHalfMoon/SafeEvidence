@@ -52,16 +52,33 @@ impl From<BoundedBlobError> for SurveillanceError {
     }
 }
 
+fn contains_ascii_word(haystack_lower: &str, word: &str) -> bool {
+    let bytes = haystack_lower.as_bytes();
+    let needle = word.as_bytes();
+    if needle.is_empty() || bytes.len() < needle.len() {
+        return false;
+    }
+    for start in 0..=(bytes.len() - needle.len()) {
+        if &bytes[start..start + needle.len()] == needle {
+            let prev_ok = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
+            let end = start + needle.len();
+            let next_ok = end == bytes.len() || !bytes[end].is_ascii_alphanumeric();
+            if prev_ok && next_ok {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn contains_patient_narrative(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
-    const FORBIDDEN_EN: &[&str] = &[
+    const FORBIDDEN_EN_PHRASES: &[&str] = &[
         "my patient",
         "this patient",
         "my child",
         "my mother",
         "my father",
-        "mrn",
-        "dob",
         "date of birth",
         "should i prescribe",
         "should i give",
@@ -69,6 +86,7 @@ fn contains_patient_narrative(text: &str) -> bool {
         "yo male",
         "yo female",
     ];
+    const FORBIDDEN_EN_WORDS: &[&str] = &["mrn", "dob"];
     const FORBIDDEN_AR: &[&str] = &[
         "\u{0645}\u{0631}\u{064a}\u{0636}\u{064a}",
         "\u{0647}\u{0630}\u{0627} \u{0627}\u{0644}\u{0645}\u{0631}\u{064a}\u{0636}",
@@ -78,7 +96,13 @@ fn contains_patient_narrative(text: &str) -> bool {
         "\u{0647}\u{0644} \u{0627}\u{0635}\u{0641}",
         "\u{0647}\u{0644} \u{0627}\u{0639}\u{0637}\u{064a}",
     ];
-    if FORBIDDEN_EN.iter().any(|needle| lower.contains(needle)) {
+    if FORBIDDEN_EN_PHRASES
+        .iter()
+        .any(|needle| lower.contains(needle))
+        || FORBIDDEN_EN_WORDS
+            .iter()
+            .any(|word| contains_ascii_word(&lower, word))
+    {
         return true;
     }
     let Ok(norm) = NormalizedText::build(text) else {
@@ -261,6 +285,11 @@ pub fn apply_surveillance_cycle(
     events: &[SurveillanceUpdateEvent],
 ) -> Result<Vec<SurveillanceAlert>, SurveillanceError> {
     prevalidate_surveillance_metadata(events)?;
+    for watch in &registry.watches {
+        if let Some(pid) = &watch.linked_proof_id {
+            let _ = store.read(pid)?;
+        }
+    }
     store.execute_surveillance_batch(new_epoch, events)?;
     let mut emitted = Vec::new();
 
