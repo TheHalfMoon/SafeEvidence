@@ -344,6 +344,54 @@ class AdmissionTests(unittest.TestCase):
         self.assertTrue(any("license" in e for e in errs), errs)
         self.assertTrue(any("install-script" in e for e in errs), errs)
 
+    def test_unadmitted_candidate_ledger_keeps_copy_blocked_and_private_paths_withheld(self):
+        repo_root = Path(__file__).resolve().parents[3]
+        manifest = json.loads((repo_root / check.MANIFEST).read_text(encoding="utf-8"))
+        pins = json.loads(
+            (repo_root / "docs/evidence/source_transplant_pins_2026-10-19.json").read_text(
+                encoding="utf-8"
+            )
+        )["packets"]
+        unadmitted = [r for r in manifest["admissions"] if r["state"] != "VERIFIED_ALLOWED"]
+        self.assertEqual(len(unadmitted), 29)
+        withheld_private_repos = {
+            "thehalfmoon/dal",
+            "thehalfmoon/kernux",
+            "thehalfmoon/morize",
+            "thehalfmoon/inercative",
+            "thehalfmoon/signthos",
+            "thehalfmoon/wispral",
+            "thehalfmoon/sentrdel",
+            "thehalfmoon/ecra",
+        }
+        ottari_entries = 0
+        for row in manifest["admissions"]:
+            repo_lower = row["repo"].lower()
+            self.assertNotIn(repo_lower, withheld_private_repos)
+            if repo_lower == "thehalfmoon/ottari":
+                ottari_entries += len(row["files"])
+            if row["state"] != "VERIFIED_ALLOWED":
+                self.assertFalse(row["copy_authorized"], row["admission_id"])
+                self.assertIsNone(row["decision_ref"], row["admission_id"])
+                pkt = pins[row["packet"]]
+                self.assertEqual(row["source_commit"], pkt["commit"], row["admission_id"])
+                pinned_by_path = {
+                    f["path"]: (f["git_blob_oid"], f["bytes"]) for f in pkt["files"]
+                }
+                if row["admission_id"] == "ADM-0041":
+                    self.assertEqual(len(row["files"]), 6)
+                else:
+                    self.assertEqual(len(row["files"]), len(pinned_by_path), row["admission_id"])
+                for entry in row["files"]:
+                    self.assertIsNone(entry["dest_path"], row["admission_id"])
+                    self.assertEqual(entry["modification"], "not_copied", row["admission_id"])
+                    self.assertEqual(
+                        (entry["git_blob_oid"], entry["bytes"]),
+                        pinned_by_path[entry["source_path"]],
+                        row["admission_id"],
+                    )
+        self.assertEqual(ottari_entries, 41)
+
 
 if __name__ == "__main__":
     unittest.main()

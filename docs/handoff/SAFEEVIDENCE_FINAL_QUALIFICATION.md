@@ -1,16 +1,18 @@
 # SafeEvidence Final Engineering Qualification Dossier
 
-Status: `EXT02_SYNTHETIC_ENGINEERING_COMPLETE` (`EXTERNAL_GATES_OPEN` for full V1 clinical, source-rights, human-review, and release closure)
-Date: `2026-11-26`
+Status: `EXT02_SYNTHETIC_ENGINEERING_COMPLETE` (`V1_READINESS_CAMPAIGN_ACTIVE`; `EXTERNAL_GATES_OPEN` for full V1 clinical, source-rights, human-review, and release closure)
+Date: `2026-11-27`
 Repository: `https://github.com/TheHalfMoon/SafeEvidence` (`Apache-2.0` for SafeEvidence-owned code)
 Canonical branch: `main`
 Recovered baseline SHA: `5ccecd7688f1d10fa8474a697d6b6670d8eafec8` (`2026-11-09`)
+Verified `main` SHA: `69fea4c32eaa1384e5305e425fa1076e4b630d94` (`2026-11-26`, PR #95 merged; 7/7 post-merge workflows `success`)
+Authorized development workstation: Windows 11 PC (`C:\Users\Shehr\.gemini\antigravity\scratch\SafeEvidence`) under explicit user override (`"use this pc , dont use mac"`), paired with hosted Ubuntu, Windows, and macOS GitHub Actions checks.
 
 ---
 
 ## 1. Executive Qualification Statement
 
-Every engineering requirement authorized under `EXT-02` (`docs/decisions/M0_EXT02_RATIFICATION_2026-11-05.md`) and `Issue #5` D2 (`ADM-0010`..`ADM-0012` + `ADM-0001`..`ADM-0009`) that does not depend on an unresolved external human, legal, source-rights, model-weight, clinical-charter, or release-signing gate has been implemented, deterministically tested, and independently audited across five bounded pull requests (`#91`-`#94` merged on `main` with `15/15` hosted CI checks each; `#95` submitted for final `15/15` hosted CI verification before merge).
+Every engineering requirement authorized under `EXT-02` (`docs/decisions/M0_EXT02_RATIFICATION_2026-11-05.md`) and `Issue #5` D2 (`ADM-0010`..`ADM-0012` + `ADM-0001`..`ADM-0009`) across the initial M0-M4 synthetic milestone set was implemented, deterministically tested, independently audited, and merged across five bounded pull requests (`#91`-`#95` on `main` @ `69fea4c32eaa1384e5305e425fa1076e4b630d94`, with `15/15` PR checks and all 7 post-merge workflows `success`: `Desktop Shell` `45891481641`, `P00 Foundation Documentation` `45891457314`, `P01 Pre-entry Documentary Guard` `45891457289`, `G01a Synthetic Reproducibility` `45891457363`, `Desktop End-to-End Linux` `45891457391`, `Desktop End-to-End` `45891457318`, and `Product Workspace` `45891457429`). Subsequent V1 readiness work (tracked in `docs/handoff/V1_GATE_AND_ADMISSION_AUDIT_2026-11-27.md`) executes all remaining independent engineering slices while keeping external gates (`EXT-01`, `EXT-03`..`EXT-07`, `EXT-09`) fail-closed.
 
 In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 1. **Frozen baselines remain byte-identical:** the root stdlib-only G01a baseline (`Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `.gitattributes`, `crates/g01a-synthetic/*`, `fixtures/g01a_synthetic_v1.txt`, `docs/evidence/g01a_synthetic_manifest.json`), all 9 frozen planning artifacts in `docs/PLAN_FREEZE.md`, and every `"modification": "none"` donor file in `docs/evidence/source_admissions.json` remain untouched.
@@ -23,7 +25,7 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 
 | Qualification Axis | Status | Governing Authority & Remaining External Gate |
 |---|---|---|
-| `ENGINEERING_COMPLETE` | `EXT02_SYNTHETIC_SCOPE_COMPLETE` (`FALSE` for full V1) | All `EXT-02` greenfield & admitted-donor (`ADM-0001`..`ADM-0012`) engineering work complete; remaining V1 packets are `BLOCKED_EXTERNAL` |
+| `ENGINEERING_COMPLETE` | `EXT02_SYNTHETIC_SCOPE_COMPLETE` (`V1_READINESS_CAMPAIGN_ACTIVE`; `FALSE` for full V1) | Initial M0-M4 `EXT-02` synthetic baseline merged on `69fea4c3`; remaining `ENGINEERING_ACTIONABLE` slices tracked in `docs/handoff/V1_GATE_AND_ADMISSION_AUDIT_2026-11-27.md`; unadmitted V1 packets remain `BLOCKED_EXTERNAL` |
 | `MILESTONE_QUALIFIED` | `G01A_AND_M0_ENGINEERING_COMPLETE` (`AI_ONLY`; `EXT-06` open) | `docs/reviews/M0_M1_EXIT_REVIEW_2026-11-26.md`; human review (`EXT-06`) and `T05` (`EXT-01`) remain open |
 | `CLINICALLY_EVALUATED` | `FALSE` (`BLOCKED_EXTERNAL`) | `EXT-03` -- [Issue #4](https://github.com/TheHalfMoon/SafeEvidence/issues/4) clinical intended-use & evaluation charter |
 | `SOURCE_RIGHTS_CLEARED` | `PARTIAL_BOUNDED` (`ADM-0001`..`ADM-0012` only) | `EXT-01` & `EXT-07` -- [Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5) exact-source, dataset, and model-weight admissions |
@@ -42,7 +44,7 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 | [#92](https://github.com/TheHalfMoon/SafeEvidence/pull/92) | **M0 Vault Cryptographic Domain Separation & Durability:** 24-constant `HIMSAT/` -> `SAFEVD/` (`VAULT_DOMAIN_VERSION = "SAFEVD-v1"`) separation with independent Python-oracle vectors & cross-product negative tests (`domain_separation.rs`), desktop store-key isolation, `open_existing` 8-point kill/contention/snapshot-restore durability (`TA-05` subset) | `3fa3ffc26cee77154d541370a6a54ca08946a30f` | `82df2cdf398a5b1bda52dd5119c5249fd72df796` | `15/15 PASS` |
 | [#93](https://github.com/TheHalfMoon/SafeEvidence/pull/93) | **M1 VS-1a Ask Lineage, Proof Reconciliation & Exit Reviews:** `plan-v1.3` `ClinicalAssertion` storage & `AmendmentRecord` lineage, superseding-free `retract_source`, `EvidenceSpan` UTF-8 scalar & SHA-256 verification, `ANSWER` vs `ANSWER_WITH_CAUTION`, `plan-v1.6` per-population `ASK_MORE`, `ESCALATE` ahead of non-ASCII names, manifest-verified `CommitUnknown` reconciliation, typed UI exclusion codes, `17/17` Win WebView2 & `16/16` Linux WebKitGTK E2E, `M0_M1_EXIT_REVIEW_2026-11-26.md` | `45921e7a57a102ecf049fff03ddad263c8e67a07` | `bd22f0abf3df19bddf137b6ba472d6fa46c10ecf` | `15/15 PASS` |
 | [#94](https://github.com/TheHalfMoon/SafeEvidence/pull/94) | **M2 Evidence V1 Greenfield Subsystems:** `study_linkage.rs` (`T28c` REFERENCE registry/PMID/review containment, `TA-07`), `appraisal.rs` (`RoB 2`, `ROBINS-I`, `QUADAS-2`, `AMSTAR 2`, `GRADE`, `EBMonFHIR`, `TA-12`), `bilingual.rs` + `bilingual_ask.rs` (`TA-08`), `overlay.rs` + `surveillance.rs` (`TA-06`, `TA-19`, local `TA-30`), `bench/ta09_hard/` (`329` docs, `58` queries, `TA-09`), `perturbation.rs` (`25/25` perturbations + PICO mismatch, `TA-10`/`TA-11`) | `457d60e40436648be0ea6f9a9631827a2d9231e9` | `55ce7276c6460b63c358b7620546549e8dfb1e92` | `15/15 PASS` |
-| [#95](https://github.com/TheHalfMoon/SafeEvidence/pull/95) | **M3/M4 Protocol Extraction, Multi-Pane Bilingual Workstation, SafeEvidenceBench & TA-M0 Baseline:** `review_protocol.rs` (`WP-14`/`WP-15`, `TA-17`), multi-pane `EN`/`AR` + `RTL` + WCAG 2.1 AA desktop workstation (`WP-18`/`WP-19`, `19/19` Win WebView2 E2E verified locally; `18`-check Linux WebKitGTK E2E & required checks gated in CI), `SafeEvidenceBench` (`WP-20`, `TA-23`), `RUNTIME_BUDGET_BASELINE_2026-11-26.md` (`WP-M0`, `TA-M0`), final qualification dossier | *(PR #95 head)* | *(pending PR #95 merge)* | Gated on `15/15` CI |
+| [#95](https://github.com/TheHalfMoon/SafeEvidence/pull/95) | **M3/M4 Protocol Extraction, Multi-Pane Bilingual Workstation, SafeEvidenceBench & TA-M0 Baseline:** `review_protocol.rs` (`WP-14`/`WP-15`, `TA-17`), multi-pane `EN`/`AR` + `RTL` + WCAG 2.1 AA desktop workstation (`WP-18`/`WP-19`, `19/19` Win WebView2 E2E & `18/18` hosted Linux WebKitGTK E2E `PASS`), `SafeEvidenceBench` (`WP-20`, `TA-23`), `RUNTIME_BUDGET_BASELINE_2026-11-26.md` (`WP-M0`, `TA-M0`), final qualification dossier | `66224e134c6d02ec6594c680bb542d7c8092d290` | `69fea4c32eaa1384e5305e425fa1076e4b630d94` | `15/15 PASS` (+ `7/7` post-merge) |
 
 ---
 
@@ -50,7 +52,7 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 
 | Row | Target | Disposition | Verified Evidence / Blocking Gate |
 |---|---|---|---|
-| `TA-01` | Admission schema & pin integrity | `TESTED_PASSED` | `source_admission_check.py`, `p01_candidate_integrity.py`, `207` Python governance tests |
+| `TA-01` | Admission schema & pin integrity | `TESTED_PASSED` | `source_admission_check.py`, `p01_candidate_integrity.py`, `208` Python governance tests (`ADM-0001`..`ADM-0041`) |
 | `TA-02` | CycloneDX 1.5 SBOM & notices | `TESTED_PASSED` | `safeevidence-release` (`613` components across 3 lockfiles) + `THIRD_PARTY_NOTICES.md` |
 | `TA-03` | Fresh-checkout offline reproducibility | `TESTED_PASSED` (`plan-v1.2`) | `product-ci.yml` (`fmt`, `clippy -D warnings`, `test --locked`, `deny check`) on Ubuntu, Windows, macOS |
 | `TA-04` | Canonical contracts, no coercion, spans, study independence | `TESTED_PASSED` (`plan-v1.3`) | `safeevidence-contracts` + `safeevidence-proofstore` vault immutability/lineage tests |
@@ -64,12 +66,12 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 | `TA-12` | Appraisal structures & EBMonFHIR | `TESTED_PASSED` (synthetic scope) | `appraisal.rs` + `ta12_appraisal_ebmonfhir.rs` (`RoB 2`, `ROBINS-I`, `QUADAS-2`, `AMSTAR 2`, `GRADE`, human actor gate, `EBMonFHIR` JSON crosswalk) |
 | `TA-13` | Assurance determinism & zero UI percentage | `PARTIAL` (`plan-v1.4` `TESTED_PASSED`; `EXT-01` open) | `safeevidence-assurance` (`1,329` vectors + `17` cases + lexical-emergency ban) + UI zero-percentage check; `T14` DAL vectors gated on `EXT-01` |
 | `TA-14` | Atomic proof admission & fault withholding | `PARTIAL` (`VS-1a` `TESTED_PASSED`; `EXT-07` open) | `answer_faults.rs`, `proof_commit.rs`, `ask_command.rs` (`CommitUnknown` reconciliation); LLM worker kill tests gated on `EXT-07` |
-| `TA-15` | Document parsing & OCR | `BLOCKED_EXTERNAL` | Gated on `EXT-01` (`T16`, `T20`), `EXT-07` (`T29` PaddleOCR models), and `WP-23a` (`T10` sandbox) |
+| `TA-15` | Document parsing & OCR | `PARTIAL` (`ADM-0007` hostile-MIME quarantine actionable; PDF/OCR worker `BLOCKED_EXTERNAL`) | Hostile-MIME quarantine (`ADM-0007` `hostile_mime_010.rs`) `ENGINEERING_ACTIONABLE`; PDF/OCR worker gated on `EXT-01` (`T16`, `T20`), `EXT-07` (`T29` PaddleOCR models), and `WP-23a` (`T10` sandbox) |
 | `TA-16` | Screening replay & ASReview WSS@95 | `PARTIAL` (protocol audit `TESTED_PASSED`; `EXT-01` open) | `review_protocol.rs` hash-chained `ProtocolAuditBundle` (`ta17_protocol_extraction.rs`); `T15` PRISMA & `T18` `ASReview` gated on `EXT-01` |
 | `TA-17` | Quote-anchored structured extraction | `PARTIAL` (gating rule `TESTED_PASSED`; `EXT-01` open) | `StructuredEffectExtraction` (`100%` quote span + verbatim estimate check + `PROPOSED` until human confirms); `T28` Evidence Inference split gated on `EXT-01` |
 | `TA-18` | Meta-analysis pooling & refusal | `PARTIAL` (refusal gate `TESTED_PASSED`; `EXT-01` open) | `decide_pooling` + `decide_subset_pooling`; `T19` `statsmodels` golden numerical worker gated on `EXT-01` + `WP-23a` |
 | `TA-19` | Living validity updates & alerts | `PARTIAL` (local engine `TESTED_PASSED`; `EXT-01` open) | `surveillance.rs` + `ta06_ta19_validity_overlay.rs` (single-cycle cause-named alert, unchanged historical proof bytes) |
-| `TA-20` | Desktop end-to-end journey & shell checklist | `PARTIAL` (`19/19` Win E2E verified locally; `18`-check Linux E2E in CI) | `e2e/ask_checks.mjs` (Ask, span jump, refusals, Evidence/Deep Review/Packs/Privacy panes, CSP, capability refusal, restart, WebView zero-residue); signed pack import (`T07`) & crash-dump/clipboard/shipped-Linux-incognito remain open |
+| `TA-20` | Desktop end-to-end journey & shell checklist | `PARTIAL` (`19/19` Win E2E & `18/18` hosted Linux E2E `TESTED_PASSED`) | `e2e/ask_checks.mjs` (Ask, span jump, refusals, Evidence/Deep Review/Packs/Privacy panes, CSP, capability refusal, restart, WebView zero-residue); signed pack import (`T07`) & crash-dump/clipboard/shipped-Linux-incognito remain open |
 | `TA-21` | No silent network egress | `PARTIAL` (captures active; `EXT-01` open) | Linux `strace -ff` + Windows `netstat`/port-80 0-byte captures; full `T05` OS broker firewall harness gated on `EXT-01` |
 | `TA-22` | Accessibility & RTL | `PARTIAL` (WCAG AA + keyboard + live RTL E2E `TESTED_PASSED`) | `accessibility-rtl.test.ts` (`>= 4.5:1` light/dark contrast, EN/AR parity, RTL arrow reversal) + live E2E keyboard/RTL checks; `axe-core` package remains unadmitted under zero-lockfile-churn `ADM-0012` |
 | `TA-23` | `SafeEvidenceBench` reproducibility | `PARTIAL` (synthetic splits `TESTED_PASSED`; `EXT-01`/`EXT-03` open) | `safeevidence_bench` (`ta23_safeevidence_bench.rs`) produces identical SHA-256 input (`3c123819...`) & output (`f912849b...`) digests across `--debug` and `--release` |
@@ -77,7 +79,7 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 | `TA-25` | Mobile offline shell | `BLOCKED_EXTERNAL` | Gated on `EXT-01` (`T20`, `T24`) + EGM finding V5 (`reqwest`/`hyper` in Tauri mobile targets) |
 | `TA-26` | OS worker sandboxing | `BLOCKED_EXTERNAL` | Gated on `EXT-01` (`T10` sandbox launcher slice) |
 | `TA-27` | Prompt-injection immunity | `PARTIAL` (deterministic Ask immune; worker `BLOCKED_EXTERNAL`) | Closed-grammar deterministic Ask + BiDi/control-char rejection cannot invoke tools/network; generative LLM worker prompt-injection suite gated on `EXT-07` |
-| `TA-28` | Signed installer & TUF pack rollback | `BLOCKED_EXTERNAL` | Gated on `EXT-05` ([Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5)) release signing keys & TUF roles |
+| `TA-28` | Signed installer & TUF pack rollback | `PARTIAL` (unsigned offline staging actionable; signing & TUF `BLOCKED_EXTERNAL`) | Unsigned offline staging manifest & checksum verification `ENGINEERING_ACTIONABLE` in `safeevidence-release`; signed installers & TUF rollback (`T25`) gated on `EXT-05` ([Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5)) |
 | `TA-29` | Dependency-tree HTTP/model denial | `TESTED_PASSED` | `ta29_dependency_denial.py`, `core_no_sockets.py`, `ta29_desktop_denial.py`, and `deny.toml` across all 3 desktop targets |
 | `TA-30` | Outbound-query disclosure (`P00 D7`) | `PARTIAL` (local contract `TESTED_PASSED`; `EXT-01` open) | `surveillance.rs` (`outbound_opt_in: false` default, patient-narrative rejection, exact `prepare_outbound_preview`); live `T05` transport gated on `EXT-01` |
 | `TA-M0` | Reference-machine runtime budgets | `TESTED_PASSED` (synthetic scope) | `docs/RUNTIME_BUDGET_BASELINE_2026-11-26.md` (`14.00 MiB` release exe, `2.50 s` cold start, `3.8 ms` `p50` warm Ask, `25.58 MiB` host RSS / `364.70 MiB` WebView2 tree) |
