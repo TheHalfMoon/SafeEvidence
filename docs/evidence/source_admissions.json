@@ -1783,8 +1783,8 @@
           "source_path": "tests/test_foundation_contracts.py",
           "git_blob_oid": "74982a807dff081af1ed2ceb8716bfcac1ded3b0",
           "bytes": 6891,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-docs/tests/t16_foundation_contracts.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "tests/test_labgold.py",

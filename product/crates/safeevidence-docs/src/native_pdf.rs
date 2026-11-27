@@ -422,6 +422,98 @@ fn parse_obj_refs_in_slice(slice: &[u8]) -> Vec<u32> {
     out
 }
 
+fn find_pdf_dict_key(header: &[u8], key: &[u8]) -> Option<usize> {
+    let mut i = 0;
+    while i + key.len() <= header.len() {
+        if &header[i..i + key.len()] == key
+            && (i == 0 || is_pdf_ws_or_delim(header[i - 1]))
+            && (i + key.len() == header.len() || is_pdf_ws_or_delim(header[i + key.len()]))
+        {
+            return Some(i + key.len());
+        }
+        i += 1;
+    }
+    None
+}
+
+fn read_pdf_name_token<'a>(bytes: &'a [u8], i: &mut usize) -> Option<&'a [u8]> {
+    skip_pdf_ws_and_comments(bytes, i);
+    if *i >= bytes.len() || bytes[*i] != b'/' {
+        return None;
+    }
+    let start = *i;
+    *i += 1;
+    while *i < bytes.len() && !is_pdf_ws_or_delim(bytes[*i]) {
+        *i += 1;
+    }
+    Some(&bytes[start..*i])
+}
+
+/// Validates stream `/Filter` and `/DecodeParms` dictionary entries fail-closed (`TA-15`):
+/// - Rejects `/DecodeParms` or `/DP` (e.g. PNG/TIFF predictors).
+/// - Admits uncompressed streams (no `/Filter` / `/F`, or empty `[]`) as `Ok(false)`.
+/// - Admits single `/FlateDecode` / `/Fl` (or `[/FlateDecode]` / `[/Fl]`) as `Ok(true)`.
+/// - Rejects any other `/Filter` (`/ASCII85Decode`, `/LZWDecode`, `/Crypt`, multi-filter pipelines)
+///   with `Err(PdfExtractError::MalformedPdf(...))`.
+fn classify_stream_filters(header: &[u8]) -> Result<bool, PdfExtractError> {
+    if find_pdf_dict_key(header, b"/DecodeParms").is_some()
+        || find_pdf_dict_key(header, b"/DP").is_some()
+    {
+        return Err(PdfExtractError::MalformedPdf(
+            "unsupported stream /DecodeParms".to_owned(),
+        ));
+    }
+    let filter_val_pos =
+        find_pdf_dict_key(header, b"/Filter").or_else(|| find_pdf_dict_key(header, b"/F"));
+    let Some(mut pos) = filter_val_pos else {
+        return Ok(false);
+    };
+    skip_pdf_ws_and_comments(header, &mut pos);
+    if pos >= header.len() {
+        return Err(PdfExtractError::MalformedPdf(
+            "truncated stream /Filter".to_owned(),
+        ));
+    }
+    if header[pos] == b'/' {
+        let name = read_pdf_name_token(header, &mut pos).unwrap_or(b"");
+        if name == b"/FlateDecode" || name == b"/Fl" {
+            return Ok(true);
+        }
+        return Err(PdfExtractError::MalformedPdf(format!(
+            "unsupported stream /Filter {}",
+            String::from_utf8_lossy(name)
+        )));
+    }
+    if header[pos] == b'[' {
+        pos += 1;
+        skip_pdf_ws_and_comments(header, &mut pos);
+        if pos < header.len() && header[pos] == b']' {
+            return Ok(false);
+        }
+        let Some(name) = read_pdf_name_token(header, &mut pos) else {
+            return Err(PdfExtractError::MalformedPdf(
+                "malformed stream /Filter array".to_owned(),
+            ));
+        };
+        if name != b"/FlateDecode" && name != b"/Fl" {
+            return Err(PdfExtractError::MalformedPdf(format!(
+                "unsupported stream /Filter {}",
+                String::from_utf8_lossy(name)
+            )));
+        }
+        skip_pdf_ws_and_comments(header, &mut pos);
+        if pos >= header.len() || header[pos] != b']' {
+            return Err(PdfExtractError::MalformedPdf(
+                "multi-stage stream /Filter pipeline unsupported".to_owned(),
+            ));
+        }
+        return Ok(true);
+    }
+    Err(PdfExtractError::MalformedPdf(
+        "unsupported stream /Filter value".to_owned(),
+    ))
+}
+
 fn decode_object_stream(
     obj_body: &[u8],
     total_decompressed: &mut usize,
@@ -442,7 +534,7 @@ fn decode_object_stream(
         raw_stream = &raw_stream[..raw_stream.len() - 1];
     }
 
-    let is_flate = find_subslice(header, b"/FlateDecode").is_some();
+    let is_flate = classify_stream_filters(header)?;
     let decoded = if is_flate {
         zlib_decompress_bounded(
             raw_stream,

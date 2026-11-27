@@ -245,11 +245,41 @@ fn rejects_artifact_kind_swap_metadata_tamper_and_colon_ads_paths() {
         PackAdmitReason::InvalidSignature
     );
 
-    // Colon NTFS ADS path (`payload.txt:ads`) rejected fail-closed:
-    let mut ads_manifest = valid;
-    ads_manifest.artifacts[0].relative_path = "payload.txt:ads".to_owned();
+    // Colon NTFS ADS path (`payload.txt:ads`), double slash (`sub//payload.txt`), trailing slash,
+    // DOS reserved stem (`CON.txt`), file-vs-dir prefix collision (`a` + `a/b.txt`), and untrimmed
+    // `pack_id` rejected fail-closed:
+    for bad_rel in [
+        "payload.txt:ads",
+        "sub//payload.txt",
+        "payload.txt/",
+        "CON.txt",
+        "payload.txt.",
+    ] {
+        let mut bad = valid.clone();
+        bad.artifacts[0].relative_path = bad_rel.to_owned();
+        assert_eq!(
+            store.admit(bad).unwrap_err().reason(),
+            PackAdmitReason::InvalidManifest,
+            "{bad_rel} must be rejected"
+        );
+    }
+
+    let mut prefix_collision = valid.clone();
+    prefix_collision.artifacts[0].relative_path = "models/a".to_owned();
+    prefix_collision.artifacts.push(PackArtifactEntry {
+        relative_path: "models/a/weights.onnx".to_owned(),
+        kind: PackArtifactKind::OnnxModel,
+        digest: prefix_collision.artifacts[0].digest.clone(),
+    });
     assert_eq!(
-        store.admit(ads_manifest).unwrap_err().reason(),
+        store.admit(prefix_collision).unwrap_err().reason(),
+        PackAdmitReason::InvalidManifest
+    );
+
+    let mut untrimmed_id = valid;
+    untrimmed_id.pack_id = safeevidence_contracts::objects::OpaqueId::new(" pack-sec-v1 ");
+    assert_eq!(
+        store.admit(untrimmed_id).unwrap_err().reason(),
         PackAdmitReason::InvalidManifest
     );
 }

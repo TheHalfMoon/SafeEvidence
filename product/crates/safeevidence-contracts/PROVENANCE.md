@@ -54,7 +54,7 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
 - `src/fhir/mod.rs` is admission `ADM-0017` (T09, `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`,
   Apache-2.0, `ADR-0004`): adapted FHIR R4 interchange, loss-aware diagnostic, and non-clinical scope refusal contracts.
 - `src/worker_policy/mod.rs`, `src/os_sandbox/*.rs`, `src/bin/os_sandbox_probe.rs`, `fixtures/worker.entitlements.plist`,
-  `tests/os_sandbox_030_*.rs`..`tests/os_sandbox_053_*.rs`, and `tests/worker_policy_deny_default.rs` are admission
+  `tests/os_sandbox_{030,031,033,038,040,041,052,053}.rs`, and `tests/worker_policy_deny_default.rs` are admission
   `ADM-0018` (T10, `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`, Apache-2.0, `ADR-0004`):
   adapted cross-platform OS worker sandbox plans, probes, and deny-by-default worker supervision policy (`TA-26`).
 - `decide_pooling` checks independence declarations only. It has no population or timepoint

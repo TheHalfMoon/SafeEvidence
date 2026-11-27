@@ -7,7 +7,10 @@
 use safeevidence_contracts::objects::OpaqueId;
 use safeevidence_contracts::packs::{PackManifestV0, PackPromotionState};
 
-use crate::format::{AdmitError, compute_content_digest, validate_relative_artifact_path};
+use crate::format::{
+    AdmitError, compute_content_digest, validate_no_duplicate_or_prefix_paths,
+    validate_relative_artifact_path,
+};
 use crate::trust::{PackTrustError, pack_signing_payload, verify_pack_signature};
 
 /// Admitted pack registry (Core Host owned).
@@ -25,35 +28,51 @@ impl PackStore {
     /// Re-verifies manifest cryptographic signature, content digest, artifact kinds, SemVer, and
     /// monotonic anti-rollback before admitting `manifest` (`TA-06` + `TA-28`).
     pub fn admit(&mut self, manifest: PackManifestV0) -> Result<(), AdmitError> {
-        if manifest.pack_id.as_str().trim().is_empty() {
-            return Err(AdmitError::InvalidManifest("empty pack_id".into()));
+        let pid = manifest.pack_id.as_str();
+        if pid.is_empty() || pid.trim() != pid {
+            return Err(AdmitError::InvalidManifest(
+                "empty or non-canonical pack_id".into(),
+            ));
         }
-        if manifest.rights_uri.trim().is_empty() {
+        if manifest.version.trim() != manifest.version {
+            return Err(AdmitError::InvalidManifest("untrimmed version".into()));
+        }
+        if manifest.rights_uri.is_empty() {
             return Err(AdmitError::MissingRights);
         }
-        if manifest.sbom_ref.trim().is_empty() {
-            return Err(AdmitError::InvalidManifest("empty sbom_ref".into()));
+        if manifest.rights_uri.trim() != manifest.rights_uri {
+            return Err(AdmitError::InvalidManifest("untrimmed rights_uri".into()));
         }
-        if manifest.signature_hex.trim().is_empty() {
+        if manifest.sbom_ref.is_empty() || manifest.sbom_ref.trim() != manifest.sbom_ref {
+            return Err(AdmitError::InvalidManifest(
+                "empty or untrimmed sbom_ref".into(),
+            ));
+        }
+        if manifest.trust_root_id.is_empty()
+            || manifest.trust_root_id.trim() != manifest.trust_root_id
+        {
+            return Err(AdmitError::UnknownTrustRoot);
+        }
+        if manifest.signature_hex.is_empty() {
             return Err(AdmitError::MissingSignature);
+        }
+        if manifest.signature_hex.trim() != manifest.signature_hex {
+            return Err(AdmitError::InvalidSignature);
         }
         if manifest.artifacts.is_empty() {
             return Err(AdmitError::InvalidManifest(
                 "pack must declare at least one artifact".into(),
             ));
         }
-        let mut seen_ci = std::collections::BTreeSet::new();
         for art in &manifest.artifacts {
             if art.kind.is_forbidden_by_default() {
                 return Err(AdmitError::ForbiddenKind);
             }
             validate_relative_artifact_path(&art.relative_path)?;
-            if !seen_ci.insert(art.relative_path.to_ascii_lowercase()) {
-                return Err(AdmitError::InvalidManifest(
-                    "duplicate artifact relative_path".into(),
-                ));
-            }
         }
+        validate_no_duplicate_or_prefix_paths(
+            manifest.artifacts.iter().map(|a| a.relative_path.as_str()),
+        )?;
         let incoming_ver = semver::Version::parse(&manifest.version)
             .map_err(|_| AdmitError::InvalidManifest("invalid SemVer".into()))?;
         if compute_content_digest(&manifest.artifacts) != manifest.content_digest {

@@ -78,24 +78,26 @@ pub fn gate_fhir_json(
     let resource_type = value
         .get("resourceType")
         .and_then(Value::as_str)
+        .filter(|s| !s.trim().is_empty())
         .ok_or(LexicalError::MissingResourceType)?
         .to_owned();
 
-    let declared = value
-        .get("fhirVersion")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .or_else(|| version_hint.map(str::to_owned));
+    if let Some(hint) = version_hint
+        && hint != FHIR_R4_VERSION
+    {
+        return Err(LexicalError::Version(Some(hint.to_owned())));
+    }
 
-    let fhir_version = match declared.as_deref() {
-        None => FHIR_R4_VERSION.to_owned(),
-        Some(v) if v == FHIR_R4_VERSION => v.to_owned(),
-        Some(_) => return Err(LexicalError::Version(declared)),
-    };
+    match value.get("fhirVersion") {
+        None => {}
+        Some(Value::String(v)) if v == FHIR_R4_VERSION => {}
+        Some(Value::String(v)) => return Err(LexicalError::Version(Some(v.clone()))),
+        Some(other) => return Err(LexicalError::Version(Some(other.to_string()))),
+    }
 
     Ok(LexicalReport {
         resource_type,
-        fhir_version,
+        fhir_version: FHIR_R4_VERSION.to_owned(),
     })
 }
 

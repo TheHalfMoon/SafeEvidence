@@ -349,7 +349,14 @@ pub fn verify_pack_signature(
     if trust_root_id != SYNTHETIC_PACK_TRUST_ROOT_ID {
         return Err(PackTrustError::UnknownTrustRoot);
     }
-    let raw = hex::decode(signature_hex.trim()).map_err(|_| PackTrustError::InvalidEncoding)?;
+    if signature_hex.len() != 128
+        || !signature_hex
+            .bytes()
+            .all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
+    {
+        return Err(PackTrustError::InvalidEncoding);
+    }
+    let raw = hex::decode(signature_hex).map_err(|_| PackTrustError::InvalidEncoding)?;
     let sig: [u8; 64] = raw
         .try_into()
         .map_err(|_| PackTrustError::InvalidEncoding)?;

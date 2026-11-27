@@ -98,11 +98,16 @@ fn read_bounded_artifact(path: &Path, kind: PackArtifactKind) -> Result<Vec<u8>,
     Ok(bytes)
 }
 
+fn is_canonical_lower_hex(s: &str, expected_len: usize) -> bool {
+    s.len() == expected_len
+        && s.bytes()
+            .all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
+}
+
 fn parse_hex_digest(hex: &str) -> Result<DigestSha256, AdmitError> {
-    let hex = hex.trim();
-    if hex.len() != 64 {
+    if !is_canonical_lower_hex(hex, 64) {
         return Err(AdmitError::InvalidManifest(
-            "digest must be 64 hex chars".into(),
+            "digest must be 64 canonical lowercase hex chars".into(),
         ));
     }
     let raw = hex::decode(hex).map_err(|_| AdmitError::InvalidManifest("digest hex".into()))?;
@@ -112,10 +117,38 @@ fn parse_hex_digest(hex: &str) -> Result<DigestSha256, AdmitError> {
     Ok(DigestSha256::from_bytes(bytes))
 }
 
+fn is_windows_reserved_stem(segment: &str) -> bool {
+    let stem = segment.split('.').next().unwrap_or(segment);
+    matches!(
+        stem.to_ascii_uppercase().as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
+}
+
 pub(crate) fn validate_relative_artifact_path(relative: &str) -> Result<(), AdmitError> {
     let rel = Path::new(relative);
-    if relative.trim().is_empty()
-        || relative.trim() != relative
+    if relative.is_empty()
         || relative.contains('\\')
         || relative.contains(':')
         || relative.chars().any(char::is_control)
@@ -127,6 +160,39 @@ pub(crate) fn validate_relative_artifact_path(relative: &str) -> Result<(), Admi
         return Err(AdmitError::InvalidManifest(
             "artifact path escapes pack root or uses forbidden characters".into(),
         ));
+    }
+    for seg in relative.split('/') {
+        if seg.is_empty()
+            || seg == "."
+            || seg == ".."
+            || seg.starts_with(' ')
+            || seg.ends_with(' ')
+            || seg.ends_with('.')
+            || is_windows_reserved_stem(seg)
+        {
+            return Err(AdmitError::InvalidManifest(
+                "artifact path contains empty, reserved, or non-canonical segment".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_no_duplicate_or_prefix_paths<'a>(
+    paths: impl Iterator<Item = &'a str>,
+) -> Result<(), AdmitError> {
+    let mut lowered: Vec<String> = paths.map(str::to_ascii_lowercase).collect();
+    lowered.sort();
+    for pair in lowered.windows(2) {
+        let a = &pair[0];
+        let b = &pair[1];
+        if a == b
+            || (b.len() > a.len() && b.starts_with(a.as_str()) && b.as_bytes()[a.len()] == b'/')
+        {
+            return Err(AdmitError::InvalidManifest(
+                "duplicate or file-vs-directory colliding artifact relative_path".into(),
+            ));
+        }
     }
     Ok(())
 }
@@ -267,24 +333,34 @@ pub fn admit_pack_dir(path: &Path) -> Result<PackManifestV0, AdmitError> {
     let wire: WirePackManifest =
         serde_json::from_slice(&raw).map_err(|err| AdmitError::InvalidManifest(err.to_string()))?;
 
-    if wire.pack_id.trim().is_empty() {
-        return Err(AdmitError::InvalidManifest("empty pack_id".into()));
-    }
-    if semver::Version::parse(wire.version.trim()).is_err() {
+    if wire.pack_id.is_empty() || wire.pack_id.trim() != wire.pack_id {
         return Err(AdmitError::InvalidManifest(
-            "pack version must be valid SemVer".into(),
+            "empty or untrimmed pack_id".into(),
         ));
     }
-    if wire.rights_uri.trim().is_empty() {
+    if wire.version.trim() != wire.version || semver::Version::parse(&wire.version).is_err() {
+        return Err(AdmitError::InvalidManifest(
+            "pack version must be canonical untrimmed SemVer".into(),
+        ));
+    }
+    if wire.rights_uri.is_empty() {
         return Err(AdmitError::MissingRights);
     }
-    if wire.sbom_ref.trim().is_empty() {
-        return Err(AdmitError::InvalidManifest("empty sbom_ref".into()));
+    if wire.rights_uri.trim() != wire.rights_uri {
+        return Err(AdmitError::InvalidManifest("untrimmed rights_uri".into()));
     }
-    if wire.signature_hex.trim().is_empty() {
+    if wire.sbom_ref.is_empty() || wire.sbom_ref.trim() != wire.sbom_ref {
+        return Err(AdmitError::InvalidManifest(
+            "empty or untrimmed sbom_ref".into(),
+        ));
+    }
+    if wire.signature_hex.is_empty() {
         return Err(AdmitError::MissingSignature);
     }
-    if wire.trust_root_id.trim().is_empty() {
+    if wire.signature_hex.trim() != wire.signature_hex {
+        return Err(AdmitError::InvalidSignature);
+    }
+    if wire.trust_root_id.is_empty() || wire.trust_root_id.trim() != wire.trust_root_id {
         return Err(AdmitError::UnknownTrustRoot);
     }
     if wire.artifacts.is_empty() {
@@ -293,14 +369,13 @@ pub fn admit_pack_dir(path: &Path) -> Result<PackManifestV0, AdmitError> {
         ));
     }
 
-    let mut seen_rel = std::collections::BTreeSet::new();
+    for art in &wire.artifacts {
+        validate_relative_artifact_path(&art.relative_path)?;
+    }
+    validate_no_duplicate_or_prefix_paths(wire.artifacts.iter().map(|a| a.relative_path.as_str()))?;
+
     let mut artifacts = Vec::new();
     for art in &wire.artifacts {
-        if !seen_rel.insert(art.relative_path.to_ascii_lowercase()) {
-            return Err(AdmitError::InvalidManifest(
-                "duplicate artifact relative_path".into(),
-            ));
-        }
         if forbidden_reason(art.kind).is_some() {
             return Err(AdmitError::ForbiddenKind);
         }
@@ -335,12 +410,12 @@ pub fn admit_pack_dir(path: &Path) -> Result<PackManifestV0, AdmitError> {
     }
 
     let payload = pack_signing_payload(
-        wire.pack_id.trim(),
-        wire.version.trim(),
+        &wire.pack_id,
+        &wire.version,
         wire.pack_epoch,
-        wire.content_digest.trim(),
-        wire.rights_uri.trim(),
-        wire.sbom_ref.trim(),
+        &wire.content_digest,
+        &wire.rights_uri,
+        &wire.sbom_ref,
         &wire.runtime_requirements,
         &wire.benchmark_links,
     );
@@ -365,16 +440,16 @@ pub fn admit_pack_dir(path: &Path) -> Result<PackManifestV0, AdmitError> {
 
     Ok(PackManifestV0 {
         pack_id: OpaqueId::new(wire.pack_id),
-        version: wire.version.trim().to_owned(),
+        version: wire.version,
         pack_epoch: wire.pack_epoch,
         content_digest: declared,
         artifacts,
-        rights_uri: wire.rights_uri.trim().to_owned(),
-        sbom_ref: wire.sbom_ref.trim().to_owned(),
+        rights_uri: wire.rights_uri,
+        sbom_ref: wire.sbom_ref,
         runtime_requirements: wire.runtime_requirements,
         benchmark_links: wire.benchmark_links,
         promotion_state,
         trust_root_id: wire.trust_root_id,
-        signature_hex: wire.signature_hex.trim().to_owned(),
+        signature_hex: wire.signature_hex,
     })
 }

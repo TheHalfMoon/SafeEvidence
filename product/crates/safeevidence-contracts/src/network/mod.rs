@@ -169,7 +169,16 @@ pub fn is_dns_host_name(host: &str) -> bool {
     if host.is_empty() || host.len() > 253 || !host.contains('.') {
         return false;
     }
-    host.split('.').all(|label| {
+    let labels: Vec<&str> = host.split('.').collect();
+    let Some(&tld) = labels.last() else {
+        return false;
+    };
+    if tld.bytes().all(|b| b.is_ascii_digit())
+        || matches!(tld, "localhost" | "local" | "internal" | "invalid" | "arpa")
+    {
+        return false;
+    }
+    labels.into_iter().all(|label| {
         !label.is_empty()
             && label.len() <= 63
             && !label.starts_with('-')
@@ -180,16 +189,16 @@ pub fn is_dns_host_name(host: &str) -> bool {
     })
 }
 
-/// Rejects path traversal, fragments (`#`), backslashes, double slashes, control bytes, and
-/// percent-encoded slash/dot/fragment sequences (`%2f`, `%5c`, `%2e`, `%00`, `%23`) that a server
-/// or client might normalize across an allowlist prefix or preview boundary.
+/// Rejects path traversal, fragments (`#`), backslashes, double slashes, non-ASCII / control bytes,
+/// and percent-encoded slash/dot/fragment sequences (`%2f`, `%5c`, `%2e`, `%00`, `%23`) that a
+/// server or client might normalize across an allowlist prefix or preview boundary.
 #[must_use]
 pub fn is_unambiguous_url_path(path: &str) -> bool {
     if !path.starts_with('/') || path.starts_with("//") || path.contains('\\') || path.contains('#')
     {
         return false;
     }
-    if path.bytes().any(|b| b <= 0x20 || b == 0x7f) {
+    if path.bytes().any(|b| !b.is_ascii_graphic()) {
         return false;
     }
     let lower_full = path.to_ascii_lowercase();

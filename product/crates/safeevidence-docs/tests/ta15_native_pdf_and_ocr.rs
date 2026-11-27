@@ -139,4 +139,23 @@ fn preserves_kids_page_order_ignores_stream_substring_in_dict_and_quarantines_bi
             DocumentDenyReason::InvalidUtf8Text
         ))
     );
+
+    // Unsupported `/Filter` (`/ASCII85Decode`), multi-filter pipeline (`[/ASCII85Decode /FlateDecode]`),
+    // and `/DecodeParms` MUST fail closed (`MalformedPdf`) rather than parsing encoded bytes!
+    for bad_header in [
+        "<< /Length 12 /Filter /ASCII85Decode >>",
+        "<< /Length 12 /Filter [/ASCII85Decode /FlateDecode] >>",
+        "<< /Length 12 /Filter /FlateDecode /DecodeParms << /Predictor 12 >> >>",
+    ] {
+        let bad_pdf = format!(
+            "%PDF-1.7\n1 0 obj\n<< /Type /Page /Contents 2 0 R >>\nendobj\n2 0 obj\n{bad_header}\nstream\n(fake text!)\nendstream\nendobj\n%%EOF\n"
+        );
+        assert!(
+            matches!(
+                extract_native_pdf_strict("bad_filter.pdf", bad_pdf.as_bytes()),
+                Err(PdfExtractError::MalformedPdf(_))
+            ),
+            "{bad_header} must fail closed"
+        );
+    }
 }

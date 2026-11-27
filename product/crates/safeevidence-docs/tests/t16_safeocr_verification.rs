@@ -1,7 +1,7 @@
-//! `ADM-0020` / `T16` SafeOCR foundation contracts & critical-value verification tests (`TA-15`).
+//! `ADM-0020` / `T16` SafeOCR critical-value verification tests (`TA-15`).
 //!
-//! Adapted from `AbdulazizShehri/safeOCR` (`tests/test_foundation_contracts.py` and
-//! `tests/test_verification.py`) under Apache-2.0 (`ADR-0004`).
+//! Adapted from `AbdulazizShehri/safeOCR` (`tests/test_verification.py`)
+//! under Apache-2.0 (`ADR-0004`).
 
 use safeevidence_docs::safeocr_contracts::{
     BoundingBox, CandidateSpan, Criticality, DecisionState, LabFieldCandidate, PageAsset,

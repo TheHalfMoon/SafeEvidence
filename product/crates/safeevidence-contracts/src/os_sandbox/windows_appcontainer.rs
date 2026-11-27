@@ -221,9 +221,15 @@ fn path_wide_null(path: &Path) -> Vec<u16> {
         .collect()
 }
 
-/// Child entry: attempt to read `marker`; exit 0 on `PermissionDenied`, 2 if readable.
+/// Child entry: attempt to read `marker`; requires active AppContainer token first, then exits 0
+/// on `PermissionDenied`, 2 if readable or unconfined.
 #[must_use]
 pub fn appcontainer_fs_child_exit_code(marker: &Path) -> i32 {
+    match token_is_app_container() {
+        Ok(true) => {}
+        Ok(false) => return 2,
+        Err(()) => return 11,
+    }
     match fs::read(marker) {
         Ok(_) => 2,
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => 0,
@@ -232,14 +238,22 @@ pub fn appcontainer_fs_child_exit_code(marker: &Path) -> i32 {
     }
 }
 
-/// Child entry: attempt TCP connect inside zero-capability AppContainer to prove the OS sandbox
-/// denies outbound sockets (`product/clippy.toml` negative-control exception).
+/// Child entry: attempt TCP connect inside kernel-verified zero-capability AppContainer to prove
+/// the OS sandbox denies outbound sockets (`product/clippy.toml` negative-control exception).
+/// Refuses immediately (exit 2) without opening any socket if the process token is not an
+/// AppContainer!
 #[must_use]
 #[allow(clippy::disallowed_types, clippy::disallowed_methods)]
 pub fn appcontainer_net_child_exit_code() -> i32 {
     use std::io::ErrorKind;
     use std::net::{SocketAddr, TcpStream};
     use std::time::Duration;
+
+    match token_is_app_container() {
+        Ok(true) => {}
+        Ok(false) => return 2,
+        Err(()) => return 11,
+    }
 
     let addr: SocketAddr = "203.0.113.1:9"
         .parse()
@@ -262,7 +276,7 @@ pub fn appcontainer_net_child_exit_code() -> i32 {
     }
 }
 
-/// Panic-free TCP deny probe for LPAC.
+/// Panic-free TCP deny probe for LPAC (requires active AppContainer token before any WinSock call).
 #[must_use]
 pub fn appcontainer_lpac_net_child_exit_code() -> i32 {
     use ffi::{
@@ -270,7 +284,13 @@ pub fn appcontainer_lpac_net_child_exit_code() -> i32 {
         WSADATA, WSAGetLastError, WSAStartup, closesocket, connect, socket,
     };
 
-    // SAFETY: WinSock2 startup/connect/cleanup for a one-shot deny probe.
+    match token_is_app_container() {
+        Ok(true) => {}
+        Ok(false) => return 2,
+        Err(()) => return 11,
+    }
+
+    // SAFETY: WinSock2 startup/connect/cleanup for a one-shot deny probe inside AppContainer.
     unsafe {
         let mut wsa: WSADATA = std::mem::zeroed();
         let startup = WSAStartup(0x0202, &mut wsa);
@@ -303,10 +323,9 @@ pub fn appcontainer_lpac_net_child_exit_code() -> i32 {
         let _ = closesocket(s);
         let _ = WSACleanup();
 
-        // WSAEACCES (10013) is Windows Firewall / AppContainer / LPAC capability denial;
-        // WSAENETUNREACH (10051) / WSAEHOSTUNREACH (10065) occur only when no route exists,
-        // whereas WSAETIMEDOUT (10060) indicates outbound SYN was permitted onto the wire.
-        if rc == SOCKET_ERROR && err != 10060 {
+        // Require explicit WinSock access/capability denial codes (WSAEACCES 10013, etc.),
+        // never route-unreachable or timeout errors.
+        if rc == SOCKET_ERROR && matches!(err, 10013 | 10022 | 10043 | 10044 | 10106) {
             0
         } else {
             2

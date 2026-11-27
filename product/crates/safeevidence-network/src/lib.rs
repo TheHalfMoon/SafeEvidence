@@ -290,12 +290,12 @@ pub fn doctor_status(
     mode: NetworkMode,
     allowlist: &[EgressAllowlistEntry],
 ) -> NetworkBrokerDoctorStatus {
+    let active = allowlist.iter().filter(|e| e.enabled).count();
     NetworkBrokerDoctorStatus {
         present: true,
         mode,
-        default_deny: mode == NetworkMode::NetworkLocked || allowlist.is_empty(),
-        allowlist_entries: u32::try_from(allowlist.iter().filter(|e| e.enabled).count())
-            .unwrap_or(u32::MAX),
+        default_deny: mode == NetworkMode::NetworkLocked || active == 0,
+        allowlist_entries: u32::try_from(active).unwrap_or(u32::MAX),
         live_partner_authorized: false,
         http_client: "none_ta29_fixture_only".to_owned(),
     }

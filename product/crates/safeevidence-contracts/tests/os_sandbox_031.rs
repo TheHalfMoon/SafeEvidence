@@ -53,6 +53,17 @@ fn seatbelt_measured_denies_network() {
         .expect("spawn safeevidence-os-sandbox-probe");
     let code = output.status.code().unwrap_or(-1);
     let stderr = String::from_utf8_lossy(&output.stderr);
+    if std::env::var("SAFEEVIDENCE_TA03_ISOLATED").as_deref() == Ok("1") {
+        // Under `ta03_isolated.sh`, outer `sandbox-exec` forbids nested `sandbox_init` re-init;
+        // `apply_seatbelt_macos` must fail closed (exit 1) rather than masking failure via env var.
+        // Unnested `os_sandbox_031` runs in `product-ci.yml` prior to `ta03_isolated.sh`.
+        assert_eq!(
+            code, 1,
+            "expected nested sandbox_init to fail closed (exit 1); got {code}; stderr={stderr}"
+        );
+        assert!(stderr.contains("apply failed"), "stderr={stderr}");
+        return;
+    }
     assert_eq!(
         code, 0,
         "expected measured network-deny (exit 0); got {code}; stderr={stderr}"

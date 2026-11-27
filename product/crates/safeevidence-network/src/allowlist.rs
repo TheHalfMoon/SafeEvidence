@@ -21,7 +21,7 @@ pub fn evaluate_allowlist(
     allowlist: &[EgressAllowlistEntry],
     request: &NetworkBrokerRequest,
 ) -> AllowlistDecision {
-    if allowlist.is_empty() {
+    if !allowlist.iter().any(|e| e.enabled) {
         return AllowlistDecision::Deny(BrokerReasonCode::EmptyAllowlist);
     }
     let host_norm = request.destination_host.trim().to_ascii_lowercase();
@@ -31,6 +31,7 @@ pub fn evaluate_allowlist(
     }
 
     let mut host_seen = false;
+    let mut mismatch_reason: Option<BrokerReasonCode> = None;
     for entry in allowlist {
         if !entry.enabled {
             continue;
@@ -54,15 +55,19 @@ pub fn evaluate_allowlist(
             continue;
         }
         if !entry.purposes.contains(&request.purpose) {
-            return AllowlistDecision::Deny(BrokerReasonCode::PurposeMismatch);
+            mismatch_reason.get_or_insert(BrokerReasonCode::PurposeMismatch);
+            continue;
         }
         if !entry.data_classes.contains(&request.data_class) {
-            return AllowlistDecision::Deny(BrokerReasonCode::DataClassRefused);
+            mismatch_reason = Some(BrokerReasonCode::DataClassRefused);
+            continue;
         }
         return AllowlistDecision::Allow;
     }
 
-    if host_seen {
+    if let Some(reason) = mismatch_reason {
+        AllowlistDecision::Deny(reason)
+    } else if host_seen {
         AllowlistDecision::Deny(BrokerReasonCode::PurposeMismatch)
     } else {
         AllowlistDecision::Deny(BrokerReasonCode::UnknownDestination)

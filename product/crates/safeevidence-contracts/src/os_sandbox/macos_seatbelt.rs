@@ -56,15 +56,6 @@ pub(super) fn apply_seatbelt_macos() -> Result<(), OsSandboxApplyError> {
             unsafe { sandbox_free_error(errbuf) };
             owned
         };
-        // Under CI `ta03_isolated.sh`, `sandbox-exec` already confines the parent process tree
-        // with `(deny network-outbound (remote ip))`, causing nested `sandbox_init` to report
-        // that a Seatbelt profile is already active. The probe still measures actual TCP denial.
-        if std::env::var_os("SAFEEVIDENCE_TA03_ISOLATED").is_some()
-            && msg.to_ascii_lowercase().contains("already")
-        {
-            SEATBELT_APPLIED.store(true, Ordering::SeqCst);
-            return Ok(());
-        }
         return Err(OsSandboxApplyError::ApplyFailed(msg));
     }
 

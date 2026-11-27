@@ -81,6 +81,11 @@ jobs:
             printf "synthetic-test-only\n" | gnome-keyring-daemon --unlock --components=secrets
             cargo test --offline --locked -p safeevidence-linux-keyring-helper --test native_keyring -- --ignored --test-threads=1
           '
+      - name: Run macOS Seatbelt OS sandbox probe before outer sandbox-exec wrapper
+        if: matrix.os == 'macos-15'
+        shell: bash
+        working-directory: product
+        run: cargo test --offline --locked -p safeevidence-contracts --test os_sandbox_031
       - name: Run TA-03 checks under OS network isolation
         shell: bash
         working-directory: product
