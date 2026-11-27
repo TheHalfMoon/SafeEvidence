@@ -15,7 +15,8 @@
 #![forbid(unsafe_code)]
 
 use safeevidence_contracts::study::{
-    OverlapLink, PoolingDecision, PoolingRefusal, SynthesisInput, decide_pooling,
+    Known, OverlapLink, PoolingDecision, PoolingRefusal, ReportVersionKind, SynthesisInput,
+    decide_pooling,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -32,16 +33,22 @@ pub enum MetaError {
     InvalidVariance(usize),
     #[error("significance level alpha must lie strictly in (0, 1), got {0}")]
     InvalidAlpha(f64),
+    #[error("invalid solver or label option: {0}")]
+    InvalidOption(&'static str),
+    #[error("iterative tau^2 solver failed to converge within tolerance and iteration budget")]
+    ConvergenceFailed,
     #[error("counts must satisfy 0 <= count <= nobs and nobs > 0 (invalid at index {0})")]
     InvalidCounts(usize),
     #[error("sample sizes for SMD must satisfy nobs1 >= 2, nobs2 >= 2, nobs1 + nobs2 >= 5")]
     InvalidSmdSampleSize,
-    #[error("zero cell encountered with ZeroCorrection::None; proportion ratio undefined")]
+    #[error("zero cell encountered with ZeroCorrection::None; proportion variance/ratio undefined")]
     ZeroCellUndefined,
     #[error("invalid continuity correction parameter: {0}")]
     InvalidZeroCorrection(&'static str),
     #[error("study independence pooling gate refused synthesis: {0:?}")]
     PoolingRefused(PoolingRefusal),
+    #[error("cannot pool retracted or expression-of-concern report version: {0:?}")]
+    NonPoolableReportKind(ReportVersionKind),
     #[error(
         "correlated shared-participant inputs require an explicit multivariate covariance model"
     )]
@@ -178,11 +185,16 @@ impl MetaAnalysisResult {
         if !alpha.is_finite() || alpha <= 0.0 || alpha >= 1.0 {
             return Err(MetaError::InvalidAlpha(alpha));
         }
+        let t_hksj = student_t_isf(alpha * 0.5, self.df_resid as f64);
         let crit = if use_t {
-            student_t_isf(alpha * 0.5, self.df_resid as f64)
+            t_hksj
         } else {
             normal_isf(alpha * 0.5)
         };
+        // Cochrane Handbook §10.10.4.4 / Rover-Knapp-Friede ad-hoc floor prevents HKSJ intervals
+        // from collapsing below conventional inverse-variance SE (or to zero width when Q == 0).
+        let sd_fe_hksj_eff = self.sd_eff_w_fe_hksj.max(self.sd_eff_w_fe);
+        let sd_re_hksj_eff = self.sd_eff_w_re_hksj.max(self.sd_eff_w_re);
         Ok((
             EffectInterval {
                 lower: self.mean_effect_fe - crit * self.sd_eff_w_fe,
@@ -193,12 +205,12 @@ impl MetaAnalysisResult {
                 upper: self.mean_effect_re + crit * self.sd_eff_w_re,
             },
             EffectInterval {
-                lower: self.mean_effect_fe - crit * self.sd_eff_w_fe_hksj,
-                upper: self.mean_effect_fe + crit * self.sd_eff_w_fe_hksj,
+                lower: self.mean_effect_fe - t_hksj * sd_fe_hksj_eff,
+                upper: self.mean_effect_fe + t_hksj * sd_fe_hksj_eff,
             },
             EffectInterval {
-                lower: self.mean_effect_re - crit * self.sd_eff_w_re_hksj,
-                upper: self.mean_effect_re + crit * self.sd_eff_w_re_hksj,
+                lower: self.mean_effect_re - t_hksj * sd_re_hksj_eff,
+                upper: self.mean_effect_re + t_hksj * sd_re_hksj_eff,
             },
         ))
     }
@@ -214,8 +226,9 @@ pub struct StudyEffectEntry {
 }
 
 /// Runs `safeevidence_contracts::study::decide_pooling` over `entries` + `overlaps` FIRST,
-/// refusing duplicate studies, overlapping participant cohorts, secondary reviews, or missing
-/// denominators fail-closed before delegating to [`combine_effects`].
+/// refusing duplicate studies, overlapping participant cohorts, secondary reviews, retracted /
+/// expression-of-concern reports, or missing denominators fail-closed before delegating to
+/// [`combine_effects`].
 pub fn combine_independent_studies(
     entries: &[StudyEffectEntry],
     overlaps: &[OverlapLink],
@@ -223,6 +236,14 @@ pub fn combine_independent_studies(
     use_t: bool,
     alpha: f64,
 ) -> Result<(PoolingDecision, MetaAnalysisResult), MetaError> {
+    for entry in entries {
+        if let Known::Known(
+            kind @ (ReportVersionKind::Retraction | ReportVersionKind::ExpressionOfConcern),
+        ) = entry.synthesis_input.report_kind
+        {
+            return Err(MetaError::NonPoolableReportKind(kind));
+        }
+    }
     let inputs: Vec<SynthesisInput> = entries.iter().map(|e| e.synthesis_input.clone()).collect();
     let decision = decide_pooling(&inputs, overlaps).map_err(MetaError::PoolingRefused)?;
     if decision.requires_covariance_method {
@@ -283,12 +304,23 @@ pub fn effectsize_smd(
             return Err(MetaError::InvalidSmdSampleSize);
         }
         let nobs = n1 + n2;
-        let var_diff = (s1 * s1 * (n1 - 1.0) + s2 * s2 * (n2 - 1.0)) / (nobs - 2.0);
-        let sd_diff = var_diff.sqrt();
+        let s_max = s1.max(s2);
+        let r1 = s1 / s_max;
+        let r2 = s2 / s_max;
+        let sd_diff = s_max * ((r1 * r1 * (n1 - 1.0) + r2 * r2 * (n2 - 1.0)) / (nobs - 2.0)).sqrt();
+        if !sd_diff.is_finite() || sd_diff <= 0.0 {
+            return Err(MetaError::InvalidVariance(i));
+        }
         let bias_correction = 1.0 - 3.0 / (4.0 * nobs - 9.0);
         let smd = (m1 - m2) / sd_diff;
         let smd_bc = bias_correction * smd;
+        if !smd_bc.is_finite() {
+            return Err(MetaError::NonFiniteEffect(i));
+        }
         let var_smdbc = nobs / n1 / n2 + (smd_bc * smd_bc) / 2.0 / (nobs - 3.94);
+        if !var_smdbc.is_finite() || var_smdbc <= 0.0 || !(1.0 / var_smdbc).is_finite() {
+            return Err(MetaError::InvalidVariance(i));
+        }
         eff.push(smd_bc);
         var.push(var_smdbc);
     }
@@ -364,6 +396,9 @@ pub fn effectsize_2proportions(
             ProportionStatistic::RiskDifference => {
                 let rd = p1 - p2;
                 let rd_var = p1 * (1.0 - p1) / n1 + p2 * (1.0 - p2) / n2;
+                if !rd_var.is_finite() || rd_var <= 0.0 || !(1.0 / rd_var).is_finite() {
+                    return Err(MetaError::ZeroCellUndefined);
+                }
                 (rd, rd_var)
             }
             ProportionStatistic::LogRiskRatio => {
@@ -372,14 +407,20 @@ pub fn effectsize_2proportions(
                 }
                 let log_rr = p1.ln() - p2.ln();
                 let log_rr_var = (1.0 - p1) / p1 / n1 + (1.0 - p2) / p2 / n2;
+                if !log_rr_var.is_finite() || log_rr_var <= 0.0 || !(1.0 / log_rr_var).is_finite() {
+                    return Err(MetaError::ZeroCellUndefined);
+                }
                 (log_rr, log_rr_var)
             }
             ProportionStatistic::LogOddsRatio => {
                 if p1 <= 0.0 || p1 >= 1.0 || p2 <= 0.0 || p2 >= 1.0 {
                     return Err(MetaError::ZeroCellUndefined);
                 }
-                let log_or = p1.ln() - (1.0 - p1).ln() - p2.ln() + (1.0 - p2).ln();
+                let log_or = p1.ln() - (-p1).ln_1p() - p2.ln() + (-p2).ln_1p();
                 let log_or_var = 1.0 / (p1 * (1.0 - p1) * n1) + 1.0 / (p2 * (1.0 - p2) * n2);
+                if !log_or_var.is_finite() || log_or_var <= 0.0 || !(1.0 / log_or_var).is_finite() {
+                    return Err(MetaError::ZeroCellUndefined);
+                }
                 (log_or, log_or_var)
             }
             ProportionStatistic::ArcsineSqrt => {
@@ -430,17 +471,38 @@ pub fn combine_effects_with_options(
     if !alpha.is_finite() || alpha <= 0.0 || alpha >= 1.0 {
         return Err(MetaError::InvalidAlpha(alpha));
     }
+    if !tau2_start.is_finite() || tau2_start < 0.0 {
+        return Err(MetaError::InvalidOption(
+            "tau2_start must be finite and non-negative",
+        ));
+    }
+    if !atol.is_finite() || atol <= 0.0 {
+        return Err(MetaError::InvalidOption(
+            "atol must be finite and strictly positive",
+        ));
+    }
+    if maxiter == 0 {
+        return Err(MetaError::InvalidOption("maxiter must be >= 1"));
+    }
+    if row_names.is_some_and(|names| names.len() != k) {
+        return Err(MetaError::InvalidOption(
+            "row_names length must equal study count k",
+        ));
+    }
     for (i, (&y, &v)) in effect.iter().zip(variance).enumerate() {
         if !y.is_finite() {
             return Err(MetaError::NonFiniteEffect(i));
         }
-        if !v.is_finite() || v <= 0.0 {
+        if !v.is_finite() || v <= 0.0 || !(1.0 / v).is_finite() {
             return Err(MetaError::InvalidVariance(i));
         }
     }
 
     let weights_fe: Vec<f64> = variance.iter().map(|&v| 1.0 / v).collect();
     let w_total_fe: f64 = weights_fe.iter().sum();
+    if !w_total_fe.is_finite() || w_total_fe <= 0.0 {
+        return Err(MetaError::InvalidVariance(0));
+    }
     let weights_rel_fe: Vec<f64> = weights_fe.iter().map(|&w| w / w_total_fe).collect();
     let mean_effect_fe: f64 = weights_rel_fe
         .iter()
@@ -464,7 +526,11 @@ pub fn combine_effects_with_options(
 
     let (tau2, tau2_converged) = match method_re {
         RandomEffectsMethod::PauleMandel => {
-            fit_tau_iterative(effect, variance, tau2_start, atol, maxiter)
+            let (t2, conv) = fit_tau_iterative(effect, variance, tau2_start, atol, maxiter);
+            if !conv || !t2.is_finite() {
+                return Err(MetaError::ConvergenceFailed);
+            }
+            (t2, true)
         }
         RandomEffectsMethod::DerSimonianLaird => {
             let w_sq_sum: f64 = weights_fe.iter().map(|&w| w * w).sum();
@@ -550,11 +616,12 @@ pub fn combine_effects_with_options(
         });
     }
 
-    let crit = if use_t {
-        student_t_isf(alpha * 0.5, df)
-    } else {
-        z_sample
-    };
+    let t_hksj = student_t_isf(alpha * 0.5, df);
+    let crit = if use_t { t_hksj } else { z_sample };
+    // Cochrane Handbook §10.10.4.4 / Rover-Knapp-Friede ad-hoc floor prevents HKSJ intervals
+    // from collapsing below conventional inverse-variance SE (or to zero width when Q == 0).
+    let sd_fe_hksj_eff = sd_eff_w_fe_hksj.max(sd_eff_w_fe);
+    let sd_re_hksj_eff = sd_eff_w_re_hksj.max(sd_eff_w_re);
     let ci_fe = EffectInterval {
         lower: mean_effect_fe - crit * sd_eff_w_fe,
         upper: mean_effect_fe + crit * sd_eff_w_fe,
@@ -564,12 +631,12 @@ pub fn combine_effects_with_options(
         upper: mean_effect_re + crit * sd_eff_w_re,
     };
     let ci_fe_hksj = EffectInterval {
-        lower: mean_effect_fe - crit * sd_eff_w_fe_hksj,
-        upper: mean_effect_fe + crit * sd_eff_w_fe_hksj,
+        lower: mean_effect_fe - t_hksj * sd_fe_hksj_eff,
+        upper: mean_effect_fe + t_hksj * sd_fe_hksj_eff,
     };
     let ci_re_hksj = EffectInterval {
-        lower: mean_effect_re - crit * sd_eff_w_re_hksj,
-        upper: mean_effect_re + crit * sd_eff_w_re_hksj,
+        lower: mean_effect_re - t_hksj * sd_re_hksj_eff,
+        upper: mean_effect_re + t_hksj * sd_re_hksj_eff,
     };
 
     let prediction_interval_re = if k >= 3 {
@@ -633,16 +700,50 @@ pub fn fit_tau_iterative(
     maxiter: usize,
 ) -> (f64, bool) {
     let k = eff.len();
-    if k < 2 {
+    if k < 2
+        || var_eff.len() != k
+        || !tau2_start.is_finite()
+        || tau2_start < 0.0
+        || !atol.is_finite()
+        || atol <= 0.0
+        || maxiter == 0
+        || eff.iter().any(|y| !y.is_finite())
+        || var_eff
+            .iter()
+            .any(|&v| !v.is_finite() || v <= 0.0 || !(1.0 / v).is_finite())
+    {
         return (0.0, false);
     }
     let df = (k - 1) as f64;
+
+    // Evaluate Q(0) at the boundary tau^2 = 0 first: since Q(tau^2) is strictly decreasing in
+    // tau^2 >= 0 whenever effects are non-constant (and identically 0 when effects are equal),
+    // Q(0) - df <= atol implies the unique constrained Paule-Mandel solution is tau^2 = 0
+    // regardless of tau2_start.
+    let w0: Vec<f64> = var_eff.iter().map(|&v| 1.0 / v).collect();
+    let w0_sum: f64 = w0.iter().sum();
+    if !w0_sum.is_finite() || w0_sum <= 0.0 {
+        return (0.0, false);
+    }
+    let m0: f64 = w0.iter().zip(eff).map(|(&wi, &yi)| wi * yi).sum::<f64>() / w0_sum;
+    let q0: f64 = w0
+        .iter()
+        .zip(eff)
+        .map(|(&wi, &yi)| wi * (yi - m0) * (yi - m0))
+        .sum();
+    if q0 - df <= atol {
+        return (0.0, true);
+    }
+
     let mut tau2 = tau2_start.max(0.0);
     let mut converged = false;
 
     for _ in 0..maxiter {
         let w: Vec<f64> = var_eff.iter().map(|&v| 1.0 / (v + tau2)).collect();
         let w_sum: f64 = w.iter().sum();
+        if !w_sum.is_finite() || w_sum <= 0.0 {
+            return (tau2, false);
+        }
         let m: f64 = w.iter().zip(eff).map(|(&wi, &yi)| wi * yi).sum::<f64>() / w_sum;
         let resid_sq: Vec<f64> = eff.iter().map(|&yi| (yi - m) * (yi - m)).collect();
         let q_w: f64 = w.iter().zip(&resid_sq).map(|(&wi, &r)| wi * r).sum();
@@ -655,27 +756,14 @@ pub fn fit_tau_iterative(
             break;
         }
         let denom: f64 = w.iter().zip(&resid_sq).map(|(&wi, &r)| wi * wi * r).sum();
-        if denom <= 0.0 {
+        if !denom.is_finite() || denom <= 0.0 {
             break;
         }
         let next = tau2 + ee / denom;
-        if next < 0.0 {
-            tau2 = 0.0;
-            // Re-check at boundary 0.0 on next iteration
-            let w0: Vec<f64> = var_eff.iter().map(|&v| 1.0 / v).collect();
-            let w0_sum: f64 = w0.iter().sum();
-            let m0: f64 = w0.iter().zip(eff).map(|(&wi, &yi)| wi * yi).sum::<f64>() / w0_sum;
-            let q0: f64 = w0
-                .iter()
-                .zip(eff)
-                .map(|(&wi, &yi)| wi * (yi - m0) * (yi - m0))
-                .sum();
-            if q0 - df <= atol {
-                return (0.0, true);
-            }
-        } else {
-            tau2 = next;
+        if !next.is_finite() {
+            break;
         }
+        tau2 = next.max(0.0);
     }
     (tau2, converged)
 }
@@ -683,8 +771,18 @@ pub fn fit_tau_iterative(
 /// One-step method-of-moments $\tau^2$ estimator (`_fit_tau_mm` in `statsmodels`, Kacker 2004).
 #[must_use]
 pub fn fit_tau_mm(eff: &[f64], var_eff: &[f64], weights: &[f64]) -> f64 {
+    let k = eff.len();
+    if k < 2
+        || var_eff.len() != k
+        || weights.len() != k
+        || eff.iter().any(|y| !y.is_finite())
+        || var_eff.iter().any(|&v| !v.is_finite() || v <= 0.0)
+        || weights.iter().any(|&w| !w.is_finite() || w < 0.0)
+    {
+        return 0.0;
+    }
     let w_t: f64 = weights.iter().sum();
-    if w_t <= 0.0 {
+    if !w_t.is_finite() || w_t <= 0.0 {
         return 0.0;
     }
     let m: f64 = weights.iter().zip(eff).map(|(&w, &y)| w * y).sum::<f64>() / w_t;
@@ -701,7 +799,7 @@ pub fn fit_tau_mm(eff: &[f64], var_eff: &[f64], weights: &[f64]) -> f64 {
     let w2_sum: f64 = weights.iter().map(|&w| w * w).sum();
     let expect = w_dot_v - w2_dot_v / w_t;
     let denom = w_t - w2_sum / w_t;
-    if denom <= 0.0 {
+    if !denom.is_finite() || denom <= 0.0 {
         0.0
     } else {
         ((q_w - expect) / denom).max(0.0)
@@ -717,7 +815,22 @@ pub fn fit_tau_iter_mm(
     atol: f64,
     maxiter: usize,
 ) -> (f64, bool) {
-    let mut tau2 = tau2_start.max(0.0);
+    let k = eff.len();
+    if k < 2
+        || var_eff.len() != k
+        || !tau2_start.is_finite()
+        || tau2_start < 0.0
+        || !atol.is_finite()
+        || atol <= 0.0
+        || maxiter == 0
+        || eff.iter().any(|y| !y.is_finite())
+        || var_eff
+            .iter()
+            .any(|&v| !v.is_finite() || v <= 0.0 || !(1.0 / v).is_finite())
+    {
+        return (0.0, false);
+    }
+    let mut tau2 = tau2_start;
     let mut converged = false;
     for _ in 0..maxiter {
         let w: Vec<f64> = var_eff.iter().map(|&v| 1.0 / (v + tau2)).collect();
@@ -835,7 +948,10 @@ fn erfc_exact(x: f64) -> f64 {
 /// Inverse survival function of standard normal: returns $z$ such that $\Pr(Z > z) = p$.
 #[must_use]
 pub fn normal_isf(p: f64) -> f64 {
-    // Acklam initial approximation + 2 Halley steps against erfc_exact
+    if !p.is_finite() || p <= 0.0 || p >= 1.0 {
+        return f64::NAN;
+    }
+    // Acklam initial approximation + 3 Halley steps against erfc_exact
     let q = p.clamp(1e-15, 1.0 - 1e-15);
     let u = 1.0 - q; // CDF target
     const A: [f64; 6] = [
@@ -964,6 +1080,12 @@ fn regularized_beta(x: f64, a: f64, b: f64) -> f64 {
 /// Student-$t_\nu$ upper-tail quantile: returns $t$ such that $\Pr(T_\nu > t) = p$.
 #[must_use]
 pub fn student_t_isf(p: f64, df: f64) -> f64 {
+    if !p.is_finite() || p <= 0.0 || p >= 1.0 || df.is_nan() || df <= 0.0 {
+        return f64::NAN;
+    }
+    if !df.is_finite() {
+        return normal_isf(p);
+    }
     let q = p.clamp(1e-15, 1.0 - 1e-15);
     if (df - 1.0).abs() < 1e-12 {
         return (std::f64::consts::PI * (0.5 - q)).tan();

@@ -2406,7 +2406,7 @@
       "license_spdx": "MIT",
       "decision_ref": "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
       "notices": "THIRD_PARTY_NOTICES.md; code/annotations MIT; underlying PMC Open Access articles carry per-article licenses",
-      "transitive": "Benchmark-only harness (bench/evidence-inference/) for WP-15 non-gating report; never shipped in product",
+      "transitive": "Benchmark-only harness (bench/evidence_inference/) for WP-15 non-gating report; never shipped in product",
       "assets": "PMC OA full-text articles require per-item license filtering before benchmark ingestion",
       "security_test_owner": "founder",
       "files": [

@@ -1,7 +1,13 @@
 //! PRISMA 2-pass conflict-safe bibliographic deduplication (`ADM-0019` / `T15`, `TA-16`).
 //!
 //! Adapted in safe Rust from `TheHalfMoon/MedOrigin` (`src/medscale/litdb/dedupe.py`).
-//! - Pass 1 (`dedupe_exact_identifiers`): merges exact-`record_id` duplicates when identifiers match.
+//! - Pre-gate: records missing resolvable identifiers or non-empty titles are never silently
+//!   collapsed; each invalid record remains distinct and emits an `UncertainEntry`.
+//! - Pass 1 (connected components over shared non-empty normalized `doi`/`pmid`/`arxiv_id`/`s2_corpus_id`):
+//!   merges exact-identifier duplicates across partial identifier tuples (e.g. Crossref DOI-only
+//!   and PubMed DOI+PMID) when secondary identifiers and years (`<= 1` year apart when both present)
+//!   are conflict-free; routes shared-ID records with conflicting secondary IDs or years to
+//!   `UncertainEntry` without merging.
 //! - Pass 2 (`dedupe_records`): merges cross-identifier preprint/published twins ONLY when
 //!   normalized titles match (`>= 20` scalars, `>= 4` tokens), both years exist within `<= 1` year,
 //!   and identifier union is 100% conflict-free. All ambiguous matches route to `UncertainEntry`
@@ -57,12 +63,24 @@ pub struct DedupeResult {
     pub uncertain: Vec<UncertainEntry>,
 }
 
+fn clean_id(value: Option<&str>, lowercase: bool) -> Option<String> {
+    let trimmed = value?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(if lowercase {
+        trimmed.to_ascii_lowercase()
+    } else {
+        trimmed.to_owned()
+    })
+}
+
 fn identifier_conflict(group: &[LiteratureRecord]) -> bool {
     let check = |extract: fn(&Identifiers) -> Option<&str>| -> bool {
         let mut distinct = BTreeSet::new();
         for rec in group {
-            if let Some(val) = extract(&rec.identifiers) {
-                distinct.insert(val.trim().to_ascii_lowercase());
+            if let Some(val) = clean_id(extract(&rec.identifiers), true) {
+                distinct.insert(val);
             }
         }
         distinct.len() > 1
@@ -86,17 +104,31 @@ fn years_compatible(group: &[LiteratureRecord]) -> bool {
     max_y.saturating_sub(min_y) <= 1
 }
 
+fn present_years_conflict(group: &[LiteratureRecord]) -> bool {
+    let mut min_y = i32::MAX;
+    let mut max_y = i32::MIN;
+    let mut count = 0_usize;
+    for rec in group {
+        if let Some(y) = rec.year {
+            min_y = min_y.min(y);
+            max_y = max_y.max(y);
+            count += 1;
+        }
+    }
+    count >= 2 && max_y.saturating_sub(min_y) > 1
+}
+
 fn merge_base(group: &[LiteratureRecord]) -> &LiteratureRecord {
     group
         .iter()
         .min_by(|a, b| {
             let key_a = (
-                u8::from(a.identifiers.doi.is_none()),
+                u8::from(clean_id(a.identifiers.doi.as_deref(), true).is_none()),
                 u8::from(a.evidence_tier != EvidenceTier::PeerReviewed),
                 a.record_id(),
             );
             let key_b = (
-                u8::from(b.identifiers.doi.is_none()),
+                u8::from(clean_id(b.identifiers.doi.as_deref(), true).is_none()),
                 u8::from(b.evidence_tier != EvidenceTier::PeerReviewed),
                 b.record_id(),
             );
@@ -107,22 +139,24 @@ fn merge_base(group: &[LiteratureRecord]) -> &LiteratureRecord {
 
 fn merge_group(group: &[LiteratureRecord]) -> LiteratureRecord {
     let base = merge_base(group);
-    let pick_id = |extract: fn(&Identifiers) -> Option<&str>| -> Option<String> {
-        extract(&base.identifiers)
-            .or_else(|| group.iter().find_map(|r| extract(&r.identifiers)))
-            .map(str::to_owned)
+    let pick_id = |extract: fn(&Identifiers) -> Option<&str>, lower: bool| -> Option<String> {
+        clean_id(extract(&base.identifiers), lower).or_else(|| {
+            group
+                .iter()
+                .find_map(|r| clean_id(extract(&r.identifiers), lower))
+        })
     };
     LiteratureRecord {
         identifiers: Identifiers {
-            doi: pick_id(|id| id.doi.as_deref()),
-            pmid: pick_id(|id| id.pmid.as_deref()),
-            arxiv_id: pick_id(|id| id.arxiv_id.as_deref()),
-            s2_corpus_id: pick_id(|id| id.s2_corpus_id.as_deref()),
+            doi: pick_id(|id| id.doi.as_deref(), true),
+            pmid: pick_id(|id| id.pmid.as_deref(), false),
+            arxiv_id: pick_id(|id| id.arxiv_id.as_deref(), false),
+            s2_corpus_id: pick_id(|id| id.s2_corpus_id.as_deref(), false),
         },
         title: base.title.clone(),
         evidence_tier: base.evidence_tier,
         source_adapter: base.source_adapter.clone(),
-        year: base.year,
+        year: base.year.or_else(|| group.iter().find_map(|r| r.year)),
         venue: base
             .venue
             .clone()
@@ -144,26 +178,106 @@ fn merge_group(group: &[LiteratureRecord]) -> LiteratureRecord {
     }
 }
 
-/// Runs Pass 1 (exact `record_id` collapse) + Pass 2 (conflict-safe normalized-title + year merge).
+fn find_root(parents: &mut [usize], mut x: usize) -> usize {
+    while parents[x] != x {
+        parents[x] = parents[parents[x]];
+        x = parents[x];
+    }
+    x
+}
+
+fn union_sets(parents: &mut [usize], a: usize, b: usize) {
+    let ra = find_root(parents, a);
+    let rb = find_root(parents, b);
+    if ra != rb {
+        if ra < rb {
+            parents[rb] = ra;
+        } else {
+            parents[ra] = rb;
+        }
+    }
+}
+
+/// Runs Pass 1 (connected-component exact-identifier deduplication) + Pass 2 (conflict-safe
+/// normalized-title + year merge).
 #[must_use]
 pub fn dedupe_records(records: &[LiteratureRecord]) -> DedupeResult {
-    // Pass 1: exact `record_id` collapse
-    let mut by_id: BTreeMap<String, Vec<LiteratureRecord>> = BTreeMap::new();
-    for rec in records {
-        by_id.entry(rec.record_id()).or_default().push(rec.clone());
-    }
-    let mut pass1: Vec<LiteratureRecord> = Vec::with_capacity(by_id.len());
+    let mut valid_records: Vec<LiteratureRecord> = Vec::new();
+    let mut invalid_kept: Vec<LiteratureRecord> = Vec::new();
+    let mut uncertain: Vec<UncertainEntry> = Vec::new();
     let mut merges: Vec<MergeEntry> = Vec::new();
-    for (rid, group) in by_id {
+
+    for (idx, rec) in records.iter().enumerate() {
+        if rec.validate().is_err() {
+            uncertain.push(UncertainEntry {
+                record_ids: vec![format!("invalid-input-{idx}")],
+                normalized_title: normalize_title(&rec.title),
+                reason: "record missing resolvable identifier or non-empty title".to_owned(),
+            });
+            invalid_kept.push(rec.clone());
+        } else {
+            valid_records.push(rec.clone());
+        }
+    }
+
+    // Pass 1: connected components across shared non-empty normalized identifiers.
+    let n_valid = valid_records.len();
+    let mut parents: Vec<usize> = (0..n_valid).collect();
+    let mut id_owner: BTreeMap<(u8, String), usize> = BTreeMap::new();
+    for (idx, rec) in valid_records.iter().enumerate() {
+        for (kind, opt_val) in [
+            (0_u8, clean_id(rec.identifiers.doi.as_deref(), true)),
+            (1_u8, clean_id(rec.identifiers.pmid.as_deref(), true)),
+            (2_u8, clean_id(rec.identifiers.arxiv_id.as_deref(), true)),
+            (
+                3_u8,
+                clean_id(rec.identifiers.s2_corpus_id.as_deref(), true),
+            ),
+        ] {
+            if let Some(val) = opt_val {
+                if let Some(&first_idx) = id_owner.get(&(kind, val.clone())) {
+                    union_sets(&mut parents, first_idx, idx);
+                } else {
+                    id_owner.insert((kind, val), idx);
+                }
+            }
+        }
+    }
+
+    let mut components: BTreeMap<usize, Vec<LiteratureRecord>> = BTreeMap::new();
+    for (idx, rec) in valid_records.into_iter().enumerate() {
+        let root = find_root(&mut parents, idx);
+        components.entry(root).or_default().push(rec);
+    }
+
+    let mut pass1: Vec<LiteratureRecord> = Vec::new();
+    let mut blocked_from_pass2: BTreeSet<String> = BTreeSet::new();
+
+    for group in components.into_values() {
         if group.len() == 1 {
             pass1.push(group.into_iter().next().unwrap());
+            continue;
+        }
+        let ids: Vec<String> = group.iter().map(LiteratureRecord::record_id).collect();
+        if identifier_conflict(&group) || present_years_conflict(&group) {
+            for id in &ids {
+                blocked_from_pass2.insert(id.clone());
+            }
+            uncertain.push(UncertainEntry {
+                record_ids: ids,
+                normalized_title: normalize_title(&group[0].title),
+                reason:
+                    "shared identifier with conflicting secondary identifier or publication year"
+                        .to_owned(),
+            });
+            pass1.extend(group);
         } else {
             let merged = merge_group(&group);
             merges.push(MergeEntry {
-                merged_record_id: rid.clone(),
-                source_record_ids: vec![rid; group.len()],
+                merged_record_id: merged.record_id(),
+                source_record_ids: ids,
                 source_records: group,
-                reason: "exact normalized identifier match (PRISMA pass 1)".to_owned(),
+                reason: "shared exact normalized identifier match (PRISMA pass 1)".to_owned(),
             });
             pass1.push(merged);
         }
@@ -172,15 +286,18 @@ pub fn dedupe_records(records: &[LiteratureRecord]) -> DedupeResult {
     // Pass 2: cross-identifier normalized-title + year pass
     pass1.sort_by_key(LiteratureRecord::record_id);
     let mut by_title: BTreeMap<String, Vec<LiteratureRecord>> = BTreeMap::new();
+    let mut kept: Vec<LiteratureRecord> = Vec::new();
     for rec in pass1 {
-        by_title
-            .entry(normalize_title(&rec.title))
-            .or_default()
-            .push(rec);
+        if blocked_from_pass2.contains(&rec.record_id()) {
+            kept.push(rec);
+        } else {
+            by_title
+                .entry(normalize_title(&rec.title))
+                .or_default()
+                .push(rec);
+        }
     }
 
-    let mut kept = Vec::new();
-    let mut uncertain = Vec::new();
     for (title, group) in by_title {
         if group.len() == 1 {
             kept.push(group.into_iter().next().unwrap());
@@ -222,6 +339,8 @@ pub fn dedupe_records(records: &[LiteratureRecord]) -> DedupeResult {
             kept.push(merged);
         }
     }
+
+    kept.extend(invalid_kept);
 
     DedupeResult {
         records: kept,

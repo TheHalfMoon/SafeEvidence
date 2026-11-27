@@ -10,7 +10,7 @@ third-party packages.
 from __future__ import annotations
 
 from collections import Counter
-from typing import Dict, Iterable, Set
+from typing import Dict, Iterable, List, Set
 
 try:
     from .scifact_data import Claim, ClaimPredictions, Label, PredictedAbstract, PredictedDataset
@@ -32,12 +32,16 @@ def compute_f1(counts: Counter, difficulty: str | None = None) -> Dict[str, floa
     return {"precision": precision, "recall": recall, "f1": f1}
 
 
+def _capped_unique_rationales(rationale: Iterable[int]) -> List[int]:
+    return list(dict.fromkeys(rationale))[:MAX_ABSTRACT_SENTS]
+
+
 def contains_evidence(predicted: Set[int], gold: Iterable[Set[int]]) -> bool:
     return any(gold_rat.issubset(predicted) for gold_rat in gold)
 
 
 def is_correct(doc_id: int, doc_pred: PredictedAbstract, gold: Claim) -> tuple[bool, bool]:
-    pred_rationales = doc_pred.rationale[:MAX_ABSTRACT_SENTS]
+    pred_rationales = _capped_unique_rationales(doc_pred.rationale)
     if doc_id not in gold.evidence:
         return False, False
     gold_label = gold.evidence[doc_id].label
@@ -80,8 +84,9 @@ def count_rationale_sents(predicted: Set[int], gold: list[Set[int]]) -> int:
 def count_correct(doc_id: int, doc_pred: PredictedAbstract, gold: Claim) -> tuple[int, int]:
     if doc_id not in gold.evidence:
         return 0, 0
+    capped = _capped_unique_rationales(doc_pred.rationale)
     gold_rationales = [set(x) for x in gold.evidence[doc_id].rationales]
-    n_correct = count_rationale_sents(set(doc_pred.rationale), gold_rationales)
+    n_correct = count_rationale_sents(set(capped), gold_rationales)
     correct_label = int(doc_pred.label == gold.evidence[doc_id].label)
     return n_correct, correct_label * n_correct
 
@@ -94,7 +99,8 @@ def update_counts_sentence(
     for doc_id, doc_pred in pred.predictions.items():
         if doc_pred.label == Label.NEI:
             continue
-        counts_sentence["retrieved"] += len(doc_pred.rationale)
+        capped = _capped_unique_rationales(doc_pred.rationale)
+        counts_sentence["retrieved"] += len(capped)
         n_sel, n_lbl = count_correct(doc_id, doc_pred, gold)
         counts_sentence["correct_selection"] += n_sel
         counts_sentence["correct_label"] += n_lbl
@@ -102,10 +108,17 @@ def update_counts_sentence(
 
 
 def compute_metrics(preds: PredictedDataset) -> Dict[str, Dict[str, float]]:
+    """Evaluates predictions across EVERY claim in `preds.gold.claims` so omitted
+    claim predictions properly count as missed recall rather than dropping from
+    the denominator.
+    """
     counts_abstract: Counter = Counter()
     counts_sentence: Counter = Counter()
-    for pred in preds:
-        gold = preds.gold.get_claim(pred.claim_id)
+    for gold in preds.gold.claims:
+        pred = preds.by_claim_id.get(
+            gold.id,
+            ClaimPredictions(claim_id=gold.id, predictions={}, gold=gold),
+        )
         counts_abstract = update_counts_abstract(pred, gold, counts_abstract)
         counts_sentence = update_counts_sentence(pred, gold, counts_sentence)
     return {

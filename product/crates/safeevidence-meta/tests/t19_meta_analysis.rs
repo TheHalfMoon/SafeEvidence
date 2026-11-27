@@ -305,3 +305,83 @@ fn combine_independent_studies_refuses_duplicate_study_or_overlapping_cohort_and
         ))
     ));
 }
+
+#[test]
+fn homogeneous_pm_converges_to_zero_hksj_avoids_zero_width_and_nonfinite_inputs_fail_closed() {
+    // Homogeneous studies (Q == 0) with tau2_start > 0 must converge to tau2 = 0.0 and produce
+    // strictly positive t_{k-1} HKSJ interval width via Cochrane Rover-Knapp-Friede floor:
+    let (tau2_hom, conv_hom) =
+        fit_tau_iterative(&[0.5, 0.5, 0.5], &[0.04, 0.04, 0.04], 0.25, 1e-8, 50);
+    assert!(conv_hom);
+    assert_eq!(tau2_hom, 0.0);
+
+    let res_hom = combine_effects_with_options(
+        &[0.5, 0.5, 0.5],
+        &[0.04, 0.04, 0.04],
+        RandomEffectsMethod::PauleMandel,
+        None,
+        false,
+        0.05,
+        0.25,
+        1e-8,
+        50,
+    )
+    .expect("homogeneous PM converges");
+    assert_eq!(res_hom.tau2, 0.0);
+    assert!(
+        res_hom.ci_re_hksj.upper - res_hom.ci_re_hksj.lower
+            > res_hom.ci_re.upper - res_hom.ci_re.lower,
+        "HKSJ t_2 interval with Rover-Knapp-Friede floor must be wider than normal z interval even at Q=0"
+    );
+
+    // Non-finite options and subnormal variances fail closed without NaN propagation:
+    assert!(matches!(
+        combine_effects_with_options(
+            &[0.1, 0.2],
+            &[0.04, 0.04],
+            RandomEffectsMethod::PauleMandel,
+            None,
+            false,
+            0.05,
+            f64::INFINITY,
+            1e-7,
+            50,
+        ),
+        Err(MetaError::InvalidOption(_))
+    ));
+    assert!(matches!(
+        combine_effects(
+            &[0.1, 0.2],
+            &[1e-310, 0.04],
+            RandomEffectsMethod::DerSimonianLaird,
+            false,
+            0.05
+        ),
+        Err(MetaError::InvalidVariance(0))
+    ));
+
+    // Extreme scale invariance in effectsize_smd without s^2 underflow/overflow:
+    let (smd_tiny, var_tiny) =
+        effectsize_smd(&[2e-200], &[1e-200], &[30.0], &[1e-200], &[1e-200], &[30.0]).unwrap();
+    let (smd_huge, var_huge) =
+        effectsize_smd(&[2e200], &[1e200], &[30.0], &[1e200], &[1e200], &[30.0]).unwrap();
+    assert_close(smd_tiny[0], smd_huge[0], 1e-12, 0.0, "smd_scale_invariance");
+    assert_close(var_tiny[0], var_huge[0], 1e-12, 0.0, "var_scale_invariance");
+
+    // Retracted report kind refused by combine_independent_studies:
+    let mut retracted = make_primary_entry("st-ret-1", "res-r1", "grp-r1", -0.3, 0.04);
+    retracted.synthesis_input.report_kind = Known::Known(ReportVersionKind::Retraction);
+    let ok_other = make_primary_entry("st-ret-2", "res-r2", "grp-r2", -0.2, 0.04);
+    assert!(matches!(
+        combine_independent_studies(
+            &[retracted, ok_other],
+            &[],
+            RandomEffectsMethod::DerSimonianLaird,
+            false,
+            0.05
+        ),
+        Err(MetaError::NonPoolableReportKind(
+            ReportVersionKind::Retraction
+        ))
+    ));
+}

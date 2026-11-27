@@ -9,6 +9,7 @@ with deterministic Python standard-library evaluation primitives for offline ver
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Dict, Iterable, Sequence, Tuple
 
 try:
@@ -33,6 +34,8 @@ def evaluate_predictions(
     predictions: Iterable[InferencePrediction],
     iou_threshold: float = 0.5,
 ) -> Dict[str, object]:
+    if not math.isfinite(iou_threshold) or iou_threshold <= 0.0 or iou_threshold > 1.0:
+        raise ValueError(f"iou_threshold must lie in (0.0, 1.0], got {iou_threshold!r}")
     gold_by_prompt: Dict[str, EvidenceAnnotation] = {}
     for ann in gold_annotations:
         if ann.prompt_id in gold_by_prompt:

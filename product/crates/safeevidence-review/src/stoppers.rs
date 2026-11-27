@@ -46,11 +46,17 @@ pub fn should_stop(
             pos >= min_relevant && neg >= min_irrelevant
         }
         StopCriterion::QuantileLabeled { quantile } => {
+            if !quantile.is_finite() {
+                return false;
+            }
             let q = quantile.clamp(0.0, 1.0);
             (labeled_history.len() as f64) / (total_corpus as f64) >= q
         }
         StopCriterion::NConsecutiveIrrelevant { n } => {
+            // Require at least one relevant study in history before advising an irrelevant-streak
+            // stop so cold-start screening never advises halting with zero included studies.
             n > 0
+                && labeled_history.iter().any(|&b| b)
                 && labeled_history.len() > n
                 && labeled_history[labeled_history.len() - n..]
                     .iter()

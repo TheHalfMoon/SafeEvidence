@@ -103,6 +103,78 @@ fn bilingual_nli_detects_entailment_negation_numeric_unit_and_cross_study_confli
     .expect("independent studies");
     assert_eq!(diff_study.state, ContradictionState::Material);
     assert_eq!(diff_study.conflicts.len(), 1);
+
+    // 1. Mixed-polarity multi-clause sentence (`increased mortality and reduced fatigue`) MUST NOT
+    // entail inverted `"reduced mortality"`:
+    let mixed_src = "Veltrixamine increased mortality and reduced fatigue in adults.";
+    let splice =
+        verify_bilingual_entailment("Veltrixamine reduced mortality in adults.", mixed_src)
+            .expect("mixed clause");
+    assert_eq!(splice.label, NliLabel::Contradicts);
+    assert!(splice.defects.iter().any(|d| d == "direction_flip"));
+
+    // 2. Comparative argument swap (`Placebo reduced X more than veltrixamine`) MUST NOT entail inverted claim:
+    let comp_src = "Placebo reduced symptom burden more than veltrixamine in adults.";
+    let role_swap = verify_bilingual_entailment(
+        "Veltrixamine reduced symptom burden more than placebo in adults.",
+        comp_src,
+    )
+    .expect("role swap");
+    assert_eq!(role_swap.label, NliLabel::Contradicts);
+    assert!(
+        role_swap
+            .defects
+            .iter()
+            .any(|d| d == "comparator_role_swap")
+    );
+
+    // 3. Later contradicting sentence in the same source overrides earlier sentence:
+    let two_sent = "Metformin reduced fasting glucose in adults. Metformin did not reduce fasting glucose in adults.";
+    let override_res =
+        verify_bilingual_entailment("Metformin reduced fasting glucose in adults.", two_sent)
+            .expect("contradiction precedence");
+    assert_eq!(override_res.label, NliLabel::Contradicts);
+
+    // 4. Subset numeric claim (`50 mg` without repeating auxiliary `8 weeks`) entails cleanly,
+    // and decimal `50.0` matches `50`:
+    let ok_subset = verify_bilingual_entailment(
+        "Metformin 500.0 mg reduced fasting glucose in adults.",
+        en_src,
+    )
+    .expect("subset number");
+    assert_eq!(ok_subset.label, NliLabel::Entails);
+
+    // 5. Compatible null/benefit pairs (`did not increase mortality` + `reduced mortality`, and two
+    // complementary negated directions) are NOT misclassified as Material contradictions:
+    let compat_pair = detect_corpus_contradictions(&[
+        (
+            "study-1",
+            "doc-1",
+            "Veltrixamine did not increase mortality in adults.",
+        ),
+        (
+            "study-2",
+            "doc-2",
+            "Veltrixamine reduced mortality in adults.",
+        ),
+    ])
+    .expect("compatible negated harm + benefit");
+    assert_eq!(compat_pair.state, ContradictionState::None);
+
+    let two_nulls = detect_corpus_contradictions(&[
+        (
+            "study-1",
+            "doc-1",
+            "Veltrixamine did not increase mortality in adults.",
+        ),
+        (
+            "study-2",
+            "doc-2",
+            "Veltrixamine did not reduce mortality in adults.",
+        ),
+    ])
+    .expect("two compatible nulls");
+    assert_eq!(two_nulls.state, ContradictionState::None);
 }
 
 #[test]
@@ -305,4 +377,31 @@ fn evidence_snapshot_downgrades_to_partial_reproduction_when_source_revoked_or_m
         }
         other => panic!("expected PartialReproduction, got {other:?}"),
     }
+
+    // Uncommitted (`VerifiedUncommitted`) manifest MUST be rejected by EvidenceSnapshot::build:
+    let mut uncommitted = snapshot.manifest.clone();
+    uncommitted.state = ProofState::VerifiedUncommitted;
+    assert_eq!(
+        EvidenceSnapshot::build("snap-uncommitted", "does x help y?", 3, uncommitted),
+        Err(GuidelineError::UncommittedSnapshotManifest(
+            ProofState::VerifiedUncommitted
+        ))
+    );
+
+    // Mutating authority-bearing manifest fields (`outcome`, `applicability`, `components`,
+    // `rights_grant_version`) after snapshot creation MUST fail `snapshot_digest` validation:
+    let mut tampered = snapshot.clone();
+    tampered.manifest.outcome = TerminalOutcome::Answer;
+    tampered.manifest.applicability = ApplicabilityState::Applicable;
+    assert_eq!(
+        tampered.validate(),
+        Err(GuidelineError::SnapshotDigestMismatch)
+    );
+
+    let mut tampered_comp = snapshot;
+    tampered_comp.manifest.components.policy = "forged-policy".to_owned();
+    assert_eq!(
+        tampered_comp.validate(),
+        Err(GuidelineError::SnapshotDigestMismatch)
+    );
 }

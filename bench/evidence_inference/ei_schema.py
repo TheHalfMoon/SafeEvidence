@@ -34,6 +34,8 @@ class SignificanceClass(IntEnum):
 
     @classmethod
     def parse(cls, value: int | str) -> "SignificanceClass":
+        if isinstance(value, bool):
+            raise ValueError("Boolean is not a valid Evidence-Inference significance class")
         if isinstance(value, int):
             return cls(value)
         norm = str(value).strip().lower()
@@ -124,7 +126,12 @@ def filter_valid_annotations(rows: Iterable[dict]) -> List[EvidenceAnnotation]:
         raw_lbl = str(row.get(LABEL_COL_NAME, "")).strip().lower()
         if not (valid_lbl and valid_rsn and ev_text.strip() and raw_lbl != "invalid prompt"):
             continue
-        code_source = row.get(LBL_COL_NAME, row.get(LABEL_COL_NAME))
+        raw_code = row.get(LBL_COL_NAME)
+        code_source = (
+            raw_code
+            if raw_code is not None and str(raw_code).strip() != ""
+            else row.get(LABEL_COL_NAME)
+        )
         valid.append(
             EvidenceAnnotation(
                 prompt_id=str(row[PROMPT_ID_COL_NAME]).strip(),

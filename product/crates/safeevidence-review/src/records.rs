@@ -87,18 +87,18 @@ impl Identifiers {
         let mut buf = Vec::new();
         buf.extend_from_slice(b"SAFEVD/LITDB/RECORD_ID/v1");
         for val in [
-            self.doi.as_deref().map(str::to_ascii_lowercase),
-            self.pmid.as_deref().map(|s| s.trim().to_owned()),
-            self.arxiv_id.as_deref().map(|s| s.trim().to_owned()),
-            self.s2_corpus_id.as_deref().map(|s| s.trim().to_owned()),
+            norm_opt(self.doi.as_deref(), true),
+            norm_opt(self.pmid.as_deref(), false),
+            norm_opt(self.arxiv_id.as_deref(), false),
+            norm_opt(self.s2_corpus_id.as_deref(), false),
         ] {
             match val {
-                Some(s) if !s.is_empty() => {
+                Some(s) => {
                     buf.push(1);
                     buf.extend_from_slice(&(s.len() as u64).to_be_bytes());
                     buf.extend_from_slice(s.as_bytes());
                 }
-                _ => buf.push(0),
+                None => buf.push(0),
             }
         }
         format!("lit-{}", &DigestSha256::of(&buf).to_hex()[..24])

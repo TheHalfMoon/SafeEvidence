@@ -4,7 +4,8 @@
 //!
 //! All types in this module are non-clinical research governance contracts (`ADR-0003`) and
 //! enforce `P00_DECISION_ASSURANCE_CONTRACT` invariants: zero heuristic confidence percentages on
-//! assured surfaces, explicit supersession and issuer-conflict surfacing, and honest
+//! assured surfaces, explicit supersession and issuer-conflict surfacing, committed-manifest
+//! verification, full authority-envelope `snapshot_digest` binding, and honest
 //! `PartialReproduction` downgrade whenever cited source bytes are missing or revoked.
 
 #![forbid(unsafe_code)]
@@ -15,11 +16,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::appraisal::{AppraisalConfirmation, CertaintyLevel, SummaryOfFindingsRow};
+use crate::assurance::ProofState;
 use crate::bilingual::is_forbidden_bidi_control;
 use crate::objects::DigestSha256;
 use crate::proof::{
     AnswerProofManifest, ContradictionState, EvidenceSpan, ManifestDefect, commit_defects,
 };
+use crate::study::Known;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -157,25 +160,40 @@ pub enum GuidelineError {
     EmptyRows,
     UnconfirmedRowInConfirmedTable(String),
     InvalidConfirmation,
+    UncommittedSnapshotManifest(ProofState),
     SnapshotManifestDefects(Vec<ManifestDefect>),
     SnapshotSourceSetMismatch(String),
     SnapshotDigestMismatch,
 }
 
+fn has_bad_bidi_or_control(text: &str) -> bool {
+    text.chars()
+        .any(|c| is_forbidden_bidi_control(c) || (c.is_control() && c != '\n'))
+}
+
 fn has_forbidden_surface_tokens(text: &str) -> bool {
+    if has_bad_bidi_or_control(text) {
+        return true;
+    }
     if text
         .chars()
-        .any(|c| is_forbidden_bidi_control(c) || (c.is_control() && c != '\n'))
+        .any(|c| matches!(c, '%' | '\u{066A}' | '\u{FE6A}' | '\u{FF05}'))
     {
         return true;
     }
-    if text.contains('%') || text.contains('\u{066A}') {
+    let lower = text.to_ascii_lowercase();
+    if lower.contains("percent") || lower.contains("confidence") {
         return true;
     }
-    let lower = text.to_ascii_lowercase();
-    lower
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .any(|tok| matches!(tok, "percent" | "percentage" | "confidence"))
+    // Arabic percent / confidence vocabulary (`نسبة مئوية`, `بالمئة`, `بالمئه`, `درجة ثقة`, `نسبة ثقة`)
+    const AR_FORBIDDEN: &[&str] = &[
+        "\u{0646}\u{0633}\u{0628}\u{0629} \u{0645}\u{0626}\u{0648}\u{064a}\u{0629}",
+        "\u{0628}\u{0627}\u{0644}\u{0645}\u{0626}\u{0629}",
+        "\u{0628}\u{0627}\u{0644}\u{0645}\u{0626}\u{0647}",
+        "\u{062f}\u{0631}\u{062c}\u{0629} \u{062b}\u{0642}\u{0629}",
+        "\u{0646}\u{0633}\u{0628}\u{0629} \u{062b}\u{0642}\u{0629}",
+    ];
+    AR_FORBIDDEN.iter().any(|p| text.contains(p))
 }
 
 fn is_valid_iso_date(date: &str) -> bool {
@@ -209,7 +227,7 @@ fn is_valid_iso_date(date: &str) -> bool {
 fn validate_confirmation_strict(c: &AppraisalConfirmation) -> Result<(), GuidelineError> {
     match c {
         AppraisalConfirmation::Proposed { generator } => {
-            if generator.trim().is_empty() {
+            if generator.trim().is_empty() || has_bad_bidi_or_control(generator) {
                 return Err(GuidelineError::InvalidConfirmation);
             }
         }
@@ -217,7 +235,11 @@ fn validate_confirmation_strict(c: &AppraisalConfirmation) -> Result<(), Guideli
             authorized_by,
             confirmed_at_utc,
         } => {
-            if authorized_by.trim().is_empty() || confirmed_at_utc.trim().is_empty() {
+            if authorized_by.trim().is_empty()
+                || confirmed_at_utc.trim().is_empty()
+                || has_bad_bidi_or_control(authorized_by)
+                || has_bad_bidi_or_control(confirmed_at_utc)
+            {
                 return Err(GuidelineError::InvalidConfirmation);
             }
         }
@@ -254,6 +276,11 @@ impl GuidelineMetadata {
             if sup.trim().is_empty() {
                 return Err(GuidelineError::EmptyField("supersedes_guideline_id"));
             }
+            if has_bad_bidi_or_control(sup) {
+                return Err(GuidelineError::ForbiddenControlOrConfidence(
+                    "supersedes_guideline_id",
+                ));
+            }
             if sup == &self.guideline_id {
                 return Err(GuidelineError::SelfSupersession(self.guideline_id.clone()));
             }
@@ -264,6 +291,8 @@ impl GuidelineMetadata {
         for span in &self.cited_spans {
             if span.source_id.trim().is_empty()
                 || span.source_version.trim().is_empty()
+                || has_bad_bidi_or_control(&span.source_id)
+                || has_bad_bidi_or_control(&span.source_version)
                 || span.start_scalar >= span.end_scalar
             {
                 return Err(GuidelineError::InvalidSpanBounds);
@@ -347,12 +376,12 @@ pub fn evaluate_guideline_set(
             if !same_topic {
                 continue;
             }
+            let same_issuer = a.issuer.trim().eq_ignore_ascii_case(b.issuer.trim());
             let pa = a.recommendation.polarity();
             let pb = b.recommendation.polarity();
-            // Flag conflict when one favors and one opposes, or when one recommends action and
-            // another active issuer explicitly declares NoRecommendation.
-            let disagrees = (pa != 0 && pb != 0 && pa != pb)
-                || (pa != pb && (pa == 0 || pb == 0) && a.issuer != b.issuer);
+            // Flag conflict whenever directional polarities differ (`pa != pb`), or when the
+            // same issuer leaves two un-superseded active guidelines with different strengths.
+            let disagrees = pa != pb || (same_issuer && a.recommendation != b.recommendation);
             if disagrees {
                 conflicts.push(IssuerConflict {
                     topic_concept: a.topic_concept.clone(),
@@ -410,7 +439,7 @@ impl SummaryOfFindingsTable {
         }
         let mut seen_outcomes = BTreeSet::new();
         for row in &self.rows {
-            if row.outcome_id.trim().is_empty() {
+            if row.outcome_id.trim().is_empty() || has_bad_bidi_or_control(&row.outcome_id) {
                 return Err(GuidelineError::EmptyField("row.outcome_id"));
             }
             if !seen_outcomes.insert(row.outcome_id.as_str()) {
@@ -439,7 +468,7 @@ impl SummaryOfFindingsTable {
                     if row
                         .authorized_by
                         .as_deref()
-                        .is_none_or(|a| a.trim().is_empty())
+                        .is_none_or(|a| a.trim().is_empty() || has_bad_bidi_or_control(a))
                     {
                         return Err(GuidelineError::InvalidConfirmation);
                     }
@@ -463,6 +492,16 @@ fn push_lp(hasher: &mut Sha256, bytes: &[u8]) {
     hasher.update(bytes);
 }
 
+fn push_opt_lp(hasher: &mut Sha256, opt: Option<&str>) {
+    match opt {
+        Some(s) => {
+            hasher.update([1_u8]);
+            push_lp(hasher, s.as_bytes());
+        }
+        None => hasher.update([0_u8]),
+    }
+}
+
 fn compute_snapshot_digest(
     snapshot_id: &str,
     question_text: &str,
@@ -471,28 +510,99 @@ fn compute_snapshot_digest(
     cited_source_digests: &BTreeMap<String, DigestSha256>,
 ) -> DigestSha256 {
     let mut hasher = Sha256::new();
-    hasher.update(b"safeevidence.evidence_snapshot.v1\0");
+    hasher.update(b"safeevidence.evidence_snapshot.v2\0");
     push_lp(&mut hasher, snapshot_id.as_bytes());
     push_lp(&mut hasher, question_text.as_bytes());
     hasher.update(pack_epoch.to_be_bytes());
+
+    // Bind every authority-bearing field of AnswerProofManifest explicitly via length-prefixed framing:
     push_lp(&mut hasher, manifest.proof_id.as_bytes());
     push_lp(
         &mut hasher,
         manifest.question_snapshot_digest.to_hex().as_bytes(),
     );
     push_lp(&mut hasher, manifest.final_text_digest.to_hex().as_bytes());
+    push_lp(&mut hasher, manifest.rights_grant_version.as_bytes());
+    hasher.update(manifest.validity_epoch.to_be_bytes());
+    push_lp(&mut hasher, format!("{:?}", manifest.outcome).as_bytes());
+    push_lp(&mut hasher, format!("{:?}", manifest.reason).as_bytes());
+    push_lp(
+        &mut hasher,
+        format!("{:?}", manifest.applicability).as_bytes(),
+    );
+    push_lp(
+        &mut hasher,
+        format!("{:?}", manifest.contradiction).as_bytes(),
+    );
+    hasher.update([u8::from(manifest.post_verification_passed)]);
+    push_lp(&mut hasher, manifest.verified_at_utc.as_bytes());
+    push_lp(&mut hasher, format!("{:?}", manifest.state).as_bytes());
+
+    // Bind all 10 ProofComponents fields:
+    let comp = &manifest.components;
+    push_lp(&mut hasher, comp.retriever.as_bytes());
+    push_opt_lp(&mut hasher, comp.reranker.as_deref());
+    push_opt_lp(&mut hasher, comp.translator.as_deref());
+    push_opt_lp(&mut hasher, comp.ocr.as_deref());
+    push_lp(&mut hasher, comp.verifier.as_bytes());
+    push_opt_lp(&mut hasher, comp.generator.as_deref());
+    hasher.update((comp.tools.len() as u64).to_be_bytes());
+    for t in &comp.tools {
+        push_lp(&mut hasher, t.as_bytes());
+    }
+    hasher.update((comp.prompts.len() as u64).to_be_bytes());
+    for p in &comp.prompts {
+        push_lp(&mut hasher, p.as_bytes());
+    }
+    push_lp(&mut hasher, comp.policy.as_bytes());
+    push_lp(&mut hasher, comp.thresholds.as_bytes());
+
+    // Bind every ProofClaim, study/result lineage, and EvidenceSpan field:
     hasher.update((manifest.claims.len() as u64).to_be_bytes());
     for claim in &manifest.claims {
         push_lp(&mut hasher, claim.claim_id.as_bytes());
         hasher.update([u8::from(claim.material)]);
+        push_lp(&mut hasher, format!("{:?}", claim.support).as_bytes());
+        match &claim.studies {
+            Known::Known(studies) => {
+                hasher.update([1_u8]);
+                hasher.update((studies.len() as u64).to_be_bytes());
+                for st in studies {
+                    push_lp(&mut hasher, st.0.scope.as_bytes());
+                    push_lp(&mut hasher, st.0.id.as_bytes());
+                    hasher.update(st.0.version.to_be_bytes());
+                }
+            }
+            Known::Unknown { reason } => {
+                hasher.update([0_u8]);
+                push_lp(&mut hasher, reason.as_bytes());
+            }
+        }
+        match &claim.results {
+            Known::Known(results) => {
+                hasher.update([1_u8]);
+                hasher.update((results.len() as u64).to_be_bytes());
+                for res in results {
+                    push_lp(&mut hasher, res.0.scope.as_bytes());
+                    push_lp(&mut hasher, res.0.id.as_bytes());
+                    hasher.update(res.0.version.to_be_bytes());
+                }
+            }
+            Known::Unknown { reason } => {
+                hasher.update([0_u8]);
+                push_lp(&mut hasher, reason.as_bytes());
+            }
+        }
         hasher.update((claim.spans.len() as u64).to_be_bytes());
         for span in &claim.spans {
             push_lp(&mut hasher, span.source_id.as_bytes());
+            push_lp(&mut hasher, span.source_version.as_bytes());
             push_lp(&mut hasher, span.source_digest.to_hex().as_bytes());
             hasher.update(span.start_scalar.to_be_bytes());
             hasher.update(span.end_scalar.to_be_bytes());
         }
     }
+
     hasher.update((cited_source_digests.len() as u64).to_be_bytes());
     for (src_id, digest) in cited_source_digests {
         push_lp(&mut hasher, src_id.as_bytes());
@@ -502,11 +612,12 @@ fn compute_snapshot_digest(
 }
 
 impl EvidenceSnapshot {
-    /// Builds a validated, content-addressed `EvidenceSnapshot` from a committed proof manifest.
+    /// Builds a validated, content-addressed `EvidenceSnapshot` from a `Committed` proof manifest.
     ///
     /// # Errors
-    /// Fails closed if `manifest` has commit defects, `snapshot_id`/`question_text` is empty,
-    /// `pack_epoch == 0`, or `cited_source_digests` does not match all manifest-cited sources.
+    /// Fails closed if `manifest.state != ProofState::Committed`, `manifest` has commit defects,
+    /// `snapshot_id`/`question_text` is empty or carries BiDi/control bytes, `pack_epoch == 0`,
+    /// or `cited_source_digests` has inconsistent per-source digests.
     pub fn build(
         snapshot_id: impl Into<String>,
         question_text: impl Into<String>,
@@ -521,8 +632,19 @@ impl EvidenceSnapshot {
         if question_text.trim().is_empty() {
             return Err(GuidelineError::EmptyField("question_text"));
         }
+        if has_bad_bidi_or_control(&snapshot_id) {
+            return Err(GuidelineError::ForbiddenControlOrConfidence("snapshot_id"));
+        }
+        if has_bad_bidi_or_control(&question_text) {
+            return Err(GuidelineError::ForbiddenControlOrConfidence(
+                "question_text",
+            ));
+        }
         if pack_epoch == 0 || manifest.validity_epoch != pack_epoch {
             return Err(GuidelineError::EmptyField("pack_epoch"));
+        }
+        if manifest.state != ProofState::Committed {
+            return Err(GuidelineError::UncommittedSnapshotManifest(manifest.state));
         }
         let defects = commit_defects(&manifest);
         if !defects.is_empty() {
@@ -558,16 +680,31 @@ impl EvidenceSnapshot {
         })
     }
 
-    /// Validates `snapshot_digest`, manifest commit invariants, and cited-source map consistency.
+    /// Validates `snapshot_digest`, `ProofState::Committed`, manifest commit invariants, and
+    /// cited-source map consistency.
     ///
     /// # Errors
-    /// Fails closed on tampered `snapshot_digest`, uncommitted manifest, or source-set drift.
+    /// Fails closed on tampered `snapshot_digest`, uncommitted manifest, BiDi/control bytes,
+    /// or source-set drift.
     pub fn validate(&self) -> Result<(), GuidelineError> {
         if self.snapshot_id.trim().is_empty() || self.question_text.trim().is_empty() {
             return Err(GuidelineError::EmptyField("snapshot_id"));
         }
+        if has_bad_bidi_or_control(&self.snapshot_id) {
+            return Err(GuidelineError::ForbiddenControlOrConfidence("snapshot_id"));
+        }
+        if has_bad_bidi_or_control(&self.question_text) {
+            return Err(GuidelineError::ForbiddenControlOrConfidence(
+                "question_text",
+            ));
+        }
         if self.pack_epoch == 0 || self.manifest.validity_epoch != self.pack_epoch {
             return Err(GuidelineError::EmptyField("pack_epoch"));
+        }
+        if self.manifest.state != ProofState::Committed {
+            return Err(GuidelineError::UncommittedSnapshotManifest(
+                self.manifest.state,
+            ));
         }
         let defects = commit_defects(&self.manifest);
         if !defects.is_empty() {

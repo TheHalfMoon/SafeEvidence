@@ -89,6 +89,30 @@ class SciFactHarnessTests(unittest.TestCase):
                 [{"id": 1, "evidence": {"101": {"label": "NOT_ENOUGH_INFO", "sentences": [1]}}}],
             )
 
+        # Omitting claim 2 penalizes recall across the full gold dataset (no recall gaming):
+        partial = PredictedDataset(
+            self.gold,
+            [{"id": 1, "evidence": {"101": {"label": "SUPPORT", "sentences": [1]}}}],
+        )
+        partial_metrics = compute_metrics(partial)
+        self.assertAlmostEqual(partial_metrics["abstract_rationalized"]["precision"], 1.0)
+        self.assertAlmostEqual(partial_metrics["abstract_rationalized"]["recall"], 0.5)
+
+        # Duplicate predicted claim_id or negative sentence index fails closed:
+        with self.assertRaises(ValueError):
+            PredictedDataset(
+                self.gold,
+                [
+                    {"id": 1, "evidence": {"101": {"label": "SUPPORT", "sentences": [1]}}},
+                    {"id": 1, "evidence": {"101": {"label": "SUPPORT", "sentences": [1]}}},
+                ],
+            )
+        with self.assertRaises(ValueError):
+            PredictedDataset(
+                self.gold,
+                [{"id": 1, "evidence": {"101": {"label": "SUPPORT", "sentences": [-1]}}}],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

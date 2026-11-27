@@ -33,6 +33,19 @@ impl SplitMix64 {
     fn next_f64(&mut self) -> f64 {
         ((self.next_u64() >> 11) as f64) * (1.0 / ((1_u64 << 53) as f64))
     }
+    fn next_bounded(&mut self, bound: usize) -> usize {
+        if bound <= 1 {
+            return 0;
+        }
+        let b = bound as u64;
+        let threshold = b.wrapping_neg() % b;
+        loop {
+            let r = self.next_u64();
+            if r >= threshold {
+                return (r % b) as usize;
+            }
+        }
+    }
 }
 
 fn rank_max(scores: &[f64]) -> Vec<usize> {
@@ -55,7 +68,7 @@ fn shuffle_indices(n: usize, seed: u64) -> Vec<usize> {
     let mut idx: Vec<usize> = (0..n).collect();
     let mut rng = SplitMix64(seed);
     for i in (1..n).rev() {
-        let j = (rng.next_u64() as usize) % (i + 1);
+        let j = rng.next_bounded(i + 1);
         idx.swap(i, j);
     }
     idx
@@ -71,7 +84,11 @@ pub fn query_order(strategy: QueryStrategy, scores: &[f64]) -> Vec<usize> {
         QueryStrategy::TopDown => (0..n).collect(),
         QueryStrategy::Random { seed } => shuffle_indices(n, seed),
         QueryStrategy::HybridMaxUncertainty { max_fraction, seed } => {
-            let p = max_fraction.clamp(0.0, 1.0);
+            let p = if max_fraction.is_finite() {
+                max_fraction.clamp(0.0, 1.0)
+            } else {
+                0.95
+            };
             let max_q = rank_max(scores);
             let unc_q = rank_uncertainty(scores);
             let mut rng = SplitMix64(seed);

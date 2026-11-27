@@ -3,8 +3,9 @@
 //!
 //! Adapted in safe Rust from `TheHalfMoon/MedOrigin` (`src/medscale/litdb/review.py`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
+use safeevidence_contracts::bilingual::is_forbidden_bidi_control;
 use safeevidence_contracts::objects::DigestSha256;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -15,8 +16,12 @@ use crate::screening::ScreeningStage;
 pub enum PrismaReviewError {
     #[error("required string field `{0}` must be non-empty")]
     EmptyField(&'static str),
+    #[error("string field `{0}` contains forbidden BiDi or control characters")]
+    ForbiddenControlCharacters(&'static str),
     #[error("PENDING is the initial state, not an applied human screening decision")]
     CannotApplyPending,
+    #[error("review event must change decision state (self-transition `{0:?}` is invalid)")]
+    NoOpDecisionTransition(ReviewDecision),
     #[error("git_sha must be 7..=40 lowercase hexadecimal characters")]
     InvalidGitSha,
     #[error("EXCLUDE and DUPLICATE_CONFIRMED decisions require an explicit ExclusionReason")]
@@ -128,20 +133,31 @@ impl ReviewEvent {
     }
 
     pub fn validate(&self) -> Result<(), PrismaReviewError> {
-        if self.record_id.trim().is_empty() {
-            return Err(PrismaReviewError::EmptyField("record_id"));
+        let has_bad_ctrl = |s: &str| {
+            s.chars()
+                .any(|c| is_forbidden_bidi_control(c) || (c.is_control() && c != '\n'))
+        };
+        for (field, val) in [
+            ("record_id", self.record_id.as_str()),
+            ("reviewer", self.reviewer.as_str()),
+            ("decided_at", self.decided_at.as_str()),
+            ("software_version", self.software_version.as_str()),
+        ] {
+            if val.trim().is_empty() {
+                return Err(PrismaReviewError::EmptyField(field));
+            }
+            if has_bad_ctrl(val) {
+                return Err(PrismaReviewError::ForbiddenControlCharacters(field));
+            }
+        }
+        if has_bad_ctrl(&self.notes) {
+            return Err(PrismaReviewError::ForbiddenControlCharacters("notes"));
         }
         if self.new_decision == ReviewDecision::Pending {
             return Err(PrismaReviewError::CannotApplyPending);
         }
-        if self.reviewer.trim().is_empty() {
-            return Err(PrismaReviewError::EmptyField("reviewer"));
-        }
-        if self.decided_at.trim().is_empty() {
-            return Err(PrismaReviewError::EmptyField("decided_at"));
-        }
-        if self.software_version.trim().is_empty() {
-            return Err(PrismaReviewError::EmptyField("software_version"));
+        if self.previous_decision == self.new_decision {
+            return Err(PrismaReviewError::NoOpDecisionTransition(self.new_decision));
         }
         let sha_ok = (7..=40).contains(&self.git_sha.len())
             && self
@@ -243,9 +259,13 @@ pub fn pending_queue(
     record_ids: &[String],
     reviews: &BTreeMap<String, RecordReview>,
 ) -> Vec<String> {
+    let mut seen = BTreeSet::new();
     let mut never = Vec::new();
     let mut uncertain = Vec::new();
     for id in record_ids {
+        if !seen.insert(id.as_str()) {
+            continue;
+        }
         match reviews.get(id) {
             None => never.push(id.clone()),
             Some(r) if r.decision == ReviewDecision::Uncertain => uncertain.push(id.clone()),
@@ -269,13 +289,15 @@ pub struct PrismaSummary {
     pub exclusion_breakdown: BTreeMap<String, usize>,
 }
 
-/// Computes deterministic PRISMA 2020 flow diagram counts over `record_ids` and `reviews` (`TA-16`).
+/// Computes deterministic PRISMA 2020 flow diagram counts over deduplicated `record_ids` and
+/// `reviews` (`TA-16`).
 #[must_use]
 pub fn prisma_summary(
     record_ids: &[String],
     reviews: &BTreeMap<String, RecordReview>,
     identified: Option<usize>,
 ) -> PrismaSummary {
+    let mut seen = BTreeSet::new();
     let mut included = 0_usize;
     let mut excluded = 0_usize;
     let mut uncertain = 0_usize;
@@ -283,6 +305,9 @@ pub fn prisma_summary(
     let mut breakdown: BTreeMap<String, usize> = BTreeMap::new();
 
     for id in record_ids {
+        if !seen.insert(id.as_str()) {
+            continue;
+        }
         let rev = reviews.get(id);
         let dec = rev.map_or(ReviewDecision::Pending, |r| r.decision);
         match dec {
@@ -298,9 +323,10 @@ pub fn prisma_summary(
         }
     }
 
+    let dedup_count = seen.len();
     PrismaSummary {
-        identified,
-        deduplicated: record_ids.len(),
+        identified: identified.map(|m| m.max(dedup_count)),
+        deduplicated: dedup_count,
         screened: included + excluded,
         included,
         excluded,

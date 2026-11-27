@@ -220,4 +220,67 @@ fn extended_pico_parses_harm_and_enforces_language_and_patient_gates() {
         hybrid_retrieve_bilingual(&corpus, "Does \u{202E}metformin help adults?", 3),
         Err(HybridRetrievalError::ForbiddenTextControl)
     );
+
+    // Typographic punctuation in English queries works cleanly while punctuation-only embed fails closed:
+    let typo_trace = hybrid_retrieve_bilingual(
+        &corpus,
+        "Does metformin \u{2013} adult\u{2019}s biguanide therapy \u{2013} help with glycemic control?",
+        3,
+    )
+    .expect("typographic en-dash and apostrophe allowed");
+    assert!(!typo_trace.reranked_doc_ids.is_empty());
+    assert_eq!(
+        hybrid_retrieve_bilingual(&corpus, "Does metformin help?", 0)
+            .expect("top_k=0")
+            .reranked_doc_ids,
+        Vec::<String>::new()
+    );
+    let embedder = BilingualDenseEmbedder::new(&corpus.lexicon);
+    assert_eq!(
+        embedder.embed("--- ... !!!"),
+        Err(HybridRetrievalError::EmptyQuery)
+    );
+
+    // Unpromoted corpus excludes Arabic documents even on English queries:
+    let en_on_unpromoted = hybrid_retrieve_bilingual(
+        &corpus_unpromoted,
+        "Does metformin help adults with glycemic control?",
+        5,
+    )
+    .expect("EN query on unpromoted corpus");
+    assert!(
+        !en_on_unpromoted
+            .reranked_doc_ids
+            .contains(&"doc-ar-metformin-2".to_owned()),
+        "unpromoted corpus must never index or return Arabic documents"
+    );
+
+    // Retracted study report removes its entire study_id from eligible hybrid results,
+    // and unknown-rights documents fail closed:
+    let mut corpus_retracted = sample_bilingual_corpus(true);
+    corpus_retracted.documents[0].publication_state = PublicationState::Retracted;
+    let trace_ret = hybrid_retrieve_bilingual(
+        &corpus_retracted,
+        "Does metformin help adults with glycemic control?",
+        5,
+    )
+    .expect("retracted filtered");
+    assert!(
+        !trace_ret
+            .reranked_doc_ids
+            .contains(&"doc-en-metformin-1".to_owned())
+    );
+
+    let mut corpus_bad_rights = sample_bilingual_corpus(true);
+    corpus_bad_rights.documents[2].rights = EvidenceCorpusRights::Unknown;
+    assert_eq!(
+        hybrid_retrieve_bilingual(
+            &corpus_bad_rights,
+            "Does metformin help adults with glycemic control?",
+            3
+        ),
+        Err(HybridRetrievalError::RightsUnresolved(
+            "doc-en-distractor-3".to_owned()
+        ))
+    );
 }

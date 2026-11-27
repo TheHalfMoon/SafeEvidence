@@ -1878,10 +1878,20 @@ fn eval_systematic_review_split() -> Result<SplitEvaluation, String> {
     ];
 
     let deduped = dedupe_records(&records);
-    let ids = vec!["sr-1".to_owned(), "sr-2".to_owned()];
+    let ids: Vec<String> = deduped
+        .records
+        .iter()
+        .map(LiteratureRecord::record_id)
+        .collect();
+    if ids.len() != 2 {
+        return Err(format!(
+            "expected 2 deduplicated records, got {}",
+            ids.len()
+        ));
+    }
     let events = vec![
         ReviewEvent::new(
-            "sr-1",
+            &ids[0],
             ReviewDecision::Pending,
             ReviewDecision::Include,
             "researcher-a",
@@ -1893,7 +1903,7 @@ fn eval_systematic_review_split() -> Result<SplitEvaluation, String> {
         )
         .map_err(|e| e.to_string())?,
         ReviewEvent::new(
-            "sr-2",
+            &ids[1],
             ReviewDecision::Pending,
             ReviewDecision::Exclude,
             "researcher-a",

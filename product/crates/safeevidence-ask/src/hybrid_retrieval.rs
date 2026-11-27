@@ -2,8 +2,9 @@
 //! flat cosine vector index, Reciprocal Rank Fusion (`BM25 + Dense` RRF), and PICO cross-reranking
 //! (`WP-07`, `TA-08`, `TA-09`).
 //!
-//! Operates 100% locally with `#![forbid(unsafe_code)]`, zero network sockets, and Neumaier
-//! compensated floating-point reductions for cross-platform determinism.
+//! Operates 100% locally with `#![forbid(unsafe_code)]`, zero network sockets, fail-closed corpus
+//! rights/retraction/language-promotion gates, and Neumaier compensated floating-point reductions
+//! for cross-platform determinism.
 
 #![forbid(unsafe_code)]
 
@@ -14,6 +15,7 @@ use safeevidence_assurance::eval_metrics::neumaier_sum;
 use safeevidence_contracts::bilingual::{
     NormalizedText, contains_arabic_script, is_forbidden_bidi_control,
 };
+use safeevidence_contracts::study::PublicationState;
 use serde::{Deserialize, Serialize};
 
 use crate::bilingual_ask::{
@@ -61,6 +63,8 @@ pub struct HybridRetrievalTrace {
 pub enum HybridRetrievalError {
     EmptyQuery,
     EmptyCorpus,
+    InvalidCorpus(&'static str),
+    RightsUnresolved(String),
     ForbiddenTextControl,
     PatientSpecificRequest,
     UnsupportedLanguage,
@@ -112,9 +116,25 @@ fn is_patient_specific(norm_text: &str) -> bool {
         })
 }
 
+fn is_allowed_typographic_symbol(c: char) -> bool {
+    matches!(
+        c,
+        '\u{2010}'..='\u{2015}' // hyphens & en/em dashes
+            | '\u{2018}'..='\u{201F}' // typographic single/double quotes
+            | '\u{2022}' // bullet
+            | '\u{2026}' // ellipsis
+            | '\u{00B0}' // degree
+            | '\u{00B1}' // plus-minus
+            | '\u{00D7}' // multiplication
+            | '\u{00F7}' // division
+            | '\u{2264}' // <=
+            | '\u{2265}' // >=
+    )
+}
+
 fn has_unsupported_non_en_ar_script(raw: &str) -> bool {
     raw.chars().any(|c| {
-        if c.is_ascii() {
+        if c.is_ascii() || c.is_whitespace() || is_allowed_typographic_symbol(c) {
             return false;
         }
         if is_forbidden_bidi_control(c) {
@@ -175,7 +195,6 @@ impl BilingualDenseEmbedder {
 
     fn accumulate_feature(acc: &mut [f64; EMBEDDING_DIM], domain: &[u8], feat: &str, weight: f64) {
         let h0 = fnv1a_64(domain, feat);
-        // 4-sparse CountSketch / Johnson-Lindenstrauss signed projection per feature.
         for slot in 0..4_u64 {
             let m = mix64(h0.wrapping_add(slot.wrapping_mul(0x9e37_79b9_7f4a_7c15)));
             let idx = (m as usize) % EMBEDDING_DIM;
@@ -187,13 +206,21 @@ impl BilingualDenseEmbedder {
     /// Computes a deterministic L2-normalized 128-dimensional embedding vector.
     ///
     /// # Errors
-    /// Fails closed on empty text or forbidden BiDi/control characters.
+    /// Fails closed on empty/punctuation-only text or forbidden BiDi/control characters.
     pub fn embed(&self, raw: &str) -> Result<[f64; EMBEDDING_DIM], HybridRetrievalError> {
         let clean = normalize_clean(raw)?;
         if clean.is_empty() {
             return Err(HybridRetrievalError::EmptyQuery);
         }
         let mut acc = [0.0_f64; EMBEDDING_DIM];
+
+        let tokens: Vec<&str> = clean
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .collect();
+        if tokens.is_empty() {
+            return Err(HybridRetrievalError::EmptyQuery);
+        }
 
         // 1. Cross-lingual canonical concept projections (aligns vocalized AR <-> EN concepts).
         for (concept_id, phrases) in &self.normalized_concepts {
@@ -203,10 +230,6 @@ impl BilingualDenseEmbedder {
         }
 
         // 2. Word unigrams and bigrams.
-        let tokens: Vec<&str> = clean
-            .split(|c: char| !c.is_alphanumeric())
-            .filter(|w| !w.is_empty())
-            .collect();
         for &tok in &tokens {
             Self::accumulate_feature(&mut acc, b"tok1", tok, 2.0);
         }
@@ -215,7 +238,7 @@ impl BilingualDenseEmbedder {
             Self::accumulate_feature(&mut acc, b"tok2", &bg, 1.5);
         }
 
-        // 3. Character 3-grams and 4-grams inside each word (handles Arabic prefixes/plurals & English stems).
+        // 3. Character 3-grams and 4-grams inside each word.
         for &tok in &tokens {
             let padded: Vec<char> = format!("<{tok}>").chars().collect();
             for n in [3_usize, 4_usize] {
@@ -229,11 +252,12 @@ impl BilingualDenseEmbedder {
         }
 
         let norm_sq = neumaier_sum(acc.iter().map(|v| v * v));
-        if norm_sq > 0.0 {
-            let inv = 1.0 / norm_sq.sqrt();
-            for v in &mut acc {
-                *v *= inv;
-            }
+        if !norm_sq.is_finite() || norm_sq <= 0.0 {
+            return Err(HybridRetrievalError::EmptyQuery);
+        }
+        let inv = 1.0 / norm_sq.sqrt();
+        for v in &mut acc {
+            *v *= inv;
         }
         Ok(acc)
     }
@@ -387,7 +411,6 @@ pub fn parse_extended_pico_question(
         .unwrap_or(&clean)
         .trim();
 
-    // 1. Standard bilingual benefit grammar (`does X help [P] with C?` / `هل يساعد ...`)
     if !body.contains(" vs ")
         && !body.contains(" versus ")
         && !body.contains(" \u{0645}\u{0642}\u{0627}\u{0628}\u{0644} ")
@@ -407,7 +430,6 @@ pub fn parse_extended_pico_question(
         });
     }
 
-    // 2. English comparative grammar: `does <I> vs <C> help [<P>] with <O>?`
     if let Some(rest) = body.strip_prefix("does ") {
         if let Some((ic_part, after_help)) = rest.split_once(" help ") {
             let (interv, comp) = ic_part
@@ -437,7 +459,6 @@ pub fn parse_extended_pico_question(
             });
         }
 
-        // 3. English harm/safety grammar: `does <I> increase <O> in <P>?` or `does <I> cause <O> in <P>?`
         let harm_split = rest
             .split_once(" increase ")
             .or_else(|| rest.split_once(" cause "));
@@ -464,7 +485,6 @@ pub fn parse_extended_pico_question(
         }
     }
 
-    // 4. Arabic comparative grammar: `هل يساعد <I> مقابل <C> مع <O>`
     let ar_help =
         normalize_clean("\u{0647}\u{0644} \u{064a}\u{0633}\u{0627}\u{0639}\u{062f}").ok()?;
     let ar_vs = normalize_clean("\u{0645}\u{0642}\u{0627}\u{0628}\u{0644}").ok()?;
@@ -494,7 +514,6 @@ pub fn parse_extended_pico_question(
         }
     }
 
-    // 5. Arabic harm/safety grammar: `هل يزيد <I> <O> في <P>` or `هل يسبب <I> <O> في <P>`
     let ar_inc = normalize_clean("\u{0647}\u{0644} \u{064a}\u{0632}\u{064a}\u{062f}").ok()?;
     let ar_cause = normalize_clean("\u{0647}\u{0644} \u{064a}\u{0633}\u{0628}\u{0628}").ok()?;
     let harm_ar_rest = body
@@ -532,8 +551,63 @@ pub fn parse_extended_pico_question(
     None
 }
 
-fn build_fts_hybrid_index(
+fn is_withdrawn_state(state: PublicationState) -> bool {
+    matches!(
+        state,
+        PublicationState::Retracted | PublicationState::Withdrawn
+    )
+}
+
+fn validate_and_filter_corpus(
     corpus: &BilingualCorpus,
+) -> Result<Vec<&BilingualDocument>, HybridRetrievalError> {
+    if corpus.documents.is_empty() {
+        return Err(HybridRetrievalError::EmptyCorpus);
+    }
+    if corpus.validity_epoch == 0 {
+        return Err(HybridRetrievalError::InvalidCorpus(
+            "validity_epoch must be > 0",
+        ));
+    }
+    if corpus.rights_grant_version.trim().is_empty() {
+        return Err(HybridRetrievalError::InvalidCorpus(
+            "rights_grant_version must be non-empty",
+        ));
+    }
+
+    let mut seen_ids = BTreeSet::new();
+    let mut withdrawn_studies = BTreeSet::new();
+    for doc in &corpus.documents {
+        if doc.doc_id.trim().is_empty() || doc.study_id.trim().is_empty() {
+            return Err(HybridRetrievalError::InvalidCorpus(
+                "doc_id and study_id must be non-empty",
+            ));
+        }
+        if !seen_ids.insert(doc.doc_id.as_str()) {
+            return Err(HybridRetrievalError::InvalidCorpus("duplicate doc_id"));
+        }
+        if !doc.rights.admissible() {
+            return Err(HybridRetrievalError::RightsUnresolved(doc.doc_id.clone()));
+        }
+        if is_withdrawn_state(doc.publication_state) {
+            withdrawn_studies.insert(doc.study_id.as_str());
+        }
+    }
+
+    let eligible = corpus
+        .documents
+        .iter()
+        .filter(|doc| {
+            !withdrawn_studies.contains(doc.study_id.as_str())
+                && doc.publication_state.citable()
+                && (corpus.arabic_path_promoted || doc.language != TextLanguage::Ar)
+        })
+        .collect();
+    Ok(eligible)
+}
+
+fn build_fts_hybrid_index(
+    eligible_docs: &[&BilingualDocument],
     embedder: &BilingualDenseEmbedder,
 ) -> Result<(Connection, FlatVectorIndex), HybridRetrievalError> {
     let conn = Connection::open_in_memory()
@@ -544,7 +618,7 @@ fn build_fts_hybrid_index(
     .map_err(|e| HybridRetrievalError::SqliteError(e.to_string()))?;
 
     let mut dense = FlatVectorIndex::new();
-    for doc in &corpus.documents {
+    for &doc in eligible_docs {
         let norm_title = normalize_clean(&doc.title)?;
         let norm_body = normalize_clean(&doc.text)?;
         let concepts = format!(
@@ -577,6 +651,9 @@ fn lexical_or_search(
     parsed: Option<&ExtendedPicoQuestion>,
     top_k: usize,
 ) -> Result<Vec<String>, HybridRetrievalError> {
+    if top_k == 0 {
+        return Ok(Vec::new());
+    }
     let mut terms: Vec<String> = Vec::new();
     if let Some(p) = parsed {
         if let Some(ic) = &p.intervention_concept {
@@ -605,13 +682,14 @@ fn lexical_or_search(
         .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
         .collect::<Vec<_>>()
         .join(" OR ");
+    let sql_limit = i64::try_from(top_k).unwrap_or(i64::MAX);
     let mut stmt = conn
         .prepare(
             "SELECT doc_id FROM hybrid_evidence WHERE hybrid_evidence MATCH ?1 ORDER BY bm25(hybrid_evidence), doc_id LIMIT ?2",
         )
         .map_err(|e| HybridRetrievalError::SqliteError(e.to_string()))?;
     let rows = stmt
-        .query_map(params![match_expr, top_k as i64], |r| r.get(0))
+        .query_map(params![match_expr, sql_limit], |r| r.get(0))
         .map_err(|e| HybridRetrievalError::SqliteError(e.to_string()))?;
     rows.collect::<Result<Vec<String>, _>>()
         .map_err(|e| HybridRetrievalError::SqliteError(e.to_string()))
@@ -633,9 +711,6 @@ fn pico_rerank_bonus(doc: &BilingualDocument, parsed: Option<&ExtendedPicoQuesti
     {
         bonus += 0.015;
     }
-    if !doc.publication_state.citable() {
-        bonus -= 0.050;
-    }
     bonus
 }
 
@@ -643,16 +718,15 @@ fn pico_rerank_bonus(doc: &BilingualDocument, parsed: Option<&ExtendedPicoQuesti
 /// retrieval over `corpus`, returning the full stage-by-stage trace (`WP-07`, `TA-08`, `TA-09`).
 ///
 /// # Errors
-/// Fails closed on empty query/corpus, forbidden BiDi/control characters, patient-specific
-/// clinical requests, unpromoted Arabic language path, or unsupported non-EN/AR script.
+/// Fails closed on empty/invalid corpus, rights-inadmissible documents, empty query, forbidden
+/// BiDi/control characters, patient-specific clinical requests, unpromoted Arabic language path,
+/// or unsupported non-EN/AR script.
 pub fn hybrid_retrieve_bilingual(
     corpus: &BilingualCorpus,
     raw_query: &str,
     top_k: usize,
 ) -> Result<HybridRetrievalTrace, HybridRetrievalError> {
-    if corpus.documents.is_empty() {
-        return Err(HybridRetrievalError::EmptyCorpus);
-    }
+    let eligible_docs = validate_and_filter_corpus(corpus)?;
     let clean_query = normalize_clean(raw_query)?;
     if clean_query.is_empty() {
         return Err(HybridRetrievalError::EmptyQuery);
@@ -672,17 +746,23 @@ pub fn hybrid_retrieve_bilingual(
         TextLanguage::En
     };
 
-    let limit = top_k.max(1);
     let parsed_pico = parse_extended_pico_question(raw_query, &corpus.lexicon);
-    let embedder = BilingualDenseEmbedder::new(&corpus.lexicon);
-    let (conn, dense_index) = build_fts_hybrid_index(corpus, &embedder)?;
+    if top_k == 0 || eligible_docs.is_empty() {
+        return Ok(HybridRetrievalTrace {
+            query_language,
+            parsed_pico,
+            lexical_doc_ids: Vec::new(),
+            dense_doc_ids: Vec::new(),
+            rrf_fused_doc_ids: Vec::new(),
+            reranked_doc_ids: Vec::new(),
+        });
+    }
 
-    let lexical_doc_ids = lexical_or_search(
-        &conn,
-        &clean_query,
-        parsed_pico.as_ref(),
-        limit.saturating_mul(2),
-    )?;
+    let embedder = BilingualDenseEmbedder::new(&corpus.lexicon);
+    let (conn, dense_index) = build_fts_hybrid_index(&eligible_docs, &embedder)?;
+
+    let pool_limit = top_k.saturating_mul(2);
+    let lexical_doc_ids = lexical_or_search(&conn, &clean_query, parsed_pico.as_ref(), pool_limit)?;
 
     let mut dense_query_basis = raw_query.to_owned();
     if let Some(p) = &parsed_pico {
@@ -701,19 +781,18 @@ pub fn hybrid_retrieve_bilingual(
     }
     let query_vec = embedder.embed(&dense_query_basis)?;
     let dense_doc_ids: Vec<String> = dense_index
-        .search(&query_vec, limit.saturating_mul(2))
+        .search(&query_vec, pool_limit)
         .into_iter()
         .map(|(id, _)| id)
         .collect();
 
     let fused = reciprocal_rank_fusion(&lexical_doc_ids, &dense_doc_ids, DEFAULT_RRF_K);
     let rrf_fused_doc_ids: Vec<String> =
-        fused.iter().take(limit).map(|(id, _)| id.clone()).collect();
+        fused.iter().take(top_k).map(|(id, _)| id.clone()).collect();
 
-    let doc_by_id: BTreeMap<&str, &BilingualDocument> = corpus
-        .documents
+    let doc_by_id: BTreeMap<&str, &BilingualDocument> = eligible_docs
         .iter()
-        .map(|d| (d.doc_id.as_str(), d))
+        .map(|&d| (d.doc_id.as_str(), d))
         .collect();
 
     let mut reranked: Vec<(String, f64)> = fused
@@ -726,7 +805,7 @@ pub fn hybrid_retrieve_bilingual(
         })
         .collect();
     reranked.sort_by(|(id_a, s_a), (id_b, s_b)| s_b.total_cmp(s_a).then_with(|| id_a.cmp(id_b)));
-    let reranked_doc_ids = reranked.into_iter().take(limit).map(|(id, _)| id).collect();
+    let reranked_doc_ids = reranked.into_iter().take(top_k).map(|(id, _)| id).collect();
 
     Ok(HybridRetrievalTrace {
         query_language,

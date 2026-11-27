@@ -45,6 +45,15 @@ def make_label(label_str: str, allow_nei: bool = True) -> Label:
     return res
 
 
+def _validate_sentence_indices(indices: Iterable[int]) -> List[int]:
+    out: List[int] = []
+    for raw_ix in indices:
+        if isinstance(raw_ix, bool) or not isinstance(raw_ix, int) or raw_ix < 0:
+            raise ValueError(f"Sentence rationale index must be a non-negative int, got {raw_ix!r}")
+        out.append(raw_ix)
+    return out
+
+
 @dataclass(frozen=True)
 class Document:
     id: int
@@ -106,6 +115,8 @@ class Claim:
             if isinstance(rationales, EvidenceAbstract):
                 formatted[int(raw_doc_id)] = rationales
                 continue
+            if not rationales:
+                raise ValueError("Gold evidence entry cannot have an empty rationales list.")
             doc_id = int(raw_doc_id)
             labels = [r["label"] for r in rationales]
             if len(set(labels)) != 1:
@@ -113,7 +124,9 @@ class Claim:
                     "Each SciFact claim/abstract pair must carry exactly one consistent label."
                 )
             label = make_label(labels[0], allow_nei=True)
-            rationale_sents = [[int(ix) for ix in r["sentences"]] for r in rationales]
+            rationale_sents = [_validate_sentence_indices(r["sentences"]) for r in rationales]
+            if any(len(rs) == 0 for rs in rationale_sents):
+                raise ValueError("Each gold rationale set must contain at least one sentence index.")
             formatted[doc_id] = EvidenceAbstract(doc_id, label, rationale_sents)
         return formatted
 
@@ -129,13 +142,18 @@ class GoldDataset:
 
     def _build_claims(self, examples: Iterable[dict]) -> List[Claim]:
         built: List[Claim] = []
+        seen_ids: set[int] = set()
         for raw in examples:
             entry = copy.deepcopy(raw)
+            cid = int(entry["id"])
+            if cid in seen_ids:
+                raise ValueError(f"Duplicate gold claim id={cid}")
+            seen_ids.add(cid)
             cited_ids = entry.pop("cited_doc_ids", [])
             cited_docs = [self.corpus.get_document(int(doc_id)) for doc_id in cited_ids]
             built.append(
                 Claim(
-                    id=int(entry["id"]),
+                    id=cid,
                     claim=str(entry["claim"]),
                     evidence=entry.get("evidence", {}),
                     cited_docs=cited_docs,
@@ -167,7 +185,14 @@ class ClaimPredictions:
 class PredictedDataset:
     def __init__(self, gold: GoldDataset, prediction_records: Iterable[dict]) -> None:
         self.gold = gold
-        self.predictions = [self._parse_prediction(p) for p in prediction_records]
+        self.predictions: List[ClaimPredictions] = []
+        self.by_claim_id: Dict[int, ClaimPredictions] = {}
+        for pred in prediction_records:
+            parsed = self._parse_prediction(pred)
+            if parsed.claim_id in self.by_claim_id:
+                raise ValueError(f"Duplicate predicted claim id={parsed.claim_id}")
+            self.by_claim_id[parsed.claim_id] = parsed
+            self.predictions.append(parsed)
 
     @classmethod
     def from_jsonl(cls, gold: GoldDataset, prediction_file: str | Path) -> "PredictedDataset":
@@ -182,9 +207,13 @@ class PredictedDataset:
         parsed: Dict[int, PredictedAbstract] = {}
         for key, item in pred_dict.get("evidence", {}).items():
             doc_id = int(key)
+            if doc_id in parsed:
+                raise ValueError(f"Duplicate abstract prediction doc_id={doc_id} on claim {claim_id}")
+            raw_indices = _validate_sentence_indices(item["sentences"])
+            deduped_indices = list(dict.fromkeys(raw_indices))
             parsed[doc_id] = PredictedAbstract(
                 abstract_id=doc_id,
                 label=make_label(item["label"], allow_nei=False),
-                rationale=[int(ix) for ix in item["sentences"]],
+                rationale=deduped_indices,
             )
         return ClaimPredictions(claim_id=claim_id, predictions=parsed, gold=gold_claim)

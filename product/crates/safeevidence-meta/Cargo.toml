@@ -7,6 +7,6 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-safeevidence-contracts = { path = "../safeevidence-contracts" }
+safeevidence-contracts = { version = "=0.0.0", path = "../safeevidence-contracts" }
 serde = { version = "=1.0.229", features = ["derive"] }
 thiserror = "=2.0.21"

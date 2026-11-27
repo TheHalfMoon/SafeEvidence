@@ -86,5 +86,16 @@ fn bilingual_naive_bayes_prioritizes_relevant_studies_and_computes_exact_loss_nd
         &[true, false, false, false],
         20
     ));
+    // Cold-start streak with zero relevant studies MUST NOT advise halting screening:
+    assert!(!should_stop(
+        StopCriterion::NConsecutiveIrrelevant { n: 3 },
+        &[false, false, false, false],
+        20
+    ));
+    assert!(!should_stop(
+        StopCriterion::QuantileLabeled { quantile: f64::NAN },
+        &[true, false],
+        20
+    ));
     assert!(should_stop(StopCriterion::IsFittable, &[true, false], 20));
 }
