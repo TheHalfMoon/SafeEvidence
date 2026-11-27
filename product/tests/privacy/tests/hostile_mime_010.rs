@@ -71,6 +71,14 @@ fn empty_and_spoofed_magic_payloads_quarantine() {
         ("img-slash-onerror", b"<img/src=x/onerror=alert(1)>"),
         ("img-quote-onerror", b"<img src=\"x\"onerror=alert(1)>"),
         (
+            "img-quoted-lt-onerror",
+            b"<img title=\"<1\" onerror=alert(1)>",
+        ),
+        (
+            "img-quoted-gt-onerror",
+            b"<img title=\">\" onerror=alert(1)>",
+        ),
+        (
             "details-ontoggle",
             b"p < 0.05 <details/open/ontoggle=alert(1)>",
         ),
@@ -143,9 +151,11 @@ fn empty_and_spoofed_magic_payloads_quarantine() {
         )
     );
 
-    // PDF with embedded active /JavaScript or hex-escaped /J#53 action is quarantined.
+    // PDF with embedded active /JavaScript, compact <</S/JavaScript...>>, '%'-in-string, or /J#53 action is quarantined.
     for payload in [
         &b"%PDF-1.7\n<< /S /JavaScript /JS (app.alert(1)) >>"[..],
+        &b"%PDF-1.7\n<</S/JavaScript/JS(app.alert(1))>>"[..],
+        &b"%PDF-1.7\n1 0 obj << /Title (100%) /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >> endobj"[..],
         &b"%PDF-1.7\n<< /J#53(app.alert(1)) >>"[..],
     ] {
         let active_pdf = DocumentIntakeRequest {

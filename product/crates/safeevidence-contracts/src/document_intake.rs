@@ -89,18 +89,29 @@ fn has_inline_event_handler_markup(text: &str) -> bool {
             idx += 1;
             continue;
         }
-        let Some(rel_angle) = bytes[idx + 1..]
-            .iter()
-            .position(|&b| b == b'<' || b == b'>')
-        else {
+        let mut cursor = idx + 1;
+        let mut in_quote: Option<u8> = None;
+        let mut close_pos: Option<usize> = None;
+        while cursor < bytes.len() {
+            let b = bytes[cursor];
+            if let Some(q) = in_quote {
+                if b == q {
+                    in_quote = None;
+                }
+            } else if matches!(b, b'"' | b'\'') {
+                in_quote = Some(b);
+            } else if b == b'<' {
+                break;
+            } else if b == b'>' {
+                close_pos = Some(cursor);
+                break;
+            }
+            cursor += 1;
+        }
+        let Some(angle_pos) = close_pos else {
             idx += 1;
             continue;
         };
-        let angle_pos = idx + 1 + rel_angle;
-        if bytes[angle_pos] != b'>' {
-            idx += 1;
-            continue;
-        }
         let tag_slice = &bytes[idx + 1..angle_pos];
         let mut name_end = 0;
         while name_end < tag_slice.len()
@@ -112,12 +123,24 @@ fn has_inline_event_handler_markup(text: &str) -> bool {
         if name_end < tag_slice.len()
             && (tag_slice[name_end].is_ascii_whitespace() || tag_slice[name_end] == b'/')
         {
+            let mut attr_quote: Option<u8> = None;
             for pos in name_end..tag_slice.len() {
+                let cur = tag_slice[pos];
+                if let Some(q) = attr_quote {
+                    if cur == q {
+                        attr_quote = None;
+                    }
+                    continue;
+                }
+                if matches!(cur, b'"' | b'\'') {
+                    attr_quote = Some(cur);
+                    continue;
+                }
                 let prev = tag_slice[pos - 1];
                 let prev_delim = prev.is_ascii_whitespace() || matches!(prev, b'/' | b'"' | b'\'');
                 if prev_delim
                     && pos + 3 < tag_slice.len()
-                    && tag_slice[pos].eq_ignore_ascii_case(&b'o')
+                    && cur.eq_ignore_ascii_case(&b'o')
                     && tag_slice[pos + 1].eq_ignore_ascii_case(&b'n')
                     && tag_slice[pos + 2].is_ascii_alphabetic()
                 {
@@ -216,14 +239,7 @@ fn decode_pdf_name_token(raw: &[u8]) -> Option<Vec<u8>> {
 fn pdf_contains_active_action(bytes: &[u8]) -> bool {
     let mut idx = 0;
     while idx < bytes.len() {
-        // Skip `%` comment lines after line 0 so URLs in comments never collide.
-        if bytes[idx] == b'%' && idx > 0 {
-            while idx < bytes.len() && !matches!(bytes[idx], b'\r' | b'\n') {
-                idx += 1;
-            }
-            continue;
-        }
-        if bytes[idx] == b'/' && (idx == 0 || is_pdf_delim_or_ws(bytes[idx - 1])) {
+        if bytes[idx] == b'/' {
             let start = idx + 1;
             let mut end = start;
             while end < bytes.len() && !is_pdf_delim_or_ws(bytes[end]) && end - start <= 64 {
@@ -243,7 +259,7 @@ fn pdf_contains_active_action(bytes: &[u8]) -> bool {
                     && end < bytes.len()
                     && matches!(
                         bytes[end],
-                        b' ' | b'\t' | b'\r' | b'\n' | b'\x0c' | b'\0' | b'(' | b'<' | b'/'
+                        b' ' | b'\t' | b'\r' | b'\n' | b'\x0c' | b'\0' | b'(' | b'<'
                     )
                 {
                     return true;
