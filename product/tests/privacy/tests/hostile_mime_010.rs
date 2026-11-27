@@ -68,6 +68,12 @@ fn empty_and_spoofed_magic_payloads_quarantine() {
             b"<?xml version=\"1.0\"?><svg onload=\"x()\"/>",
         ),
         ("img-onerror", b"Plain intro\n<img src=x onerror = \"y()\">"),
+        ("img-slash-onerror", b"<img/src=x/onerror=alert(1)>"),
+        ("img-quote-onerror", b"<img src=\"x\"onerror=alert(1)>"),
+        (
+            "details-ontoggle",
+            b"p < 0.05 <details/open/ontoggle=alert(1)>",
+        ),
         (
             "mid-body-script",
             b"Title: Synthetic\n\n<SCRIPT>evil()</SCRIPT>",
@@ -106,6 +112,7 @@ fn empty_and_spoofed_magic_payloads_quarantine() {
     for (label, payload) in [
         ("ascii-zip", &b"PK\x03\x04\x14\x20\x20\x20stored"[..]),
         ("pdf-as-text", &b"%PDF-1.7\n1 0 obj"[..]),
+        ("space-bom-pdf", " \u{feff}%PDF-1.7\n1 0 obj".as_bytes()),
     ] {
         let req = DocumentIntakeRequest {
             mime: DocumentMimeClass::TextPlain,
@@ -136,24 +143,29 @@ fn empty_and_spoofed_magic_payloads_quarantine() {
         )
     );
 
-    // PDF with embedded active /JavaScript action is quarantined.
-    let active_pdf = DocumentIntakeRequest {
-        mime: DocumentMimeClass::ApplicationPdf,
-        bytes: b"%PDF-1.7\n<< /S /JavaScript /JS (app.alert(1)) >>".to_vec(),
-        fixture_id: Some("active-pdf".to_owned()),
-    };
-    assert_eq!(
-        mime_decision(&active_pdf),
-        (
-            QuarantineDecision::Quarantine,
-            DocumentDenyReason::MimeDenied
-        )
-    );
+    // PDF with embedded active /JavaScript or hex-escaped /J#53 action is quarantined.
+    for payload in [
+        &b"%PDF-1.7\n<< /S /JavaScript /JS (app.alert(1)) >>"[..],
+        &b"%PDF-1.7\n<< /J#53(app.alert(1)) >>"[..],
+    ] {
+        let active_pdf = DocumentIntakeRequest {
+            mime: DocumentMimeClass::ApplicationPdf,
+            bytes: payload.to_vec(),
+            fixture_id: Some("active-pdf".to_owned()),
+        };
+        assert_eq!(
+            mime_decision(&active_pdf),
+            (
+                QuarantineDecision::Quarantine,
+                DocumentDenyReason::MimeDenied
+            )
+        );
+    }
 
-    // Valid bounded UTF-8 text (including '< 0.05' inequality prose) and %PDF- header pass.
+    // Valid bounded UTF-8 text (including '< 0.05' followed by 'onset = 3') and benign PDFs pass.
     let clean_text = DocumentIntakeRequest {
         mime: DocumentMimeClass::TextPlain,
-        bytes: b"Synthetic study report abstract (p < 0.05, n > 40).".to_vec(),
+        bytes: b"Synthetic study report (p < 0.05). Median onset = 3 days, n > 40.".to_vec(),
         fixture_id: Some("clean-txt".to_owned()),
     };
     assert_eq!(
@@ -166,7 +178,7 @@ fn empty_and_spoofed_magic_payloads_quarantine() {
 
     let clean_pdf = DocumentIntakeRequest {
         mime: DocumentMimeClass::ApplicationPdf,
-        bytes: b"%PDF-1.7\n%synthetic".to_vec(),
+        bytes: b"%PDF-1.7\n% https://example.org/json\n1 0 obj << /Type /Catalog /URI (https://example.org/jss) >> endobj".to_vec(),
         fixture_id: Some("clean-pdf".to_owned()),
     };
     assert_eq!(

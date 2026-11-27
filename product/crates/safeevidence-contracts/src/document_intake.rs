@@ -85,15 +85,37 @@ fn has_inline_event_handler_markup(text: &str) -> bool {
     let bytes = text.as_bytes();
     let mut idx = 0;
     while idx < bytes.len() {
-        if bytes[idx] == b'<' {
-            let close = bytes[idx + 1..]
-                .iter()
-                .position(|&b| b == b'>')
-                .map_or(bytes.len(), |rel| idx + 1 + rel);
-            let tag_slice = &bytes[idx + 1..close];
-            for pos in 0..tag_slice.len() {
-                let prev_ws = pos == 0 || tag_slice[pos - 1].is_ascii_whitespace();
-                if prev_ws
+        if bytes[idx] != b'<' || idx + 1 >= bytes.len() || !bytes[idx + 1].is_ascii_alphabetic() {
+            idx += 1;
+            continue;
+        }
+        let Some(rel_angle) = bytes[idx + 1..]
+            .iter()
+            .position(|&b| b == b'<' || b == b'>')
+        else {
+            idx += 1;
+            continue;
+        };
+        let angle_pos = idx + 1 + rel_angle;
+        if bytes[angle_pos] != b'>' {
+            idx += 1;
+            continue;
+        }
+        let tag_slice = &bytes[idx + 1..angle_pos];
+        let mut name_end = 0;
+        while name_end < tag_slice.len()
+            && (tag_slice[name_end].is_ascii_alphanumeric()
+                || matches!(tag_slice[name_end], b'-' | b':'))
+        {
+            name_end += 1;
+        }
+        if name_end < tag_slice.len()
+            && (tag_slice[name_end].is_ascii_whitespace() || tag_slice[name_end] == b'/')
+        {
+            for pos in name_end..tag_slice.len() {
+                let prev = tag_slice[pos - 1];
+                let prev_delim = prev.is_ascii_whitespace() || matches!(prev, b'/' | b'"' | b'\'');
+                if prev_delim
                     && pos + 3 < tag_slice.len()
                     && tag_slice[pos].eq_ignore_ascii_case(&b'o')
                     && tag_slice[pos + 1].eq_ignore_ascii_case(&b'n')
@@ -111,10 +133,8 @@ fn has_inline_event_handler_markup(text: &str) -> bool {
                     }
                 }
             }
-            idx = close.saturating_add(1);
-        } else {
-            idx += 1;
         }
+        idx = angle_pos.saturating_add(1);
     }
     false
 }
@@ -148,11 +168,93 @@ fn looks_like_active_markup_or_script(text: &str) -> bool {
         || has_inline_event_handler_markup(text)
 }
 
+const fn is_pdf_delim_or_ws(byte: u8) -> bool {
+    matches!(
+        byte,
+        b' ' | b'\t'
+            | b'\r'
+            | b'\n'
+            | b'\x0c'
+            | b'\0'
+            | b'('
+            | b')'
+            | b'<'
+            | b'>'
+            | b'['
+            | b']'
+            | b'{'
+            | b'}'
+            | b'/'
+            | b'%'
+    )
+}
+
+fn decode_pdf_name_token(raw: &[u8]) -> Option<Vec<u8>> {
+    if raw.is_empty() || raw.len() > 64 || !raw.iter().all(|&b| (0x21..=0x7e).contains(&b)) {
+        return None;
+    }
+    let mut out = Vec::with_capacity(raw.len());
+    let mut idx = 0;
+    while idx < raw.len() {
+        if raw[idx] == b'#' {
+            if idx + 2 >= raw.len() {
+                return None;
+            }
+            let hi = (raw[idx + 1] as char).to_digit(16)?;
+            let lo = (raw[idx + 2] as char).to_digit(16)?;
+            let decoded = u8::try_from((hi << 4) | lo).ok()?;
+            out.push(decoded);
+            idx += 3;
+        } else {
+            out.push(raw[idx]);
+            idx += 1;
+        }
+    }
+    Some(out)
+}
+
 fn pdf_contains_active_action(bytes: &[u8]) -> bool {
-    const DENIED_PDF_TOKENS: &[&[u8]] = &[b"/javascript", b"/js", b"/launch", b"/richmedia"];
-    DENIED_PDF_TOKENS
-        .iter()
-        .any(|token| contains_ascii_case_insensitive(bytes, token))
+    let mut idx = 0;
+    while idx < bytes.len() {
+        // Skip `%` comment lines after line 0 so URLs in comments never collide.
+        if bytes[idx] == b'%' && idx > 0 {
+            while idx < bytes.len() && !matches!(bytes[idx], b'\r' | b'\n') {
+                idx += 1;
+            }
+            continue;
+        }
+        if bytes[idx] == b'/' && (idx == 0 || is_pdf_delim_or_ws(bytes[idx - 1])) {
+            let start = idx + 1;
+            let mut end = start;
+            while end < bytes.len() && !is_pdf_delim_or_ws(bytes[end]) && end - start <= 64 {
+                end += 1;
+            }
+            if end > start
+                && (end == bytes.len() || is_pdf_delim_or_ws(bytes[end]))
+                && let Some(decoded) = decode_pdf_name_token(&bytes[start..end])
+            {
+                if decoded.eq_ignore_ascii_case(b"javascript")
+                    || decoded.eq_ignore_ascii_case(b"launch")
+                    || decoded.eq_ignore_ascii_case(b"richmedia")
+                {
+                    return true;
+                }
+                if decoded.as_slice() == b"JS"
+                    && end < bytes.len()
+                    && matches!(
+                        bytes[end],
+                        b' ' | b'\t' | b'\r' | b'\n' | b'\x0c' | b'\0' | b'(' | b'<' | b'/'
+                    )
+                {
+                    return true;
+                }
+            }
+            idx = end;
+        } else {
+            idx += 1;
+        }
+    }
+    false
 }
 
 /// Evaluates `req` fail-closed, quarantining denied MIME classes, empty/oversized payloads,
@@ -198,8 +300,8 @@ pub fn mime_decision(req: &DocumentIntakeRequest) -> (QuarantineDecision, Docume
                     DocumentDenyReason::InvalidUtf8Text,
                 );
             };
-            let without_bom = decoded.strip_prefix('\u{feff}').unwrap_or(decoded);
-            let trimmed = without_bom.trim_start();
+            let trimmed =
+                decoded.trim_start_matches(|c: char| c == '\u{feff}' || c.is_whitespace());
             if trimmed.is_empty() {
                 return (
                     QuarantineDecision::Quarantine,
@@ -218,7 +320,7 @@ pub fn mime_decision(req: &DocumentIntakeRequest) -> (QuarantineDecision, Docume
                     DocumentDenyReason::InvalidUtf8Text,
                 );
             }
-            if looks_like_active_markup_or_script(without_bom) {
+            if looks_like_active_markup_or_script(trimmed) {
                 return (
                     QuarantineDecision::Quarantine,
                     DocumentDenyReason::MimeDenied,
