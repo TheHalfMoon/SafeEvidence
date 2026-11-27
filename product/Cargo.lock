@@ -867,6 +867,8 @@ dependencies = [
  "safeevidence-assurance",
  "safeevidence-contracts",
  "safeevidence-docs",
+ "safeevidence-meta",
+ "safeevidence-review",
  "serde",
  "serde_json",
 ]
@@ -933,6 +935,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "safeevidence-meta"
+version = "0.0.0"
+dependencies = [
+ "safeevidence-contracts",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "safeevidence-network"
 version = "0.0.0"
 dependencies = [
@@ -988,6 +999,16 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "safeevidence-review"
+version = "0.0.0"
+dependencies = [
+ "safeevidence-contracts",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

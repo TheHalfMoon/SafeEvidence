@@ -25,6 +25,8 @@ use serde::{Deserialize, Serialize};
 
 pub mod bench_runner;
 pub mod bilingual_ask;
+pub mod hybrid_retrieval;
+pub mod nli_verifier;
 pub mod overlay;
 pub mod perturbation;
 

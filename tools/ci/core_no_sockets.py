@@ -21,7 +21,9 @@ CORE = (
     "safeevidence-docs",
     "safeevidence-fhir",
     "safeevidence-keyring-wire",
+    "safeevidence-meta",
     "safeevidence-pack",
+    "safeevidence-review",
     "safeevidence-vault",
     "safeevidence-proofstore",
 )

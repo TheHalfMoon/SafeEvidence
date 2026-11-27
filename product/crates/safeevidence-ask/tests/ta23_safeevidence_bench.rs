@@ -49,7 +49,8 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
         DigestSha256::of(json_b.as_bytes())
     );
 
-    // Verify all 8 split identities and passing gates (including clean-room TA-13 calibration):
+    // Verify all 12 split identities and passing gates (including clean-room TA-13 calibration,
+    // TA-15 native PDF/SafeOCR, TA-09 hybrid RRF/NLI, TA-16 PRISMA/ASReview, and TA-18 pooling):
     let split_ids: Vec<&str> = run_a
         .body
         .splits
@@ -68,6 +69,9 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
             "ta27-prompt-injection",
             "ta13-assurance-calibration",
             "ta15-native-pdf-and-safeocr",
+            "ta09-hybrid-bilingual-rrf",
+            "ta16-systematic-review-prisma-asreview",
+            "ta18-meta-analysis-pooling",
         ]
     );
     for split in &run_a.body.splits {

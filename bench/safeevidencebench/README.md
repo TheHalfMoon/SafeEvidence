@@ -8,7 +8,7 @@ Status: `AUTOMATED_SCIENTIFIC_EVALUATION_ACTIVE` (`plan-v1.7` / `ADR-0001` / `AD
 
 Under `ADR-0001`, private `DAL` (`T14`) is permanently removed from SafeEvidence and replaced by clean-room Rust proper-scoring, reliability-diagram (`ECE`/`MCE`), tie-exact `AURC`/`E-AURC`, Wilson/cluster-bootstrap CI, and `P00` selective-assurance rate evaluation (`ta13-assurance-calibration`).
 
-## 2. Registered Synthetic Splits (9 Splits)
+## 2. Registered Synthetic Splits (12 Splits)
 
 | Split ID | Acceptance Row | Language | Description |
 |---|---|---|---|
@@ -21,10 +21,13 @@ Under `ADR-0001`, private `DAL` (`T14`) is permanently removed from SafeEvidence
 | `ta27-prompt-injection` | `TA-27` | `en+ar` | Retrieved-abstract prompt injection, FTS5 operator/DDL syntax, Unicode homoglyph/BiDi rejection, and `EffectMeasureSwap` gate |
 | `ta13-assurance-calibration` | `TA-13` | `en+ar` | Clean-room Brier, clamped NLL, `ECE`/`MCE`, tie-exact `AURC`/`oracle_aurc`/`E-AURC`, and `P00` selective-assurance rates (`ADR-0001`) |
 | `ta15-native-pdf-and-safeocr` | `TA-15` | `en+ar` | Bilingual native `FlateDecode` PDF text/span extraction, hostile-PDF quarantine, scanned-page abstain, and `T16` SafeOCR critical-number/decimal/unit/negation verification |
+| `ta09-hybrid-bilingual-rrf` | `TA-09` | `en+ar` | Hybrid `BM25 + 128-d Dense -> RRF -> PICO Cross-Rerank` cross-lingual retrieval and bilingual (`EN` + vocalized `AR`) NLI entailment/contradiction verification |
+| `ta16-systematic-review-prisma-asreview` | `TA-16` | `en+ar` | `T15` 2-pass conflict-safe deduplication, PRISMA 2020 conservation/replay, and `T18` `ASReview` Multinomial NB active-learning `nDCG` / `WSS@0.95` |
+| `ta18-meta-analysis-pooling` | `TA-18` | `en` | `T19` Hedges' $g$, Paule-Mandel + HKSJ random-effects pooling, $I^2$, prediction interval, and `decide_pooling` duplicate-study refusal |
 
 ## 3. Fenced External Splits (`BLOCKED_EXTERNAL`)
 
-- **`T27` (`SciFact`) & `T28` (`Evidence Inference`):** `BLOCKED_EXTERNAL` until in-tree `bench/` dataset admission and optional `EXT-07` NLI model-card clearance (`T27b` `MultiVerS` dropped per `plan-v1.7`).
+- **`T27` (`SciFact`) & `T28` (`Evidence Inference`) External Datasets:** Benchmark evaluator harnesses are admitted in-tree under `bench/scifact/` (`ADM-0030`) and `bench/evidence_inference/` (`ADM-0032`); external dataset tarballs (`CC-BY-4.0`, `ODC-By-1.0`, `PMC OA`) and optional `EXT-07` neural NLI weights remain outside shipped product scope (`T27b` `MultiVerS` dropped per `plan-v1.7`).
 - **Clinician-adjudicated SafeEvidence holdout:** Outside V1 research workstation scope per `ADR-0003` (`ACTUAL_CLINICAL_VALIDATION = FALSE`; gated on `EXT-03` / `Issue #4` for any future clinical product).
 
 ## 4. Reproducible Execution

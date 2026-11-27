@@ -13,6 +13,8 @@ members = [
     "crates/safeevidence-pack",
     "crates/safeevidence-fhir",
     "crates/safeevidence-docs",
+    "crates/safeevidence-meta",
+    "crates/safeevidence-review",
     "tests/privacy",
 ]
 
