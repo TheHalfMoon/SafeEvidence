@@ -940,8 +940,8 @@ impl AskState {
             .0
             .lock()
             .map_err(|_| "workstation state unavailable".to_owned())?;
-        let Some(data_dir) = inner.data_dir.as_deref() else {
-            return Err("data directory not initialized".to_owned());
+        let (Some(data_dir), Some(_)) = (inner.data_dir.as_deref(), inner.lock.as_ref()) else {
+            return Err("store lock or data directory not held by this instance".to_owned());
         };
         let dir = store_dir(data_dir);
         enroll_recovery_passphrase(&dir, &inner.keys, passphrase).map_err(|error| error.to_string())
@@ -961,8 +961,8 @@ impl AskState {
             .lock()
             .map_err(|_| "workstation state unavailable".to_owned())?;
         inner.session = None;
-        let Some(data_dir) = inner.data_dir.as_deref() else {
-            return Err("data directory not initialized".to_owned());
+        let (Some(data_dir), Some(_)) = (inner.data_dir.as_deref(), inner.lock.as_ref()) else {
+            return Err("store lock or data directory not held by this instance".to_owned());
         };
         let dir = store_dir(data_dir);
         recover_key_with_passphrase(&dir, &inner.keys, passphrase)
@@ -979,6 +979,7 @@ impl AskState {
                 .0
                 .lock()
                 .map_err(|_| "workstation state unavailable".to_owned())?;
+            let holds_lock = inner.lock.is_some();
             let dir_opt = inner.data_dir.as_deref().map(store_dir);
             let established = dir_opt.as_deref().is_some_and(is_established);
             let enrolled = dir_opt.as_deref().is_some_and(has_recovery_envelope);
@@ -997,37 +998,49 @@ impl AskState {
                     .map_err(|_| "could not verify record semantics doctor".to_owned())?
                     .passed();
                 (epoch, grant, true, doctor, enrolled)
-            } else if let (true, Some(dir)) = (established, dir_opt.as_deref()) {
-                let doctor = open_root_key(dir, &inner.keys)
-                    .ok()
-                    .and_then(|opened| {
-                        let lease = VaultLease::new(opened.identity);
-                        let context = KeyDerivationContext::new(
-                            opened.identity.vault_id(),
-                            opened.identity.key_generation(),
-                            KeyPurpose::StructuredStore,
-                        );
-                        let mut store = ProofStore::open_existing(
-                            dir.join(DATABASE_FILE),
-                            lease.keyed_handle_lease(),
-                            context,
-                            &opened.key,
-                        )
-                        .ok()?;
-                        Some(
-                            store
-                                .verify_record_semantics_doctor()
-                                .is_ok_and(|report| report.passed()),
-                        )
-                    })
-                    .unwrap_or(false);
-                (
-                    corpus.validity_epoch,
-                    corpus.rights_grant_version.clone(),
-                    true,
-                    doctor,
-                    enrolled,
-                )
+            } else if let (true, true, Some(dir)) = (holds_lock, established, dir_opt.as_deref()) {
+                let inspected = open_root_key(dir, &inner.keys).ok().and_then(|opened| {
+                    let lease = VaultLease::new(opened.identity);
+                    let context = KeyDerivationContext::new(
+                        opened.identity.vault_id(),
+                        opened.identity.key_generation(),
+                        KeyPurpose::StructuredStore,
+                    );
+                    let mut store = ProofStore::open_existing(
+                        dir.join(DATABASE_FILE),
+                        lease.keyed_handle_lease(),
+                        context,
+                        &opened.key,
+                    )
+                    .ok()?;
+                    let epoch = store.epoch().ok()?;
+                    let grant = store.rights_grant().ok()?;
+                    let doctor = store
+                        .verify_record_semantics_doctor()
+                        .is_ok_and(|report| report.passed());
+                    Some((epoch, grant, doctor))
+                });
+                if let Some((epoch, grant, doctor)) = inspected {
+                    let effective_grant = if grant.is_empty() {
+                        corpus.rights_grant_version.clone()
+                    } else {
+                        grant
+                    };
+                    let effective_epoch = if epoch == 0 {
+                        corpus.validity_epoch
+                    } else {
+                        epoch
+                    };
+                    (effective_epoch, effective_grant, true, doctor, enrolled)
+                } else {
+                    (
+                        corpus.validity_epoch,
+                        corpus.rights_grant_version.clone(),
+                        true,
+                        false,
+                        enrolled,
+                    )
+                }
             } else {
                 (
                     corpus.validity_epoch,
@@ -1737,6 +1750,14 @@ mod tests {
         let state = AskState::default();
         state.use_test_keys();
         state.set_data_dir(dir.0.clone());
+
+        // A competing second instance that failed to acquire the directory lock cannot enroll or
+        // overwrite recovery/custody files in the live store directory.
+        let rival = AskState::default();
+        rival.use_test_keys();
+        rival.set_data_dir(dir.0.clone());
+        assert!(rival.enroll_recovery(PASSPHRASE).is_err());
+        assert!(rival.recover_store_key(PASSPHRASE).is_err());
 
         let initial = state.answer(ANSWERED);
         assert_eq!(initial.outcome, TerminalOutcome::AnswerWithCaution);

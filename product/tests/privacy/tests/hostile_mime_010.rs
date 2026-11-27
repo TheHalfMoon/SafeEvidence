@@ -1,4 +1,4 @@
-//! Adapted from `crates/medscale-core/tests/hostile_mime_010.rs` (`ADM-0007`, `T12`); see `PROVENANCE.md`.
+//! Admission `ADM-0007` (`T12`); see `PROVENANCE.md`.
 
 use safeevidence_contracts::document_intake::{
     DocumentDenyReason, DocumentIntakeRequest, DocumentMimeClass, QuarantineDecision, mime_decision,
@@ -53,6 +53,75 @@ fn empty_and_spoofed_magic_payloads_quarantine() {
         )
     );
 
+    // UTF-8 BOM, Unicode NBSP, XML/SVG inline handler, and mid-document <script> polyglots quarantine.
+    for (label, payload) in [
+        (
+            "utf8-bom-script",
+            "\u{feff}<script>alert(1)</script>".as_bytes(),
+        ),
+        (
+            "nbsp-html",
+            "\u{00a0}<html><body>x</body></html>".as_bytes(),
+        ),
+        (
+            "xml-svg-onload",
+            b"<?xml version=\"1.0\"?><svg onload=\"x()\"/>",
+        ),
+        ("img-onerror", b"Plain intro\n<img src=x onerror = \"y()\">"),
+        (
+            "mid-body-script",
+            b"Title: Synthetic\n\n<SCRIPT>evil()</SCRIPT>",
+        ),
+        ("html-comment", b"<!-- polyglot --> text"),
+    ] {
+        let req = DocumentIntakeRequest {
+            mime: DocumentMimeClass::TextPlain,
+            bytes: payload.to_vec(),
+            fixture_id: Some(label.to_owned()),
+        };
+        assert_eq!(
+            mime_decision(&req),
+            (
+                QuarantineDecision::Quarantine,
+                DocumentDenyReason::MimeDenied
+            ),
+            "polyglot {label} must quarantine"
+        );
+    }
+
+    // NUL / control bytes in plain text quarantine as InvalidUtf8Text.
+    let nul_text = DocumentIntakeRequest {
+        mime: DocumentMimeClass::TextPlain,
+        bytes: b"Plain text\x00with embedded nul".to_vec(),
+        fixture_id: Some("nul-text".to_owned()),
+    };
+    assert_eq!(
+        mime_decision(&nul_text),
+        (
+            QuarantineDecision::Quarantine,
+            DocumentDenyReason::InvalidUtf8Text
+        )
+    );
+
+    for (label, payload) in [
+        ("ascii-zip", &b"PK\x03\x04\x14\x20\x20\x20stored"[..]),
+        ("pdf-as-text", &b"%PDF-1.7\n1 0 obj"[..]),
+    ] {
+        let req = DocumentIntakeRequest {
+            mime: DocumentMimeClass::TextPlain,
+            bytes: payload.to_vec(),
+            fixture_id: Some(label.to_owned()),
+        };
+        assert_eq!(
+            mime_decision(&req),
+            (
+                QuarantineDecision::Quarantine,
+                DocumentDenyReason::MagicHeaderMismatch
+            ),
+            "container magic {label} must quarantine"
+        );
+    }
+
     // Non-PDF bytes declared as ApplicationPdf are quarantined on magic-header mismatch.
     let fake_pdf = DocumentIntakeRequest {
         mime: DocumentMimeClass::ApplicationPdf,
@@ -67,10 +136,24 @@ fn empty_and_spoofed_magic_payloads_quarantine() {
         )
     );
 
-    // Valid bounded UTF-8 text and %PDF- header pass intake quarantine.
+    // PDF with embedded active /JavaScript action is quarantined.
+    let active_pdf = DocumentIntakeRequest {
+        mime: DocumentMimeClass::ApplicationPdf,
+        bytes: b"%PDF-1.7\n<< /S /JavaScript /JS (app.alert(1)) >>".to_vec(),
+        fixture_id: Some("active-pdf".to_owned()),
+    };
+    assert_eq!(
+        mime_decision(&active_pdf),
+        (
+            QuarantineDecision::Quarantine,
+            DocumentDenyReason::MimeDenied
+        )
+    );
+
+    // Valid bounded UTF-8 text (including '< 0.05' inequality prose) and %PDF- header pass.
     let clean_text = DocumentIntakeRequest {
         mime: DocumentMimeClass::TextPlain,
-        bytes: b"Synthetic study report abstract.".to_vec(),
+        bytes: b"Synthetic study report abstract (p < 0.05, n > 40).".to_vec(),
         fixture_id: Some("clean-txt".to_owned()),
     };
     assert_eq!(

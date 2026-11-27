@@ -295,7 +295,7 @@ export async function runAskChecks(driver) {
     assert.match(privacyText, /Append-only record-semantics doctor verified/);
     assert.match(privacyText, /Hostile-MIME magic-byte quarantine active/);
     assert.match(privacyText, /core_dump/);
-    assert.doesNotMatch(privacyText, /\d\s*%|percent|confidence/i);
+    assert.doesNotMatch(privacyText, /%|\u066A|percent|confidence/i);
 
     await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }))`);
     await waitFor(() => page.eval(`document.activeElement?.id === "tab-ask" && !!document.querySelector("#question")`), "Home returning to Ask tab");

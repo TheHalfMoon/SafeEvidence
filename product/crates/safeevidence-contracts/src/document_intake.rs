@@ -1,8 +1,9 @@
 //! Fail-closed hostile-MIME and payload intake quarantine (`T12`, `ADM-0007` / `WP-13`).
 //!
-//! Enforces strict pre-parser MIME allowlisting, non-empty size bounds, and magic-header
-//! verification so active/executable, HTML/script, Office macro/OOXML, arbitrary binary, empty,
-//! oversized, or header-spoofed payloads are quarantined before reaching any parser worker.
+//! Enforces strict pre-parser MIME allowlisting, non-empty size bounds, control-byte/BOM hygiene,
+//! polyglot active-markup detection, and magic-header verification so active/executable,
+//! HTML/XML/script, Office macro/OOXML, arbitrary binary, empty, oversized, or header-spoofed
+//! payloads are quarantined before reaching any parser worker.
 
 use serde::{Deserialize, Serialize};
 
@@ -52,19 +53,111 @@ pub struct DocumentIntakeRequest {
     pub fixture_id: Option<String>,
 }
 
-fn looks_like_html_or_script(bytes: &[u8]) -> bool {
-    let trimmed = bytes.trim_ascii_start();
-    let prefix = &trimmed[..trimmed.len().min(64)];
-    let lower: Vec<u8> = prefix.iter().map(u8::to_ascii_lowercase).collect();
-    lower.starts_with(b"<!doctype html")
-        || lower.starts_with(b"<html")
-        || lower.starts_with(b"<script")
-        || lower.starts_with(b"<svg")
+fn has_disallowed_control_bytes(bytes: &[u8]) -> bool {
+    bytes
+        .iter()
+        .any(|&b| b == 0x7f || (b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r' | 0x0c)))
+}
+
+fn starts_with_binary_or_container_magic(trimmed: &str) -> bool {
+    let raw = trimmed.as_bytes();
+    raw.starts_with(b"%PDF-")
+        || raw.starts_with(b"PK\x03\x04")
+        || raw.starts_with(b"PK\x05\x06")
+        || raw.starts_with(b"PK\x07\x08")
+        || raw.starts_with(b"MZ")
+        || raw.starts_with(b"\x7fELF")
+}
+
+fn contains_ascii_case_insensitive(haystack: &[u8], needle_lower: &[u8]) -> bool {
+    if needle_lower.is_empty() || haystack.len() < needle_lower.len() {
+        return false;
+    }
+    haystack.windows(needle_lower.len()).any(|window| {
+        window
+            .iter()
+            .zip(needle_lower.iter())
+            .all(|(h, n)| h.to_ascii_lowercase() == *n)
+    })
+}
+
+fn has_inline_event_handler_markup(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut idx = 0;
+    while idx < bytes.len() {
+        if bytes[idx] == b'<' {
+            let close = bytes[idx + 1..]
+                .iter()
+                .position(|&b| b == b'>')
+                .map_or(bytes.len(), |rel| idx + 1 + rel);
+            let tag_slice = &bytes[idx + 1..close];
+            for pos in 0..tag_slice.len() {
+                let prev_ws = pos == 0 || tag_slice[pos - 1].is_ascii_whitespace();
+                if prev_ws
+                    && pos + 3 < tag_slice.len()
+                    && tag_slice[pos].eq_ignore_ascii_case(&b'o')
+                    && tag_slice[pos + 1].eq_ignore_ascii_case(&b'n')
+                    && tag_slice[pos + 2].is_ascii_alphabetic()
+                {
+                    let mut scan = pos + 2;
+                    while scan < tag_slice.len() && tag_slice[scan].is_ascii_alphabetic() {
+                        scan += 1;
+                    }
+                    while scan < tag_slice.len() && tag_slice[scan].is_ascii_whitespace() {
+                        scan += 1;
+                    }
+                    if scan < tag_slice.len() && tag_slice[scan] == b'=' {
+                        return true;
+                    }
+                }
+            }
+            idx = close.saturating_add(1);
+        } else {
+            idx += 1;
+        }
+    }
+    false
+}
+
+fn looks_like_active_markup_or_script(text: &str) -> bool {
+    let raw = text.as_bytes();
+    const DENIED_MARKUP_TOKENS: &[&[u8]] = &[
+        b"<!doctype",
+        b"<html",
+        b"<head",
+        b"<body",
+        b"<script",
+        b"<svg",
+        b"<iframe",
+        b"<object",
+        b"<embed",
+        b"<applet",
+        b"<meta",
+        b"<link",
+        b"<style",
+        b"<form",
+        b"<?xml",
+        b"<!--",
+        b"javascript:",
+        b"vbscript:",
+        b"data:text/html",
+    ];
+    DENIED_MARKUP_TOKENS
+        .iter()
+        .any(|token| contains_ascii_case_insensitive(raw, token))
+        || has_inline_event_handler_markup(text)
+}
+
+fn pdf_contains_active_action(bytes: &[u8]) -> bool {
+    const DENIED_PDF_TOKENS: &[&[u8]] = &[b"/javascript", b"/js", b"/launch", b"/richmedia"];
+    DENIED_PDF_TOKENS
+        .iter()
+        .any(|token| contains_ascii_case_insensitive(bytes, token))
 }
 
 /// Evaluates `req` fail-closed, quarantining denied MIME classes, empty/oversized payloads,
-/// invalid UTF-8 plain text, HTML/script polyglots disguised as plain text, and PDF/PNG/JPEG
-/// magic-header mismatches.
+/// invalid UTF-8 or control-byte plain text, BOM/whitespace/mid-body HTML/XML/script polyglots,
+/// active PDF script actions, and PDF/PNG/JPEG magic-header mismatches.
 #[must_use]
 pub fn mime_decision(req: &DocumentIntakeRequest) -> (QuarantineDecision, DocumentDenyReason) {
     match req.mime {
@@ -99,13 +192,33 @@ pub fn mime_decision(req: &DocumentIntakeRequest) -> (QuarantineDecision, Docume
 
     match req.mime {
         DocumentMimeClass::TextPlain => {
-            if std::str::from_utf8(&req.bytes).is_err() {
+            let Ok(decoded) = std::str::from_utf8(&req.bytes) else {
+                return (
+                    QuarantineDecision::Quarantine,
+                    DocumentDenyReason::InvalidUtf8Text,
+                );
+            };
+            let without_bom = decoded.strip_prefix('\u{feff}').unwrap_or(decoded);
+            let trimmed = without_bom.trim_start();
+            if trimmed.is_empty() {
+                return (
+                    QuarantineDecision::Quarantine,
+                    DocumentDenyReason::EmptyPayload,
+                );
+            }
+            if starts_with_binary_or_container_magic(trimmed) {
+                return (
+                    QuarantineDecision::Quarantine,
+                    DocumentDenyReason::MagicHeaderMismatch,
+                );
+            }
+            if has_disallowed_control_bytes(&req.bytes) {
                 return (
                     QuarantineDecision::Quarantine,
                     DocumentDenyReason::InvalidUtf8Text,
                 );
             }
-            if looks_like_html_or_script(&req.bytes) {
+            if looks_like_active_markup_or_script(without_bom) {
                 return (
                     QuarantineDecision::Quarantine,
                     DocumentDenyReason::MimeDenied,
@@ -117,6 +230,12 @@ pub fn mime_decision(req: &DocumentIntakeRequest) -> (QuarantineDecision, Docume
                 return (
                     QuarantineDecision::Quarantine,
                     DocumentDenyReason::MagicHeaderMismatch,
+                );
+            }
+            if pdf_contains_active_action(&req.bytes) {
+                return (
+                    QuarantineDecision::Quarantine,
+                    DocumentDenyReason::MimeDenied,
                 );
             }
         }

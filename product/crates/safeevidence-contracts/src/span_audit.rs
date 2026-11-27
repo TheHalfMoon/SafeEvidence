@@ -62,7 +62,9 @@ impl OverlapKind {
 pub enum SpanAuditError {
     EmptySourceId,
     EmptyEvidenceId,
+    InvalidOpaqueIdentifier,
     InvalidRangeBounds,
+    InvalidAuditIntegrity,
 }
 
 impl fmt::Display for SpanAuditError {
@@ -70,7 +72,11 @@ impl fmt::Display for SpanAuditError {
         let msg = match self {
             Self::EmptySourceId => "source_id must be a non-empty string",
             Self::EmptyEvidenceId => "evidence_id must be a non-empty string",
+            Self::InvalidOpaqueIdentifier => "audit identifier must be canonical sha256:<64hex>",
             Self::InvalidRangeBounds => "evidence span end must be greater than start",
+            Self::InvalidAuditIntegrity => {
+                "deserialized evidence span audit failed canonical integrity verification"
+            }
         };
         f.write_str(msg)
     }
@@ -121,13 +127,43 @@ fn canonical_sha256_prefixed(json_value: &serde_json::Value) -> String {
     out
 }
 
+#[derive(Deserialize)]
+struct RawAuditedEvidenceSpan {
+    source_id: String,
+    evidence_id: String,
+    start: u64,
+    end: u64,
+}
+
 /// Opaque identity and half-open Unicode scalar range `[start, end)` for one evidence span.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RawAuditedEvidenceSpan")]
 pub struct AuditedEvidenceSpan {
     source_id: String,
     evidence_id: String,
     start: u64,
     end: u64,
+}
+
+impl TryFrom<RawAuditedEvidenceSpan> for AuditedEvidenceSpan {
+    type Error = SpanAuditError;
+
+    fn try_from(raw: RawAuditedEvidenceSpan) -> Result<Self, Self::Error> {
+        if !is_prefixed_sha256_digest(&raw.source_id)
+            || !is_prefixed_sha256_digest(&raw.evidence_id)
+        {
+            return Err(SpanAuditError::InvalidOpaqueIdentifier);
+        }
+        if raw.end <= raw.start {
+            return Err(SpanAuditError::InvalidRangeBounds);
+        }
+        Ok(Self {
+            source_id: raw.source_id,
+            evidence_id: raw.evidence_id,
+            start: raw.start,
+            end: raw.end,
+        })
+    }
 }
 
 impl AuditedEvidenceSpan {
@@ -207,8 +243,19 @@ impl AuditedEvidenceSpan {
     }
 }
 
+#[derive(Deserialize)]
+struct RawEvidenceSpanOverlap {
+    first: AuditedEvidenceSpan,
+    second: AuditedEvidenceSpan,
+    kind: OverlapKind,
+    overlap_start: u64,
+    overlap_end: u64,
+    fingerprint: String,
+}
+
 /// Deterministic overlap finding between two [`AuditedEvidenceSpan`] records.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RawEvidenceSpanOverlap")]
 pub struct EvidenceSpanOverlap {
     first: AuditedEvidenceSpan,
     second: AuditedEvidenceSpan,
@@ -216,6 +263,27 @@ pub struct EvidenceSpanOverlap {
     overlap_start: u64,
     overlap_end: u64,
     fingerprint: String,
+}
+
+impl TryFrom<RawEvidenceSpanOverlap> for EvidenceSpanOverlap {
+    type Error = SpanAuditError;
+
+    fn try_from(raw: RawEvidenceSpanOverlap) -> Result<Self, Self::Error> {
+        if raw.first.sort_key() > raw.second.sort_key() {
+            return Err(SpanAuditError::InvalidAuditIntegrity);
+        }
+        let Some(recomputed) = classify_overlap(&raw.first, &raw.second) else {
+            return Err(SpanAuditError::InvalidRangeBounds);
+        };
+        if recomputed.kind != raw.kind
+            || recomputed.overlap_start != raw.overlap_start
+            || recomputed.overlap_end != raw.overlap_end
+            || recomputed.fingerprint != raw.fingerprint
+        {
+            return Err(SpanAuditError::InvalidAuditIntegrity);
+        }
+        Ok(recomputed)
+    }
 }
 
 impl EvidenceSpanOverlap {
@@ -270,7 +338,7 @@ impl EvidenceSpanOverlap {
 
     #[must_use]
     pub const fn overlap_length(&self) -> u64 {
-        self.overlap_end - self.overlap_start
+        self.overlap_end.saturating_sub(self.overlap_start)
     }
 
     #[must_use]
@@ -311,7 +379,10 @@ pub struct OverlapCounts {
 impl OverlapCounts {
     #[must_use]
     pub const fn total(self) -> usize {
-        self.exact + self.nested + self.partial + self.cross_source
+        self.exact
+            .saturating_add(self.nested)
+            .saturating_add(self.partial)
+            .saturating_add(self.cross_source)
     }
 
     fn to_json_value(self) -> serde_json::Value {
@@ -324,13 +395,38 @@ impl OverlapCounts {
     }
 }
 
+#[derive(Deserialize)]
+struct RawEvidenceSpanAudit {
+    spans: Vec<AuditedEvidenceSpan>,
+    overlaps: Vec<EvidenceSpanOverlap>,
+    counts: OverlapCounts,
+    fingerprint: String,
+}
+
 /// Complete deterministic evidence-span overlap audit with no automatic winner resolution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RawEvidenceSpanAudit")]
 pub struct EvidenceSpanAudit {
     spans: Vec<AuditedEvidenceSpan>,
     overlaps: Vec<EvidenceSpanOverlap>,
     counts: OverlapCounts,
     fingerprint: String,
+}
+
+impl TryFrom<RawEvidenceSpanAudit> for EvidenceSpanAudit {
+    type Error = SpanAuditError;
+
+    fn try_from(raw: RawEvidenceSpanAudit) -> Result<Self, Self::Error> {
+        let canonical = audit_evidence_spans(&raw.spans);
+        if canonical.spans != raw.spans
+            || canonical.overlaps != raw.overlaps
+            || canonical.counts != raw.counts
+            || canonical.fingerprint != raw.fingerprint
+        {
+            return Err(SpanAuditError::InvalidAuditIntegrity);
+        }
+        Ok(canonical)
+    }
 }
 
 impl EvidenceSpanAudit {

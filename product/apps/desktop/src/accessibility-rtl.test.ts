@@ -69,7 +69,7 @@ test("English and Arabic catalogues have complete parity and zero percentages", 
 
   for (const locale of ["en", "ar"] as const) {
     const serialized = JSON.stringify(UI_TEXT[locale]);
-    assert.doesNotMatch(serialized, /\d\s*%|percent|confidence/i);
+    assert.doesNotMatch(serialized, /%|\u066A|percent|confidence/i);
   }
 });
 

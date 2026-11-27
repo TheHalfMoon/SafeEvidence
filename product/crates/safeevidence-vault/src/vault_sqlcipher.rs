@@ -732,8 +732,12 @@ impl SqlCipherDatabaseHandle {
         }
     }
 
-    /// Sets SQLite's `PRAGMA max_page_count` ceiling (`0` restores unlimited growth) to exercise
-    /// deterministic `SQLITE_FULL` disk-quota exhaustion at transaction boundaries (`TA-05`).
+    /// SQLite's default maximum page ceiling (`0x3fff_ffff` = `1_073_741_823` pages).
+    pub const DEFAULT_MAX_PAGE_COUNT: u32 = 0x3fff_ffff;
+
+    /// Sets SQLite's `PRAGMA max_page_count` ceiling (`0` or [`Self::DEFAULT_MAX_PAGE_COUNT`]
+    /// restores SQLite's default `1_073_741_823`-page ceiling) to exercise deterministic
+    /// `SQLITE_FULL` disk-quota exhaustion at transaction boundaries (`TA-05`).
     ///
     /// # Errors
     /// Returns the lease or provider failure.
@@ -741,7 +745,12 @@ impl SqlCipherDatabaseHandle {
         &mut self,
         max_pages: u32,
     ) -> Result<u32, SqlCipherTransactionError<std::convert::Infallible>> {
-        let sql = format!("PRAGMA max_page_count = {max_pages};");
+        let effective = if max_pages == 0 {
+            Self::DEFAULT_MAX_PAGE_COUNT
+        } else {
+            max_pages
+        };
+        let sql = format!("PRAGMA max_page_count = {effective};");
         let result = self.inner.write(|backend| {
             backend
                 ._connection

@@ -316,10 +316,31 @@ fn ta05_diskfull_mid_transaction_rolls_back_all_write_paths_without_partial_stat
         ],
     );
 
-    // Restore SQLite's default maximum page ceiling (`1_073_741_823`) and prove clean recovery.
+    // Also sweep near-page boundary payloads (`32B`..`4096B`) so multi-statement transactions
+    // (`INSERT INTO sources` followed by `INSERT INTO store_events`) exercise both statement-1 and
+    // statement-2 `SQLITE_FULL` rollback without leaving orphan rows in either table.
+    for (idx, len) in [32_usize, 192, 768, 1792, 2816, 3584, 4096]
+        .into_iter()
+        .enumerate()
+    {
+        let doc_id = format!("doc-boundary-{idx}");
+        let payload = vec![b'B'; len];
+        if let Err(error) = store.put_source(&doc_id, &payload) {
+            assert!(matches!(error, StoreError::DiskFull));
+            assert_eq!(
+                store.source(&doc_id).expect("boundary source check"),
+                None,
+                "rolled-back put_source left partial source at {len} bytes"
+            );
+        }
+    }
+
+    // Restore SQLite's default maximum page ceiling via `0` (translated to `0x3fff_ffff`) and prove
+    // clean recovery.
     let restored_ceiling = store
-        .set_max_page_count(1_073_741_823)
-        .expect("restore default max_page_count");
+        .set_max_page_count(0)
+        .expect("restore default max_page_count via 0");
+    assert_eq!(restored_ceiling, 0x3fff_ffff);
     assert!(restored_ceiling > baseline_pages);
 
     store

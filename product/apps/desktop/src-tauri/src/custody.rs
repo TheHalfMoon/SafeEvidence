@@ -12,7 +12,7 @@ use std::fs::File;
 use std::io::Write as _;
 use std::path::Path;
 
-use safeevidence_proofstore::ProofStore;
+use safeevidence_proofstore::{ProofStore, StoreError};
 use safeevidence_vault::vault::{
     KeyGeneration, ProtectorError, SecretProtector, UserPresencePolicy, VAULT_ID_BYTES, VaultId,
     VaultLeaseIdentity,
@@ -143,14 +143,57 @@ impl StoredIdentity {
     }
 
     fn write(self, dir: &Path) -> Result<(), ProtectorError> {
-        let unavailable = |_| ProtectorError::Unavailable;
-        let staged = dir.join(format!("{IDENTITY_FILE}.tmp"));
-        let mut file = File::create(&staged).map_err(unavailable)?;
-        file.write_all(&self.encode()).map_err(unavailable)?;
-        file.sync_all().map_err(unavailable)?;
-        std::fs::rename(&staged, dir.join(IDENTITY_FILE)).map_err(unavailable)?;
-        sync_directory(dir)
+        atomic_write_non_symlink(dir, IDENTITY_FILE, &self.encode())
     }
+}
+
+fn check_regular_non_symlink(path: &Path) -> Result<Option<u64>, ProtectorError> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => Err(ProtectorError::CorruptOrTampered),
+        Ok(meta) if meta.file_type().is_file() => Ok(Some(meta.len())),
+        Ok(_) => Err(ProtectorError::Unavailable),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err(ProtectorError::Unavailable),
+    }
+}
+
+fn read_regular_non_symlink(path: &Path) -> Result<Option<Vec<u8>>, ProtectorError> {
+    if check_regular_non_symlink(path)?.is_none() {
+        return Ok(None);
+    }
+    std::fs::read(path)
+        .map(Some)
+        .map_err(|_| ProtectorError::Unavailable)
+}
+
+fn atomic_write_non_symlink(
+    dir: &Path,
+    filename: &str,
+    bytes: &[u8],
+) -> Result<(), ProtectorError> {
+    let target = dir.join(filename);
+    let _ = check_regular_non_symlink(&target)?;
+    let staged = dir.join(format!("{filename}.tmp"));
+    if check_regular_non_symlink(&staged)?.is_some() {
+        std::fs::remove_file(&staged).map_err(|_| ProtectorError::Unavailable)?;
+    }
+    let write_and_rename = (|| -> Result<(), ProtectorError> {
+        let unavailable = |_| ProtectorError::Unavailable;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staged)
+            .map_err(unavailable)?;
+        file.write_all(bytes).map_err(unavailable)?;
+        file.sync_all().map_err(unavailable)?;
+        drop(file);
+        std::fs::rename(&staged, &target).map_err(unavailable)?;
+        sync_directory(dir)
+    })();
+    if write_and_rename.is_err() {
+        let _ = std::fs::remove_file(&staged);
+    }
+    write_and_rename
 }
 
 /// Makes a new or renamed name durable. Windows has no directory handle to sync this way.
@@ -228,12 +271,11 @@ pub fn open_root_key(dir: &Path, source: &KeySource) -> Result<OpenedKey, Protec
         return Err(ProtectorError::CorruptOrTampered);
     }
     let has_store = main_file.exists();
-    let stored = match std::fs::read(dir.join(IDENTITY_FILE)) {
-        Ok(bytes) => Some(StoredIdentity::decode(&bytes)?),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(_) => return Err(ProtectorError::Unavailable),
-    };
-    if stored.is_none() && has_store {
+    let envelope_present = check_regular_non_symlink(&dir.join(RECOVERY_ENVELOPE_FILE))?.is_some();
+    let stored = read_regular_non_symlink(&dir.join(IDENTITY_FILE))?
+        .map(|bytes| StoredIdentity::decode(&bytes))
+        .transpose()?;
+    if stored.is_none() && (has_store || envelope_present) {
         return Err(ProtectorError::ItemMissing);
     }
     let identity = match stored {
@@ -255,8 +297,8 @@ pub fn open_root_key(dir: &Path, source: &KeySource) -> Result<OpenedKey, Protec
     let mut protector = configured(source, &identity.protector_id, dir)?;
     let key = match protector.unlock_vrk(vault_id, generation) {
         Ok(key) => key,
-        // No key and no store: a first run, or a crash after writing the identity. Nothing can be lost.
-        Err(ProtectorError::ItemMissing) if !has_store => {
+        // No key, no store, and no recovery envelope: a first run, or a crash after writing the identity.
+        Err(ProtectorError::ItemMissing) if !has_store && !envelope_present => {
             let fresh = OwnedKeyMaterial::from_bytes((source.fresh_key)()?);
             protector.protect_or_store_vrk(vault_id, generation, &fresh)?;
             protector.unlock_vrk(vault_id, generation)?
@@ -283,6 +325,8 @@ pub enum CustodyRecoveryError {
     Protector(ProtectorError),
     /// B204 `SAFEVD/RECOVERY/ENVELOPE/v1` policy or AEAD authentication failure.
     Envelope(RecoveryEnvelopeError),
+    /// Enrollment refused because `vault.db` has not yet been durably established.
+    StoreNotEstablished,
     /// No `vault-recovery.envelope` exists beside the store.
     EnvelopeMissing,
     /// Recovery refused because the existing OS protector still unlocks the VRK cleanly.
@@ -296,6 +340,9 @@ impl std::fmt::Display for CustodyRecoveryError {
         match self {
             Self::Protector(error) => write!(f, "custody protector failure: {error}"),
             Self::Envelope(error) => write!(f, "recovery envelope failure: {error}"),
+            Self::StoreNotEstablished => {
+                f.write_str("store must be established before enrolling a recovery passphrase")
+            }
             Self::EnvelopeMissing => f.write_str("recovery envelope is missing"),
             Self::ProtectorStillIntact => {
                 f.write_str("OS protector still holds the active root key; recovery refused")
@@ -309,19 +356,21 @@ impl std::fmt::Display for CustodyRecoveryError {
 
 impl std::error::Error for CustodyRecoveryError {}
 
-/// Whether a canonical 167-byte `SAFEVD/RECOVERY/ENVELOPE/v1` file is enrolled in `dir`.
+/// Whether a canonical 167-byte non-symlink `SAFEVD/RECOVERY/ENVELOPE/v1` file is enrolled in `dir`.
 #[must_use]
 pub fn has_recovery_envelope(dir: &Path) -> bool {
-    std::fs::metadata(dir.join(RECOVERY_ENVELOPE_FILE))
-        .is_ok_and(|meta| meta.is_file() && meta.len() == RECOVERY_ENVELOPE_BYTES as u64)
+    matches!(
+        check_regular_non_symlink(&dir.join(RECOVERY_ENVELOPE_FILE)),
+        Ok(Some(len)) if len == RECOVERY_ENVELOPE_BYTES as u64
+    )
 }
 
-/// Enrolls a `SAFEVD/RECOVERY/ENVELOPE/v1` (`ARGON2ID_RFC9106_64M_V1`) recovery envelope for the
-/// store in `dir`, atomically persisting `vault-recovery.envelope`.
+/// Enrolls a `SAFEVD/RECOVERY/ENVELOPE/v1` (`ARGON2ID_RFC9106_64M_V1`) recovery envelope for an
+/// already-established store in `dir`, atomically persisting `vault-recovery.envelope`.
 ///
 /// # Errors
-/// Fails closed if the active root key cannot be unlocked, passphrase policy fails, or atomic
-/// persistence fails.
+/// Fails closed if the store is not yet established, the active root key cannot be unlocked,
+/// passphrase policy fails, or atomic non-symlink persistence fails.
 #[cfg_attr(
     not(test),
     expect(
@@ -334,28 +383,28 @@ pub fn enroll_recovery_passphrase(
     source: &KeySource,
     passphrase: &str,
 ) -> Result<(), CustodyRecoveryError> {
+    if !holds_data(&dir.join(DATABASE_FILE)) || !is_established(dir) {
+        return Err(CustodyRecoveryError::StoreNotEstablished);
+    }
     let opened = open_root_key(dir, source).map_err(CustodyRecoveryError::Protector)?;
     let context =
         RecoveryContext::new(opened.identity.vault_id(), opened.identity.key_generation());
     let envelope = encrypt_recovery_envelope(&opened.key, context, passphrase)
         .map_err(CustodyRecoveryError::Envelope)?;
 
-    let unavailable = |_| CustodyRecoveryError::Protector(ProtectorError::Unavailable);
-    let staged = dir.join(format!("{RECOVERY_ENVELOPE_FILE}.tmp"));
-    let mut file = File::create(&staged).map_err(unavailable)?;
-    file.write_all(&envelope).map_err(unavailable)?;
-    file.sync_all().map_err(unavailable)?;
-    std::fs::rename(&staged, dir.join(RECOVERY_ENVELOPE_FILE)).map_err(unavailable)?;
-    sync_directory(dir).map_err(CustodyRecoveryError::Protector)
+    atomic_write_non_symlink(dir, RECOVERY_ENVELOPE_FILE, &envelope)
+        .map_err(CustodyRecoveryError::Protector)
 }
 
 /// Recovers an established store after OS-protector key loss (`TA-05`):
-/// 1. Refuses if `vault.db` is absent/empty or if the current OS protector still unlocks cleanly.
+/// 1. Refuses if `vault.db` is absent/empty, `vault-recovery.envelope` is missing/symlinked, or the
+///    current OS protector still unlocks cleanly.
 /// 2. Authenticates `vault-recovery.envelope` against `(vault_id, generation)` and `passphrase`.
 /// 3. Verifies `ProofStore::open_existing` + `verify_record_semantics_doctor()` BEFORE mutating
 ///    any protector or identity file.
 /// 4. Provisions a fresh `protector_id` in the OS protector, verifies round-trip unlock, and
-///    atomically updates `vault-identity.bin`.
+///    atomically updates `vault-identity.bin` (revoking the staged protector best-effort on rename
+///    failure).
 ///
 /// # Errors
 /// Fails closed without mutating canonical store files on wrong passphrase, tampered envelope,
@@ -378,18 +427,24 @@ pub fn recover_key_with_passphrase(
             ProtectorError::CorruptOrTampered,
         ));
     }
-    let identity_bytes = std::fs::read(dir.join(IDENTITY_FILE)).map_err(|error| {
-        if error.kind() == std::io::ErrorKind::NotFound {
-            CustodyRecoveryError::Protector(ProtectorError::ItemMissing)
-        } else {
-            CustodyRecoveryError::Protector(ProtectorError::Unavailable)
-        }
-    })?;
+    let Some(identity_bytes) = read_regular_non_symlink(&dir.join(IDENTITY_FILE))
+        .map_err(CustodyRecoveryError::Protector)?
+    else {
+        return Err(CustodyRecoveryError::Protector(ProtectorError::ItemMissing));
+    };
     let stored =
         StoredIdentity::decode(&identity_bytes).map_err(CustodyRecoveryError::Protector)?;
     let vault_id = VaultId::from_bytes(stored.vault_id);
     let generation = KeyGeneration::new(stored.generation)
         .map_err(|_| CustodyRecoveryError::Protector(ProtectorError::CorruptOrTampered))?;
+
+    // Check recovery-envelope presence/regularity before touching the OS protector so missing
+    // envelopes never create empty OS-protector directories (`dpapi/`).
+    let Some(envelope_bytes) = read_regular_non_symlink(&dir.join(RECOVERY_ENVELOPE_FILE))
+        .map_err(CustodyRecoveryError::Protector)?
+    else {
+        return Err(CustodyRecoveryError::EnvelopeMissing);
+    };
 
     if configured(source, &stored.protector_id, dir)
         .and_then(|mut protector| protector.unlock_vrk(vault_id, generation))
@@ -398,13 +453,6 @@ pub fn recover_key_with_passphrase(
         return Err(CustodyRecoveryError::ProtectorStillIntact);
     }
 
-    let envelope_bytes = std::fs::read(dir.join(RECOVERY_ENVELOPE_FILE)).map_err(|error| {
-        if error.kind() == std::io::ErrorKind::NotFound {
-            CustodyRecoveryError::EnvelopeMissing
-        } else {
-            CustodyRecoveryError::Protector(ProtectorError::Unavailable)
-        }
-    })?;
     let recovered_key = decrypt_recovery_envelope(
         RecoveryContext::new(vault_id, generation),
         passphrase,
@@ -438,23 +486,27 @@ pub fn recover_key_with_passphrase(
     new_protector
         .protect_or_store_vrk(vault_id, generation, &recovered_key)
         .map_err(CustodyRecoveryError::Protector)?;
-    let unlocked = new_protector
-        .unlock_vrk(vault_id, generation)
-        .map_err(CustodyRecoveryError::Protector)?;
+    let unlocked = match new_protector.unlock_vrk(vault_id, generation) {
+        Ok(key) => key,
+        Err(error) => {
+            let _ = new_protector.remove_protector(vault_id);
+            return Err(CustodyRecoveryError::Protector(error));
+        }
+    };
     {
         let reverify_lease = VaultLease::new(lease_identity);
         let context = KeyDerivationContext::new(vault_id, generation, KeyPurpose::StructuredStore);
-        let mut store = ProofStore::open_existing(
-            &main_file,
-            reverify_lease.keyed_handle_lease(),
-            context,
-            &unlocked,
-        )
-        .map_err(|_| CustodyRecoveryError::Protector(ProtectorError::CorruptOrTampered))?;
-        let report = store
-            .verify_record_semantics_doctor()
-            .map_err(|_| CustodyRecoveryError::Protector(ProtectorError::CorruptOrTampered))?;
-        if !report.passed() {
+        let verify_unlocked = (|| -> Result<bool, StoreError> {
+            let mut store = ProofStore::open_existing(
+                &main_file,
+                reverify_lease.keyed_handle_lease(),
+                context,
+                &unlocked,
+            )?;
+            Ok(store.verify_record_semantics_doctor()?.passed())
+        })();
+        if !matches!(verify_unlocked, Ok(true)) {
+            let _ = new_protector.remove_protector(vault_id);
             return Err(CustodyRecoveryError::Protector(
                 ProtectorError::CorruptOrTampered,
             ));
@@ -466,9 +518,10 @@ pub fn recover_key_with_passphrase(
         protector_id: new_protector_id,
         generation: stored.generation,
     };
-    updated
-        .write(dir)
-        .map_err(CustodyRecoveryError::Protector)?;
+    if let Err(error) = updated.write(dir) {
+        let _ = new_protector.remove_protector(vault_id);
+        return Err(CustodyRecoveryError::Protector(error));
+    }
 
     Ok(OpenedKey {
         identity: lease_identity,
@@ -775,6 +828,17 @@ mod tests {
     {
         const PASSPHRASE: &str = "vellum lantern harbor quartz sixteen";
         let dir = TempDir::new();
+        assert_eq!(
+            enroll_recovery_passphrase(&dir.0, &SOURCE, PASSPHRASE),
+            Err(CustodyRecoveryError::StoreNotEstablished)
+        );
+        assert_eq!(
+            recover_key_with_passphrase(&dir.0, &SOURCE, PASSPHRASE).map(|_| ()),
+            Err(CustodyRecoveryError::Protector(
+                ProtectorError::CorruptOrTampered
+            ))
+        );
+
         let first = open_root_key(&dir.0, &SOURCE).expect("first open");
         let lease = VaultLease::new(first.identity);
         let context = KeyDerivationContext::new(

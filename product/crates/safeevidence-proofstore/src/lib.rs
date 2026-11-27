@@ -1160,8 +1160,9 @@ impl ProofStore {
         flatten_setup(self.handle.page_count())
     }
 
-    /// Sets SQLite's `PRAGMA max_page_count` ceiling (pass `1_073_741_823` to restore SQLite's
-    /// default maximum ceiling) to exercise deterministic `StoreError::DiskFull` rollback (`TA-05`).
+    /// Sets SQLite's `PRAGMA max_page_count` ceiling (`0` or `0x3fff_ffff` restores SQLite's
+    /// default `1_073_741_823`-page ceiling) to exercise deterministic `StoreError::DiskFull`
+    /// rollback (`TA-05`).
     ///
     /// # Errors
     /// Fails on lease or provider failure.

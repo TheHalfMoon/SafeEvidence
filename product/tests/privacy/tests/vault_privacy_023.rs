@@ -1,4 +1,4 @@
-//! Adapted from `crates/medscale-core/tests/vault_privacy_023.rs` (`ADM-0007`, `T12`); see `PROVENANCE.md`.
+//! Admission `ADM-0007` (`T12`); see `PROVENANCE.md`.
 
 use safeevidence_privacy_probes::{KeyStoreAvailability, build_privacy_doctor_report};
 

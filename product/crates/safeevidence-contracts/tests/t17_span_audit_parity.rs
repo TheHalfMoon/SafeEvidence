@@ -256,3 +256,50 @@ fn offset_projection_categorizes_failures_without_leaking_text() {
     let cases = build_synthetic_offset_cases(0);
     assert_eq!(cases.len(), 5);
 }
+
+#[test]
+fn deserialization_enforces_opaque_sha256_bounds_and_canonical_fingerprint_integrity() {
+    let s1 = AuditedEvidenceSpan::try_new("doc-a", "ev-1", 0, 10).unwrap();
+    let s2 = AuditedEvidenceSpan::try_new("doc-a", "ev-2", 4, 8).unwrap();
+    let audit = audit_evidence_spans(&[s1.clone(), s2]);
+    let encoded = serde_json::to_string(&audit).unwrap();
+    let decoded: safeevidence_contracts::span_audit::EvidenceSpanAudit =
+        serde_json::from_str(&encoded).expect("valid audit round-trips");
+    assert_eq!(decoded, audit);
+
+    // Raw / unhashed PHI identifier in source_id is rejected on deserialization.
+    let phi_span = serde_json::json!({
+        "source_id": "patient-mrn-12345",
+        "evidence_id": s1.evidence_id(),
+        "start": 0,
+        "end": 10
+    });
+    assert!(serde_json::from_value::<AuditedEvidenceSpan>(phi_span).is_err());
+
+    // Inverted bounds (end <= start) are rejected on deserialization.
+    let inverted_span = serde_json::json!({
+        "source_id": s1.source_id(),
+        "evidence_id": s1.evidence_id(),
+        "start": 10,
+        "end": 5
+    });
+    assert!(serde_json::from_value::<AuditedEvidenceSpan>(inverted_span).is_err());
+
+    // Forged overlap bounds or tampered audit fingerprint/counts are rejected without panic.
+    let mut tampered: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+    tampered["overlaps"][0]["overlap_start"] = serde_json::json!(99);
+    tampered["overlaps"][0]["overlap_end"] = serde_json::json!(2);
+    assert!(
+        serde_json::from_value::<safeevidence_contracts::span_audit::EvidenceSpanAudit>(
+            tampered.clone()
+        )
+        .is_err()
+    );
+
+    let mut bad_fp: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+    bad_fp["counts"]["nested"] = serde_json::json!(99);
+    assert!(
+        serde_json::from_value::<safeevidence_contracts::span_audit::EvidenceSpanAudit>(bad_fp)
+            .is_err()
+    );
+}

@@ -1,4 +1,4 @@
-//! Adapted from `crates/medscale-core/tests/privacy_probes_032.rs` (`ADM-0007`, `T12`); see `PROVENANCE.md`.
+//! Admission `ADM-0007` (`T12`); see `PROVENANCE.md`.
 
 use std::path::Path;
 
