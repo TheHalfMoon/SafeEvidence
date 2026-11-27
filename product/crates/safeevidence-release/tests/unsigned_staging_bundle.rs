@@ -194,17 +194,53 @@ fn unsigned_staging_manifest_is_deterministic_honest_and_rejects_tamper_or_signi
     );
     assert!(!bad_conf_report.ok);
 
-    // Path traversal in artifact relative_path is rejected:
-    let traversal = vec![StagedArtifactEntry {
+    // B-1 regression: null certificateThumbprint must not short-circuit signCommand rejection:
+    let sneaky_windows_sign_conf = br#"{"productName":"SafeEvidence","bundle":{"active":false,"windows":{"certificateThumbprint":null,"signCommand":"signtool.exe sign /fd sha256"}}}"#;
+    assert!(
+        build_unsigned_staging_manifest(
+            &dir.0,
+            vec![
+                StagedArtifactEntry {
+                    name: "safeevidence-desktop".to_owned(),
+                    relative_path: "bin/safeevidence-desktop.exe".to_owned(),
+                    byte_len: app_bytes.len() as u64,
+                    sha256: sha256_hex(app_bytes),
+                },
+                StagedArtifactEntry {
+                    name: "safeevidence_bench".to_owned(),
+                    relative_path: "bin/safeevidence_bench.exe".to_owned(),
+                    byte_len: bench_bytes.len() as u64,
+                    sha256: sha256_hex(bench_bytes),
+                },
+            ],
+            &sbom_json,
+            &expected,
+            REAL_NOTICES,
+            sneaky_windows_sign_conf,
+        )
+        .is_err()
+    );
+    let sneaky_sign_report = verify_unsigned_staging_bundle(
+        &dir.0,
+        &json_a,
+        &sbom_json,
+        &expected,
+        REAL_NOTICES,
+        sneaky_windows_sign_conf,
+    );
+    assert!(!sneaky_sign_report.ok);
+
+    // B-2a regression: omitting an SBOM-declared file artifact from the staging manifest is rejected:
+    let partial_entries = vec![StagedArtifactEntry {
         name: "safeevidence-desktop".to_owned(),
-        relative_path: "../outside.exe".to_owned(),
+        relative_path: "bin/safeevidence-desktop.exe".to_owned(),
         byte_len: app_bytes.len() as u64,
         sha256: sha256_hex(app_bytes),
     }];
     assert!(
         build_unsigned_staging_manifest(
             &dir.0,
-            traversal,
+            partial_entries,
             &sbom_json,
             &expected,
             REAL_NOTICES,
@@ -212,6 +248,42 @@ fn unsigned_staging_manifest_is_deterministic_honest_and_rejects_tamper_or_signi
         )
         .is_err()
     );
+
+    // Path traversal and Windows reserved DOS device names in artifact relative_path are rejected:
+    for unsafe_rel in ["../outside.exe", "bin/NUL.exe", "bin/trailing."] {
+        let bad_entry = vec![StagedArtifactEntry {
+            name: "safeevidence-desktop".to_owned(),
+            relative_path: unsafe_rel.to_owned(),
+            byte_len: app_bytes.len() as u64,
+            sha256: sha256_hex(app_bytes),
+        }];
+        assert!(
+            build_unsigned_staging_manifest(
+                &dir.0,
+                bad_entry,
+                &sbom_json,
+                &expected,
+                REAL_NOTICES,
+                REAL_TAURI_CONF,
+            )
+            .is_err(),
+            "expected unsafe path {unsafe_rel} to fail closed"
+        );
+    }
+
+    // B-2b regression: uninventoried / sideloaded file in staging_root fails closed:
+    let rogue_dll = dir.0.join("bin/rogue.dll");
+    std::fs::write(&rogue_dll, b"MZ-unlisted-sideload").unwrap();
+    let sideload_report = verify_unsigned_staging_bundle(
+        &dir.0,
+        &json_a,
+        &sbom_json,
+        &expected,
+        REAL_NOTICES,
+        REAL_TAURI_CONF,
+    );
+    assert!(!sideload_report.ok);
+    std::fs::remove_file(&rogue_dll).unwrap();
 
     // Tampering with staged binary bytes on disk fails verification:
     std::fs::write(dir.0.join("bin/safeevidence-desktop.exe"), b"MZ-tampered").unwrap();

@@ -199,18 +199,17 @@ fn extract_number_unit_pairs(text: &str) -> Vec<(String, String)> {
 }
 
 fn present_phrases<'a>(collapsed: &str, phrases: &[&'a str]) -> BTreeSet<&'a str> {
-    let padded = format!(" {} ", collapsed.trim_end_matches('.'));
+    let alnum_words: Vec<&str> = collapsed
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let padded = format!(" {} ", alnum_words.join(" "));
     phrases
         .iter()
         .copied()
         .filter(|phrase| {
             let needle = format!(" {phrase} ");
-            let punct_needle = format!(" {phrase}.");
-            let comma_needle = format!(" {phrase},");
             padded.contains(&needle)
-                || collapsed.ends_with(phrase)
-                || collapsed.contains(&punct_needle)
-                || collapsed.contains(&comma_needle)
         })
         .collect()
 }

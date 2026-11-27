@@ -122,7 +122,7 @@ export async function runAskChecks(driver) {
     assert.ok(view.citations > 0);
     assert.equal(view.funnel, 7);
     assert.match(view.body, /doc-veltrix-peds \(APPLICABILITY_UNRESOLVED\): population children does not match adults/);
-    assert.doesNotMatch(view.body, /\d\s*%|confidence/i);
+    assert.doesNotMatch(view.body, /%|\u066A|percent|confidence/i);
     passed("an answer shows its outcome, committed proof, citations and funnel, with no percentage");
     const answered = view;
 
@@ -261,7 +261,7 @@ export async function runAskChecks(driver) {
     );
     assert.match(evidenceText, /doc-veltrix-a/);
     assert.match(evidenceText, /doc-quenzil-retracted/);
-    assert.doesNotMatch(evidenceText, /\d\s*%|percent|confidence/i);
+    assert.doesNotMatch(evidenceText, /%|\u066A|percent|confidence/i);
 
     await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
     const reviewText = await waitFor(
@@ -274,7 +274,7 @@ export async function runAskChecks(driver) {
     assert.match(reviewText, /Moderate/);
     assert.match(reviewText, /Opaque span-overlap audit/);
     assert.match(reviewText, /Verified scalar-offset adapter formats/);
-    assert.doesNotMatch(reviewText, /\d\s*%|percent|confidence/i);
+    assert.doesNotMatch(reviewText, /%|\u066A|percent|confidence/i);
 
     await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
     const packsText = await waitFor(
@@ -283,7 +283,7 @@ export async function runAskChecks(driver) {
     );
     assert.match(packsText, /pack-vs1a-synthetic/);
     assert.match(packsText, /doc-tessarine-unknown-rights \(RIGHTS_UNRESOLVED\)/);
-    assert.doesNotMatch(packsText, /\d\s*%|percent|confidence/i);
+    assert.doesNotMatch(packsText, /%|\u066A|percent|confidence/i);
 
     await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
     const privacyText = await waitFor(
@@ -342,15 +342,24 @@ export async function runAskChecks(driver) {
         window.__seClipboardOps.push(String(cmd));
         return origExec ? origExec(cmd, ...rest) : false;
       };
-      if (navigator.clipboard) {
+      const hookTarget = (target) => {
+        if (!target) return;
         for (const method of ["writeText", "write"]) {
-          if (typeof navigator.clipboard[method] === "function") {
-            navigator.clipboard[method] = async (...args) => {
-              window.__seClipboardOps.push(method + ":" + JSON.stringify(args));
-            };
+          if (typeof target[method] === "function") {
+            try {
+              target[method] = async (...args) => {
+                window.__seClipboardOps.push(method + ":" + JSON.stringify(args));
+              };
+            } catch {
+              // Read-only getter on prototype in some engines; instance hook covers it if writable.
+            }
           }
         }
+      };
+      if (typeof Clipboard !== "undefined" && Clipboard.prototype) {
+        hookTarget(Clipboard.prototype);
       }
+      hookTarget(navigator.clipboard);
       window.getSelection()?.removeAllRanges();
     })()`);
     await ask(page, ANSWERED);
@@ -359,13 +368,23 @@ export async function runAskChecks(driver) {
       () => page.eval(`document.activeElement?.tagName === "MARK"`),
       "focus on cited mark during clipboard check",
     );
+    await page.eval(`document.querySelector("#tab-privacy").click()`);
+    await waitFor(
+      () => page.eval(`!!document.querySelector("#privacy-heading")`),
+      "Privacy tab during clipboard check",
+    );
+    await page.eval(`document.querySelector("#tab-ask").click()`);
+    await waitFor(
+      () => page.eval(`!!document.querySelector("#question")`),
+      "returning to Ask tab after clipboard check",
+    );
     const clipState = await page.eval(`({
       ops: window.__seClipboardOps,
       selectedText: window.getSelection()?.toString() ?? "",
     })`);
     assert.deepEqual(clipState.ops, [], `unexpected clipboard writes: ${clipState.ops.join(", ")}`);
     assert.equal(clipState.selectedText, "", "span jump must not auto-select sensitive text");
-    passed("Ask and citation span-jump perform zero clipboard writes and leave selection empty");
+    passed("Ask, citation span-jump, and Privacy inspection perform zero clipboard writes and leave selection empty");
 
     page.close();
     await driver.stop({ mustBeRunning: true });

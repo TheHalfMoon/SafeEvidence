@@ -130,17 +130,50 @@ fn is_lower_hex(s: &str, expected_len: usize) -> bool {
     s.len() == expected_len && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
+fn is_windows_reserved_device_stem(stem: &str) -> bool {
+    matches!(
+        stem.to_ascii_uppercase().as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
+}
+
 fn is_safe_relative_path(rel: &str) -> bool {
     if rel.is_empty()
         || rel.starts_with('/')
         || rel.contains('\\')
         || rel.contains(':')
-        || rel.contains('\0')
+        || rel.bytes().any(|b| b < 0x20 || b == 0x7f)
     {
         return false;
     }
-    rel.split('/')
-        .all(|seg| !seg.is_empty() && seg != "." && seg != "..")
+    rel.split('/').all(|seg| {
+        if seg.is_empty() || seg == "." || seg == ".." || seg.ends_with('.') || seg.ends_with(' ') {
+            return false;
+        }
+        let stem = seg.split('.').next().unwrap_or(seg);
+        !is_windows_reserved_device_stem(stem)
+    })
 }
 
 fn validate_artifacts(artifacts: &[StagedArtifactEntry]) -> Result<(), String> {
@@ -261,6 +294,10 @@ impl TryFrom<RawUnsignedStagingManifest> for UnsignedStagingManifest {
     }
 }
 
+fn has_non_null_field(obj: &serde_json::Value, key: &str) -> bool {
+    obj.get(key).is_some_and(|v| !v.is_null())
+}
+
 fn validate_tauri_conf_unsigned(tauri_conf_bytes: &[u8]) -> Result<(), String> {
     let conf: serde_json::Value =
         serde_json::from_slice(tauri_conf_bytes).map_err(|e| format!("tauri.conf.json: {e}"))?;
@@ -269,7 +306,8 @@ fn validate_tauri_conf_unsigned(tauri_conf_bytes: &[u8]) -> Result<(), String> {
     }
     let bundle = conf
         .get("bundle")
-        .ok_or_else(|| "tauri.conf.json missing bundle section".to_owned())?;
+        .filter(|b| b.is_object())
+        .ok_or_else(|| "tauri.conf.json missing bundle object".to_owned())?;
     if bundle.get("active").and_then(serde_json::Value::as_bool) != Some(false) {
         return Err("tauri.conf.json bundle.active must remain false under EXT-05".to_owned());
     }
@@ -279,24 +317,34 @@ fn validate_tauri_conf_unsigned(tauri_conf_bytes: &[u8]) -> Result<(), String> {
     {
         return Err("tauri.conf.json must not enable updater artifacts under EXT-05".to_owned());
     }
-    if bundle
-        .get("windows")
-        .and_then(|w| {
-            w.get("certificateThumbprint")
-                .or_else(|| w.get("signCommand"))
-        })
+    if let Some(windows) = bundle.get("windows").filter(|v| !v.is_null()) {
+        for forbidden in [
+            "certificateThumbprint",
+            "signCommand",
+            "tsp",
+            "timestampUrl",
+        ] {
+            if has_non_null_field(windows, forbidden) {
+                return Err(format!(
+                    "tauri.conf.json must not configure bundle.windows.{forbidden} under EXT-05"
+                ));
+            }
+        }
+    }
+    if let Some(macos) = bundle.get("macOS").filter(|v| !v.is_null()) {
+        for forbidden in ["signingIdentity", "providerShortName", "entitlements"] {
+            if has_non_null_field(macos, forbidden) {
+                return Err(format!(
+                    "tauri.conf.json must not configure bundle.macOS.{forbidden} under EXT-05"
+                ));
+            }
+        }
+    }
+    if conf
+        .get("plugins")
+        .and_then(|p| p.get("updater"))
         .is_some_and(|v| !v.is_null())
     {
-        return Err("tauri.conf.json must not configure Windows signing under EXT-05".to_owned());
-    }
-    if bundle
-        .get("macOS")
-        .and_then(|m| m.get("signingIdentity"))
-        .is_some_and(|v| !v.is_null())
-    {
-        return Err("tauri.conf.json must not configure macOS signing under EXT-05".to_owned());
-    }
-    if conf.get("plugins").and_then(|p| p.get("updater")).is_some() {
         return Err("tauri.conf.json must not configure updater plugin under EXT-05".to_owned());
     }
     Ok(())
@@ -313,7 +361,78 @@ fn validate_notices(notices_bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-fn read_staged_regular_file(staging_root: &Path, relative_path: &str) -> Result<Vec<u8>, String> {
+const MAX_STAGING_TREE_DEPTH: usize = 16;
+const MAX_STAGING_TREE_ENTRIES: usize = 4_096;
+
+fn scan_staging_tree_regular_files(staging_root: &Path) -> Result<BTreeSet<String>, String> {
+    let root_meta = std::fs::symlink_metadata(staging_root)
+        .map_err(|e| format!("{}: {e}", staging_root.display()))?;
+    if root_meta.file_type().is_symlink() || !root_meta.file_type().is_dir() {
+        return Err(format!(
+            "staging_root {} is not a non-symlink directory",
+            staging_root.display()
+        ));
+    }
+
+    let mut files = BTreeSet::new();
+    let mut visited: usize = 0;
+    let mut stack: Vec<(std::path::PathBuf, String, usize)> =
+        vec![(staging_root.to_path_buf(), String::new(), 0)];
+
+    while let Some((dir_path, prefix, depth)) = stack.pop() {
+        if depth > MAX_STAGING_TREE_DEPTH {
+            return Err("staging directory exceeds maximum directory depth".to_owned());
+        }
+        let rd =
+            std::fs::read_dir(&dir_path).map_err(|e| format!("{}: {e}", dir_path.display()))?;
+        for item in rd {
+            visited = visited.saturating_add(1);
+            if visited > MAX_STAGING_TREE_ENTRIES {
+                return Err("staging directory exceeds maximum entry count".to_owned());
+            }
+            let dir_entry = item.map_err(|e| format!("{}: {e}", dir_path.display()))?;
+            let file_name = dir_entry
+                .file_name()
+                .into_string()
+                .map_err(|_| format!("non-UTF-8 entry under {}", dir_path.display()))?;
+            let child_path = dir_path.join(&file_name);
+            let meta = std::fs::symlink_metadata(&child_path)
+                .map_err(|e| format!("{}: {e}", child_path.display()))?;
+            if meta.file_type().is_symlink() {
+                return Err(format!(
+                    "symlink entry '{}' is forbidden in staging tree",
+                    child_path.display()
+                ));
+            }
+            let rel = if prefix.is_empty() {
+                file_name
+            } else {
+                format!("{prefix}/{file_name}")
+            };
+            if !is_safe_relative_path(&rel) {
+                return Err(format!("unsafe entry '{rel}' in staging tree"));
+            }
+            if meta.file_type().is_dir() {
+                stack.push((child_path, rel, depth + 1));
+            } else if meta.file_type().is_file() {
+                files.insert(rel);
+            } else {
+                return Err(format!(
+                    "non-regular entry '{}' is forbidden in staging tree",
+                    child_path.display()
+                ));
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+fn read_staged_regular_file(
+    staging_root: &Path,
+    relative_path: &str,
+    expected_byte_len: u64,
+) -> Result<Vec<u8>, String> {
     if !is_safe_relative_path(relative_path) {
         return Err(format!("unsafe artifact relative_path '{relative_path}'"));
     }
@@ -340,6 +459,13 @@ fn read_staged_regular_file(staging_root: &Path, relative_path: &str) -> Result<
             if !meta.file_type().is_file() {
                 return Err(format!("{} is not a regular file", cursor.display()));
             }
+            if meta.len() != expected_byte_len {
+                return Err(format!(
+                    "{} byte_len mismatch (disk {} != manifest {expected_byte_len})",
+                    cursor.display(),
+                    meta.len()
+                ));
+            }
         } else if !meta.file_type().is_dir() {
             return Err(format!(
                 "{} is not an intermediate directory",
@@ -353,19 +479,31 @@ fn read_staged_regular_file(staging_root: &Path, relative_path: &str) -> Result<
 fn extract_sbom_artifacts(sbom_json: &str) -> Result<BTreeSet<(String, String)>, String> {
     let sbom_val: serde_json::Value =
         serde_json::from_str(sbom_json).map_err(|e| format!("SBOM JSON: {e}"))?;
+    let components = sbom_val
+        .get("components")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "SBOM missing components array".to_owned())?;
+    let mut seen_names = BTreeSet::new();
     let mut out = BTreeSet::new();
-    for c in sbom_val["components"].as_array().into_iter().flatten() {
+    for c in components {
         if c.get("type").and_then(serde_json::Value::as_str) != Some("file") {
             continue;
         }
-        let Some(name) = c.get("name").and_then(serde_json::Value::as_str) else {
-            continue;
-        };
+        let name = c
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+            .ok_or_else(|| "SBOM file component missing non-empty name".to_owned())?;
+        if !seen_names.insert(name.to_owned()) {
+            return Err(format!("duplicate SBOM file artifact name '{name}'"));
+        }
         let expected_ref = format!("pkg:safeevidence/artifact/{name}");
         if c.get("bom-ref").and_then(serde_json::Value::as_str) != Some(expected_ref.as_str()) {
-            continue;
+            return Err(format!(
+                "SBOM file component '{name}' must carry canonical bom-ref '{expected_ref}'"
+            ));
         }
-        let Some(hash) = c
+        let hash = c
             .get("hashes")
             .and_then(serde_json::Value::as_array)
             .and_then(|arr| {
@@ -374,9 +512,10 @@ fn extract_sbom_artifacts(sbom_json: &str) -> Result<BTreeSet<(String, String)>,
             })
             .and_then(|h| h.get("content"))
             .and_then(serde_json::Value::as_str)
-        else {
-            continue;
-        };
+            .filter(|h| is_lower_hex(h, 64))
+            .ok_or_else(|| {
+                format!("SBOM file component '{name}' missing valid 64-hex SHA-256 digest")
+            })?;
         out.insert((name.to_owned(), hash.to_owned()));
     }
     Ok(out)
@@ -409,20 +548,34 @@ pub fn build_unsigned_staging_manifest(
     validate_artifacts(&artifacts)?;
 
     let sbom_artifacts = extract_sbom_artifacts(sbom_json)?;
+    let manifest_artifact_set: BTreeSet<(String, String)> = artifacts
+        .iter()
+        .map(|e| (e.name.clone(), e.sha256.clone()))
+        .collect();
+    if manifest_artifact_set != sbom_artifacts {
+        return Err(
+            "staging manifest artifact set must exactly match CycloneDX SBOM file artifact inventory"
+                .to_owned(),
+        );
+    }
+
+    let disk_files = scan_staging_tree_regular_files(staging_root)?;
+    let manifest_paths: BTreeSet<String> =
+        artifacts.iter().map(|e| e.relative_path.clone()).collect();
+    if disk_files != manifest_paths {
+        return Err(
+            "staging directory contains uninventoried or missing files relative to manifest"
+                .to_owned(),
+        );
+    }
 
     for entry in &artifacts {
-        let bytes = read_staged_regular_file(staging_root, &entry.relative_path)?;
+        let bytes = read_staged_regular_file(staging_root, &entry.relative_path, entry.byte_len)?;
         if bytes.len() as u64 != entry.byte_len {
             return Err(format!("artifact '{}' byte length mismatch", entry.name));
         }
         if sha256_hex(&bytes) != entry.sha256 {
             return Err(format!("artifact '{}' sha256 mismatch", entry.name));
-        }
-        if !sbom_artifacts.contains(&(entry.name.clone(), entry.sha256.clone())) {
-            return Err(format!(
-                "artifact '{}' ({}) missing from CycloneDX SBOM artifact inventory",
-                entry.name, entry.sha256
-            ));
         }
     }
 
@@ -520,12 +673,42 @@ pub fn verify_unsigned_staging_bundle(
     }
 
     let sbom_artifacts = match extract_sbom_artifacts(sbom_json) {
-        Ok(set) => set,
+        Ok(set) => {
+            let manifest_artifact_set: BTreeSet<(String, String)> = parsed
+                .artifacts
+                .iter()
+                .map(|e| (e.name.clone(), e.sha256.clone()))
+                .collect();
+            if manifest_artifact_set != set {
+                failures.push(
+                    "staging manifest artifact set does not equal CycloneDX SBOM file artifact inventory"
+                        .to_owned(),
+                );
+            }
+            set
+        }
         Err(e) => {
             failures.push(e);
             BTreeSet::new()
         }
     };
+
+    match scan_staging_tree_regular_files(staging_root) {
+        Ok(disk_files) => {
+            let manifest_paths: BTreeSet<String> = parsed
+                .artifacts
+                .iter()
+                .map(|e| e.relative_path.clone())
+                .collect();
+            if disk_files != manifest_paths {
+                failures.push(
+                    "staging directory contains uninventoried or missing files relative to manifest"
+                        .to_owned(),
+                );
+            }
+        }
+        Err(e) => failures.push(e),
+    }
 
     let mut verified_count = 0;
     for entry in &parsed.artifacts {
@@ -536,7 +719,7 @@ pub fn verify_unsigned_staging_bundle(
             ));
             continue;
         }
-        match read_staged_regular_file(staging_root, &entry.relative_path) {
+        match read_staged_regular_file(staging_root, &entry.relative_path, entry.byte_len) {
             Ok(bytes) => {
                 if bytes.len() as u64 != entry.byte_len {
                     failures.push(format!("artifact '{}' byte_len mismatch", entry.name));

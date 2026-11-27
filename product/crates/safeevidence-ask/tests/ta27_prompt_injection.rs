@@ -164,7 +164,8 @@ fn ta27_fts5_syntax_homoglyph_bidi_and_query_injection_fail_closed_without_panic
 fn ta10_effect_measure_and_relative_vs_absolute_risk_swaps_are_flagged() {
     let source = "\
 Adults with synthetic glimmer syndrome received veltrixamine 40 mg daily or placebo for 12 weeks. \
-Veltrixamine reduced relative risk by 22 units with an odds ratio of 0.72 compared with placebo at 12 weeks.";
+Veltrixamine reduced relative risk by 22 units with an odds ratio of 0.72 compared with placebo at 12 weeks. \
+Secondary endpoint favored treatment (relative risk: 0.72) versus placebo at 12 weeks.";
 
     assert_eq!(
         verify_claim_against_source(
@@ -178,6 +179,7 @@ Veltrixamine reduced relative risk by 22 units with an odds ratio of 0.72 compar
         "Veltrixamine reduced absolute risk by 22 units with an odds ratio of 0.72 compared with placebo at 12 weeks.",
         "Veltrixamine reduced relative risk by 22 units with a hazard ratio of 0.72 compared with placebo at 12 weeks.",
         "Veltrixamine reduced risk difference by 22 units with an odds ratio of 0.72 compared with placebo at 12 weeks.",
+        "Secondary endpoint favored treatment (absolute risk: 0.72) versus placebo at 12 weeks.",
     ] {
         assert_eq!(
             verify_claim_against_source(swapped, source),
