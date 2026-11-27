@@ -27,6 +27,49 @@ BASES = {"FOUNDER_OWNED", "PUBLIC_LICENSE", "SEPARATE_PERMISSION_VERIFIED"}
 DECISION_REF = re.compile(
     r"https://github\.com/TheHalfMoon/SafeEvidence/issues/[0-9]+#issuecomment-[0-9]+\Z"
 )
+PUBLIC_LICENSE_ADR_REFS = {
+    "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
+    "docs/plan/PLAN_AMENDMENT_V1_7.md",
+}
+ADR0004_EXCLUDED_REPOS = {
+    "ijmarshall/robotreviewer",
+    "ijmarshall/trialstreamer",
+    "bwallace/rrnlp",
+    "dwadden/multivers",
+}
+ADR0004_EXCLUDED_PACKETS = {"T27b", "T28b", "T34", "T35"}
+ADR0004_VERIFIED_PUBLIC_REPOS = {
+    "abdulazizshehri/medscale",
+    "thehalfmoon/medorigin",
+    "abdulazizshehri/safeocr",
+    "thehalfmoon/commandmed",
+    "maziyarpanahi/openmed",
+    "asreview/asreview",
+    "asreview/synergy-dataset",
+    "statsmodels/statsmodels",
+    "xberg-io/xberg",
+    "docling-project/docling.rs",
+    "anush008/fastembed-rs",
+    "asg017/sqlite-vec",
+    "mozilla/uniffi-rs",
+    "awslabs/tough",
+    "allenai/scifact",
+    "jayded/evidence-inference",
+    "wenglab-informaticsresearch/picox",
+    "paddlepaddle/paddleocr",
+    "beir-cellar/beir",
+    "ncbi/medcpt",
+}
+WITHHELD_PRIVATE_REPOS = {
+    "thehalfmoon/dal",
+    "thehalfmoon/kernux",
+    "thehalfmoon/morize",
+    "thehalfmoon/inercative",
+    "thehalfmoon/signthos",
+    "thehalfmoon/wispral",
+    "thehalfmoon/sentrdel",
+    "thehalfmoon/ecra",
+}
 REPO = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 PACKET = re.compile(r"(T[0-9]{2}[a-z]?|CRATE-[a-z0-9-]+)\Z")
 CRATE_PACKET = re.compile(r"CRATE-[a-z0-9-]+\Z")
@@ -40,6 +83,11 @@ LICENSES = {
     "Zlib",
     "Unicode-3.0",
     "MPL-2.0",
+}
+BENCHMARK_ONLY_LICENSES = {
+    "CC0-1.0",
+    "CC-BY-4.0",
+    "ODC-By-1.0",
 }
 CLOSURE_ALLOWED_LICENSES = LICENSES | {
     "Apache-2.0 OR MIT",
@@ -202,7 +250,15 @@ def check_row(
         ids.add(identifier)
     if not isinstance(row["repo"], str) or not REPO.fullmatch(row["repo"]):
         errors.append(f"{label}: repo must be owner/name")
-    if not isinstance(row["packet"], str) or not PACKET.fullmatch(row["packet"]):
+        repo_lower = ""
+    else:
+        repo_lower = row["repo"].lower()
+    pkt_str = row["packet"] if isinstance(row["packet"], str) else ""
+    if repo_lower == "thehalfmoon/dal" or pkt_str == "T14":
+        errors.append(f"{label}: DAL (T14) is permanently banned from SafeEvidence")
+    elif repo_lower in WITHHELD_PRIVATE_REPOS:
+        errors.append(f"{label}: withheld private repository cannot appear in public manifest")
+    if not pkt_str or not PACKET.fullmatch(pkt_str):
         errors.append(f"{label}: packet id invalid")
     if not is_full_oid(row["source_commit"]):
         errors.append(f"{label}: source_commit must be 40 hex")
@@ -211,19 +267,50 @@ def check_row(
         errors.append(f"{label}: unknown state")
     if row["copy_authorized"] is not (state == "VERIFIED_ALLOWED"):
         errors.append(f"{label}: copy_authorized must be true only for VERIFIED_ALLOWED")
+    files = row["files"]
     if state == "VERIFIED_ALLOWED":
-        if not isinstance(row["basis"], str) or row["basis"] not in BASES:
+        if (
+            repo_lower in ADR0004_EXCLUDED_REPOS
+            or pkt_str in ADR0004_EXCLUDED_PACKETS
+        ):
+            errors.append(
+                f"{label}: copyleft, unlicensed, or dropped packet/repository cannot be admitted under ADR-0004"
+            )
+        basis = row["basis"]
+        if not isinstance(basis, str) or basis not in BASES:
             errors.append(f"{label}: basis cannot admit")
         decision = row["decision_ref"]
-        if not isinstance(decision, str) or not DECISION_REF.fullmatch(decision):
+        valid_github_ref = isinstance(decision, str) and bool(DECISION_REF.fullmatch(decision))
+        valid_adr_ref = (
+            basis == "PUBLIC_LICENSE"
+            and repo_lower in ADR0004_VERIFIED_PUBLIC_REPOS
+            and repo_lower not in ADR0004_EXCLUDED_REPOS
+            and pkt_str not in ADR0004_EXCLUDED_PACKETS
+            and isinstance(decision, str)
+            and decision in PUBLIC_LICENSE_ADR_REFS
+            and resolve_regular_file(root, decision) is not None
+        )
+        if not (valid_github_ref or valid_adr_ref):
             errors.append(f"{label}: decision_ref must cite a recorded decision")
         spdx = row["license_spdx"]
-        if not isinstance(spdx, str) or spdx not in LICENSES:
+        bench_only_ok = (
+            isinstance(spdx, str)
+            and spdx in BENCHMARK_ONLY_LICENSES
+            and basis == "PUBLIC_LICENSE"
+            and isinstance(files, list)
+            and bool(files)
+            and all(
+                isinstance(e, dict)
+                and isinstance(e.get("dest_path"), str)
+                and e["dest_path"].startswith("bench/")
+                for e in files
+            )
+        )
+        if not ((isinstance(spdx, str) and spdx in LICENSES) or bench_only_ok):
             errors.append(f"{label}: license not on the admitted allowlist")
         for key in ("notices", "transitive", "assets", "security_test_owner"):
             if not isinstance(row[key], str) or not row[key].strip():
                 errors.append(f"{label}: {key} required for admission")
-    files = row["files"]
     if not isinstance(files, list) or (state == "VERIFIED_ALLOWED" and not files):
         errors.append(f"{label}: files required")
         return
@@ -377,7 +464,13 @@ def check_closure(
     if row["basis"] != "PUBLIC_LICENSE":
         errors.append(f"{label}: lockfile closures must use PUBLIC_LICENSE basis")
     decision = row["decision_ref"]
-    if not isinstance(decision, str) or not DECISION_REF.fullmatch(decision):
+    valid_github_ref = isinstance(decision, str) and bool(DECISION_REF.fullmatch(decision))
+    valid_adr_ref = (
+        isinstance(decision, str)
+        and decision in PUBLIC_LICENSE_ADR_REFS
+        and resolve_regular_file(root, decision) is not None
+    )
+    if not (valid_github_ref or valid_adr_ref):
         errors.append(f"{label}: decision_ref must cite a recorded decision")
     for key in ("notices", "security_test_owner"):
         if not isinstance(row[key], str) or not row[key].strip():

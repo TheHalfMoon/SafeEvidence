@@ -182,6 +182,7 @@ fn validate_artifacts(artifacts: &[StagedArtifactEntry]) -> Result<(), String> {
     }
     let mut names = BTreeSet::new();
     let mut paths = BTreeSet::new();
+    let mut lower_paths: BTreeSet<String> = BTreeSet::new();
     let mut prev_name: Option<&str> = None;
     for entry in artifacts {
         if entry.name.trim().is_empty() {
@@ -205,6 +206,23 @@ fn validate_artifacts(artifacts: &[StagedArtifactEntry]) -> Result<(), String> {
         if !paths.insert(entry.relative_path.as_str()) {
             return Err(format!(
                 "duplicate artifact relative_path '{}'",
+                entry.relative_path
+            ));
+        }
+        let lower_rel = entry.relative_path.to_ascii_lowercase();
+        for existing in &lower_paths {
+            if lower_rel.starts_with(&format!("{existing}/"))
+                || existing.starts_with(&format!("{lower_rel}/"))
+            {
+                return Err(format!(
+                    "artifact relative_path '{}' collides with directory prefix of '{existing}'",
+                    entry.relative_path
+                ));
+            }
+        }
+        if !lower_paths.insert(lower_rel) {
+            return Err(format!(
+                "case-colliding artifact relative_path '{}' is unsafe on NTFS/APFS",
                 entry.relative_path
             ));
         }
@@ -375,6 +393,7 @@ fn scan_staging_tree_regular_files(staging_root: &Path) -> Result<BTreeSet<Strin
     }
 
     let mut files = BTreeSet::new();
+    let mut lower_entries = BTreeSet::new();
     let mut visited: usize = 0;
     let mut stack: Vec<(std::path::PathBuf, String, usize)> =
         vec![(staging_root.to_path_buf(), String::new(), 0)];
@@ -411,6 +430,11 @@ fn scan_staging_tree_regular_files(staging_root: &Path) -> Result<BTreeSet<Strin
             };
             if !is_safe_relative_path(&rel) {
                 return Err(format!("unsafe entry '{rel}' in staging tree"));
+            }
+            if !lower_entries.insert(rel.to_ascii_lowercase()) {
+                return Err(format!(
+                    "case-colliding entry '{rel}' in staging tree is unsafe on NTFS/APFS"
+                ));
             }
             if meta.file_type().is_dir() {
                 stack.push((child_path, rel, depth + 1));
@@ -738,4 +762,371 @@ pub fn verify_unsigned_staging_bundle(
         failures,
         verified_artifact_count: verified_count,
     }
+}
+
+/// Schema identifier for V1 Research Workstation qualification manifests (`plan-v1.7`, `ADR-0003`).
+pub const RESEARCH_RELEASE_SCHEMA_VERSION: &str = "safeevidence.release.research_workstation.v1";
+
+/// Mandatory V1 intended-use scope tag enforcing non-clinical research boundaries (`ADR-0003`).
+pub const RESEARCH_INTENDED_USE_SCOPE_V1: &str = "RESEARCH_WORKSTATION_NON_CLINICAL_V1";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResearchReleaseManifestBody {
+    schema_version: String,
+    intended_use_scope: String,
+    source_sha: String,
+    tree_sha: String,
+    unsigned_staging_manifest_sha256: String,
+    bench_packet_sha256: String,
+    completed_engineering: bool,
+    independently_verified_engineering: bool,
+    ai_assisted_security_qualified: bool,
+    automated_scientific_evaluated: bool,
+    research_release_qualified: bool,
+    human_independent_security_review: bool,
+    os_ca_code_signed: bool,
+    installer_bundle_active: bool,
+    actual_clinical_validation: bool,
+    actual_regulatory_authorization: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawResearchReleaseManifest {
+    schema_version: String,
+    intended_use_scope: String,
+    source_sha: String,
+    tree_sha: String,
+    unsigned_staging_manifest_sha256: String,
+    bench_packet_sha256: String,
+    completed_engineering: bool,
+    independently_verified_engineering: bool,
+    ai_assisted_security_qualified: bool,
+    automated_scientific_evaluated: bool,
+    research_release_qualified: bool,
+    human_independent_security_review: bool,
+    os_ca_code_signed: bool,
+    installer_bundle_active: bool,
+    actual_clinical_validation: bool,
+    actual_regulatory_authorization: bool,
+    manifest_sha256: String,
+}
+
+/// Seven-axis V1 Research Workstation qualification manifest (`plan-v1.7` / `ADR-0002` / `ADR-0003`).
+///
+/// Permits `research_release_qualified == true` ONLY when all four executable engineering,
+/// independent AI review, and automated scientific evaluation axes hold, while fail-closed
+/// forbidding fabricated human review, paid OS CA signing (`EXT-05`), clinical validation
+/// (`EXT-03`), or regulatory authorization (`EXT-09`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RawResearchReleaseManifest")]
+pub struct ResearchReleaseManifest {
+    schema_version: String,
+    intended_use_scope: String,
+    source_sha: String,
+    tree_sha: String,
+    unsigned_staging_manifest_sha256: String,
+    bench_packet_sha256: String,
+    completed_engineering: bool,
+    independently_verified_engineering: bool,
+    ai_assisted_security_qualified: bool,
+    automated_scientific_evaluated: bool,
+    research_release_qualified: bool,
+    human_independent_security_review: bool,
+    os_ca_code_signed: bool,
+    installer_bundle_active: bool,
+    actual_clinical_validation: bool,
+    actual_regulatory_authorization: bool,
+    manifest_sha256: String,
+}
+
+/// Qualification axis inputs for [`build_research_release_manifest`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ResearchQualificationAxes {
+    pub completed_engineering: bool,
+    pub independently_verified_engineering: bool,
+    pub ai_assisted_security_qualified: bool,
+    pub automated_scientific_evaluated: bool,
+}
+
+impl ResearchReleaseManifest {
+    #[must_use]
+    pub fn schema_version(&self) -> &str {
+        &self.schema_version
+    }
+
+    #[must_use]
+    pub fn intended_use_scope(&self) -> &str {
+        &self.intended_use_scope
+    }
+
+    #[must_use]
+    pub fn source_sha(&self) -> &str {
+        &self.source_sha
+    }
+
+    #[must_use]
+    pub fn tree_sha(&self) -> &str {
+        &self.tree_sha
+    }
+
+    #[must_use]
+    pub fn unsigned_staging_manifest_sha256(&self) -> &str {
+        &self.unsigned_staging_manifest_sha256
+    }
+
+    #[must_use]
+    pub fn bench_packet_sha256(&self) -> &str {
+        &self.bench_packet_sha256
+    }
+
+    #[must_use]
+    pub const fn completed_engineering(&self) -> bool {
+        self.completed_engineering
+    }
+
+    #[must_use]
+    pub const fn independently_verified_engineering(&self) -> bool {
+        self.independently_verified_engineering
+    }
+
+    #[must_use]
+    pub const fn ai_assisted_security_qualified(&self) -> bool {
+        self.ai_assisted_security_qualified
+    }
+
+    #[must_use]
+    pub const fn automated_scientific_evaluated(&self) -> bool {
+        self.automated_scientific_evaluated
+    }
+
+    #[must_use]
+    pub const fn research_release_qualified(&self) -> bool {
+        self.research_release_qualified
+    }
+
+    #[must_use]
+    pub const fn human_independent_security_review(&self) -> bool {
+        self.human_independent_security_review
+    }
+
+    #[must_use]
+    pub const fn os_ca_code_signed(&self) -> bool {
+        self.os_ca_code_signed
+    }
+
+    #[must_use]
+    pub const fn actual_clinical_validation(&self) -> bool {
+        self.actual_clinical_validation
+    }
+
+    #[must_use]
+    pub const fn actual_regulatory_authorization(&self) -> bool {
+        self.actual_regulatory_authorization
+    }
+
+    #[must_use]
+    pub fn manifest_sha256(&self) -> &str {
+        &self.manifest_sha256
+    }
+
+    /// Renders canonical LF-terminated JSON.
+    ///
+    /// # Errors
+    /// Returns an error if JSON serialization fails.
+    pub fn to_canonical_json(&self) -> Result<String, String> {
+        let mut out = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        out.push('\n');
+        Ok(out)
+    }
+}
+
+impl TryFrom<RawResearchReleaseManifest> for ResearchReleaseManifest {
+    type Error = String;
+
+    fn try_from(raw: RawResearchReleaseManifest) -> Result<Self, Self::Error> {
+        if raw.schema_version != RESEARCH_RELEASE_SCHEMA_VERSION {
+            return Err(format!(
+                "unsupported research release schema_version '{}'",
+                raw.schema_version
+            ));
+        }
+        if raw.intended_use_scope != RESEARCH_INTENDED_USE_SCOPE_V1 {
+            return Err(format!(
+                "intended_use_scope must be '{RESEARCH_INTENDED_USE_SCOPE_V1}', got '{}'",
+                raw.intended_use_scope
+            ));
+        }
+        if raw.human_independent_security_review
+            || raw.os_ca_code_signed
+            || raw.installer_bundle_active
+            || raw.actual_clinical_validation
+            || raw.actual_regulatory_authorization
+        {
+            return Err(
+                "V1 research release manifest must never claim human security review, OS CA code signing, active installer bundle, clinical validation, or regulatory authorization"
+                    .to_owned(),
+            );
+        }
+        let expected_qualified = raw.completed_engineering
+            && raw.independently_verified_engineering
+            && raw.ai_assisted_security_qualified
+            && raw.automated_scientific_evaluated;
+        if raw.research_release_qualified != expected_qualified {
+            return Err(
+                "research_release_qualified must equal the conjunction of the 4 verified V1 research axes"
+                    .to_owned(),
+            );
+        }
+        if !is_lower_hex(&raw.source_sha, 40) || !is_lower_hex(&raw.tree_sha, 40) {
+            return Err("source_sha and tree_sha must be 40-char lowercase hex".to_owned());
+        }
+        if !is_lower_hex(&raw.unsigned_staging_manifest_sha256, 64)
+            || !is_lower_hex(&raw.bench_packet_sha256, 64)
+        {
+            return Err(
+                "unsigned_staging_manifest_sha256 and bench_packet_sha256 must be 64-char lowercase hex"
+                    .to_owned(),
+            );
+        }
+
+        let body = ResearchReleaseManifestBody {
+            schema_version: raw.schema_version,
+            intended_use_scope: raw.intended_use_scope,
+            source_sha: raw.source_sha,
+            tree_sha: raw.tree_sha,
+            unsigned_staging_manifest_sha256: raw.unsigned_staging_manifest_sha256,
+            bench_packet_sha256: raw.bench_packet_sha256,
+            completed_engineering: raw.completed_engineering,
+            independently_verified_engineering: raw.independently_verified_engineering,
+            ai_assisted_security_qualified: raw.ai_assisted_security_qualified,
+            automated_scientific_evaluated: raw.automated_scientific_evaluated,
+            research_release_qualified: expected_qualified,
+            human_independent_security_review: false,
+            os_ca_code_signed: false,
+            installer_bundle_active: false,
+            actual_clinical_validation: false,
+            actual_regulatory_authorization: false,
+        };
+        let canonical = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
+        let expected_digest = sha256_hex(&canonical);
+        if raw.manifest_sha256 != expected_digest {
+            return Err("manifest_sha256 does not match canonical body digest".to_owned());
+        }
+
+        Ok(Self {
+            schema_version: body.schema_version,
+            intended_use_scope: body.intended_use_scope,
+            source_sha: body.source_sha,
+            tree_sha: body.tree_sha,
+            unsigned_staging_manifest_sha256: body.unsigned_staging_manifest_sha256,
+            bench_packet_sha256: body.bench_packet_sha256,
+            completed_engineering: body.completed_engineering,
+            independently_verified_engineering: body.independently_verified_engineering,
+            ai_assisted_security_qualified: body.ai_assisted_security_qualified,
+            automated_scientific_evaluated: body.automated_scientific_evaluated,
+            research_release_qualified: body.research_release_qualified,
+            human_independent_security_review: false,
+            os_ca_code_signed: false,
+            installer_bundle_active: false,
+            actual_clinical_validation: false,
+            actual_regulatory_authorization: false,
+            manifest_sha256: expected_digest,
+        })
+    }
+}
+
+/// Builds a [`ResearchReleaseManifest`] bound to a verified [`UnsignedStagingManifest`] and
+/// deterministic `SafeEvidenceBench` packet digest (`plan-v1.7`).
+///
+/// # Errors
+/// Fails closed if `bench_packet_sha256` is not 64-char lowercase hex or serialization fails.
+pub fn build_research_release_manifest(
+    unsigned_staging: &UnsignedStagingManifest,
+    bench_packet_sha256: &str,
+    axes: ResearchQualificationAxes,
+) -> Result<ResearchReleaseManifest, String> {
+    if !is_lower_hex(bench_packet_sha256, 64) {
+        return Err("bench_packet_sha256 must be 64-char lowercase hex".to_owned());
+    }
+    if unsigned_staging.signed()
+        || unsigned_staging.installer_bundle_active()
+        || unsigned_staging.release_qualified()
+    {
+        return Err("underlying unsigned_staging manifest violated EXT-05 invariants".to_owned());
+    }
+    let research_release_qualified = axes.completed_engineering
+        && axes.independently_verified_engineering
+        && axes.ai_assisted_security_qualified
+        && axes.automated_scientific_evaluated;
+
+    let body = ResearchReleaseManifestBody {
+        schema_version: RESEARCH_RELEASE_SCHEMA_VERSION.to_owned(),
+        intended_use_scope: RESEARCH_INTENDED_USE_SCOPE_V1.to_owned(),
+        source_sha: unsigned_staging.source_sha.clone(),
+        tree_sha: unsigned_staging.tree_sha.clone(),
+        unsigned_staging_manifest_sha256: unsigned_staging.manifest_sha256().to_owned(),
+        bench_packet_sha256: bench_packet_sha256.to_owned(),
+        completed_engineering: axes.completed_engineering,
+        independently_verified_engineering: axes.independently_verified_engineering,
+        ai_assisted_security_qualified: axes.ai_assisted_security_qualified,
+        automated_scientific_evaluated: axes.automated_scientific_evaluated,
+        research_release_qualified,
+        human_independent_security_review: false,
+        os_ca_code_signed: false,
+        installer_bundle_active: false,
+        actual_clinical_validation: false,
+        actual_regulatory_authorization: false,
+    };
+    let canonical = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
+    let manifest_sha256 = sha256_hex(&canonical);
+
+    Ok(ResearchReleaseManifest {
+        schema_version: body.schema_version,
+        intended_use_scope: body.intended_use_scope,
+        source_sha: body.source_sha,
+        tree_sha: body.tree_sha,
+        unsigned_staging_manifest_sha256: body.unsigned_staging_manifest_sha256,
+        bench_packet_sha256: body.bench_packet_sha256,
+        completed_engineering: body.completed_engineering,
+        independently_verified_engineering: body.independently_verified_engineering,
+        ai_assisted_security_qualified: body.ai_assisted_security_qualified,
+        automated_scientific_evaluated: body.automated_scientific_evaluated,
+        research_release_qualified: body.research_release_qualified,
+        human_independent_security_review: false,
+        os_ca_code_signed: false,
+        installer_bundle_active: false,
+        actual_clinical_validation: false,
+        actual_regulatory_authorization: false,
+        manifest_sha256,
+    })
+}
+
+/// Cross-verifies a serialized [`ResearchReleaseManifest`] against a live verified
+/// [`UnsignedStagingManifest`] and expected `SafeEvidenceBench` packet digest (`NB-2`).
+///
+/// # Errors
+/// Fails closed if `manifest_json` fails validation or any binding (`source_sha`, `tree_sha`,
+/// `unsigned_staging_manifest_sha256`, `bench_packet_sha256`) mismatches.
+pub fn verify_research_release_manifest(
+    manifest_json: &str,
+    unsigned_staging: &UnsignedStagingManifest,
+    expected_bench_packet_sha256: &str,
+) -> Result<ResearchReleaseManifest, String> {
+    let parsed: ResearchReleaseManifest = serde_json::from_str(manifest_json)
+        .map_err(|e| format!("research release manifest error: {e}"))?;
+    if parsed.source_sha() != unsigned_staging.source_sha {
+        return Err("research manifest source_sha mismatch against unsigned_staging".to_owned());
+    }
+    if parsed.tree_sha() != unsigned_staging.tree_sha {
+        return Err("research manifest tree_sha mismatch against unsigned_staging".to_owned());
+    }
+    if parsed.unsigned_staging_manifest_sha256() != unsigned_staging.manifest_sha256() {
+        return Err("unsigned_staging_manifest_sha256 mismatch".to_owned());
+    }
+    if parsed.bench_packet_sha256() != expected_bench_packet_sha256 {
+        return Err("bench_packet_sha256 mismatch".to_owned());
+    }
+    Ok(parsed)
 }

@@ -25,7 +25,8 @@ Admission `ADM-0005` (T13) in `docs/evidence/source_admissions.json`.
 `bench/oracles/commandmed_spec006/generate_case_vectors.py`, which runs the donor's `spec006` code and data at generation time. The 5 excluded cases keep their text and reason only. The texts are test
 inputs with no names or identifiers, not medical information. One is Arabic, as donor test input.
 
-## Not covered
+## WP-11 Full Assurance and Clean-Room Mathematical Evaluation (`ADR-0001`, `plan-v1.7`)
 
-Under `plan-v1.4`, the subset is resolution only: the port resolves the rules the donor's pipeline chose, and does not detect them. It shows little beyond the mechanics vectors, as that amendment states. This crate alone cannot give exactly one `TerminalOutcome`, since it can return `NoRuleFired`
-or an action. `safeevidence-ask` calls it to resolve evidence-based guards only. TA-13's DAL vectors are owed at WP-11.
+- Under `plan-v1.4`, the `T13` subset covers rule-precedence resolution (`lib.rs`).
+- Under the 2026-11-27 Founder Directive (`docs/adr/0001-permanently-remove-dal-and-adopt-clean-room-calibration-math.md`, `docs/plan/PLAN_AMENDMENT_V1_7.md`), private `DAL` (`T14`) is permanently removed from SafeEvidence. Zero bytes, paths, constants, or test vectors from `DAL` exist in this crate.
+- `src/eval_metrics.rs` and `src/full_assurance.rs` (`tests/ta13_calibration_metrics.rs`) are 100% SafeEvidence-owned `GREENFIELD_JUSTIFIED` Rust implementations (`Apache-2.0`) derived directly from published scientific formulas (Brier 1950; Naeini et al. 2015; Guo et al. 2017; Geifman & El-Yaniv 2017; Jaeger et al. 2023; Wilson 1927) and `docs/P00_DECISION_ASSURANCE_CONTRACT.md`, verified to `1e-12` analytical precision.

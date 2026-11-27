@@ -4,7 +4,7 @@
 //! 1. Independent invocations of the compiled `safeevidence_bench` binary from separate working
 //!    directories emit byte-for-byte identical JSON packets and identical input/output digests.
 //! 2. Every registered synthetic split identity (`TA-09`, `TA-08`, `TA-10`, `TA-07`, `TA-17`,
-//!    `TA-27`) is present, passes its engineering gate, and carries an exact SHA-256 input digest.
+//!    `TA-27`, `TA-13`) is present, passes its engineering gate, and carries an exact SHA-256 input digest.
 //! 3. `clinical_claim_emitted` is `false`, no confidence percentages appear, and externally gated
 //!    components (`EXT-01`, `EXT-03`, `EXT-07`) are explicitly fenced as `BLOCKED_EXTERNAL`.
 
@@ -49,7 +49,7 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
         DigestSha256::of(json_b.as_bytes())
     );
 
-    // Verify all 7 split identities and passing gates:
+    // Verify all 8 split identities and passing gates (including clean-room TA-13 calibration):
     let split_ids: Vec<&str> = run_a
         .body
         .splits
@@ -66,12 +66,25 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
             "ta07-study-independence",
             "ta17-extraction-and-assurance",
             "ta27-prompt-injection",
+            "ta13-assurance-calibration",
         ]
     );
     for split in &run_a.body.splits {
         assert!(split.gate_passed, "split {} failed gate", split.split_id);
         assert!(!split.metrics.is_empty());
     }
+    assert!(
+        !json_a.contains("DAL"),
+        "BenchPacket must contain zero DAL references under ADR-0001"
+    );
+    assert!(
+        !json_a.contains('%') && !json_a.contains('\u{066A}'),
+        "BenchPacket must emit unitless ratios with zero percent symbols"
+    );
+    assert!(
+        !json_a.to_ascii_lowercase().contains("confidence"),
+        "BenchPacket must preserve P00 D-13 zero-confidence-vocabulary isolation"
+    );
 
     // Verify binary CLI execution from two clean temporary directories produces identical bytes:
     let bin = env!("CARGO_BIN_EXE_safeevidence_bench");
@@ -105,7 +118,7 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
         parsed.body.input_bundle_digest,
         run_a.body.input_bundle_digest
     );
-    assert_eq!(parsed.body.fenced_external_components.len(), 3);
+    assert_eq!(parsed.body.fenced_external_components.len(), 2);
     assert!(
         parsed
             .body

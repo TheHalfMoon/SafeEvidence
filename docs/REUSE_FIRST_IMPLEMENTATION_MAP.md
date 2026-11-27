@@ -60,7 +60,7 @@ These are review anchors, not permanent update locks. Reverify live heads before
 | Source | Observed review head | Main value |
 |---|---|---|
 | `TheHalfMoon/MedScale` | `1e2b7d94e970256b38bda15fa91f62bc397e825a` | valuable Rust donor: keys, source/evidence contracts, network broker, FHIR, packs, runtime and selected vault tests; **not canonical whole-file private vault** |
-| `TheHalfMoon/DAL` | `8fcf29f2e0c1b6cf78661acd2f5e1340a578ac03` | calibration/selective-risk/abstention benchmark code |
+| *(historical `DAL` entry superseded)* | *(permanently removed)* | **SUPERSEDED & PERMANENTLY REMOVED (`ADR-0001` / `plan-v1.7`):** replaced by clean-room Rust `safeevidence-assurance/src/eval_metrics.rs` from published formulas |
 | `TheHalfMoon/commandMed` | `51f73ec05750137e5bd94ffa0765f6383f475fee` | implemented deterministic safety policy/scaffold |
 | `TheHalfMoon/Morize` | `62fc04d01d398da93b4dacf0ab2f33e3f1440462` | temporal/evidence-graph semantics, mostly reference at this stage |
 | `TheHalfMoon/ottari` | `fb6ba054435931e0fc1d18d18c2bf21ca74c41c5` | Rust/native platform and document/runtime donor research |
@@ -229,9 +229,11 @@ Implemented behavior already includes:
 
 **SafeEvidence direction:** preserve fixtures and semantics as an executable oracle. Port/adapt the trusted deterministic subset to Rust rather than redesigning the state machine from a blank file.
 
-### 5.2 DAL metrics/selective prediction — COPY/ADAPT benchmark tooling
+### 5.2 DAL metrics/selective prediction — SUPERSEDED BY 2026-11-27 FOUNDER DIRECTIVE (`ADR-0001`, `plan-v1.7`)
 
-Candidate paths:
+> **Superseded (`2026-11-27`):** The Founder permanently removed `TheHalfMoon/DAL` (`T14`) from SafeEvidence V1 (`docs/adr/0001-permanently-remove-dal-and-adopt-clean-room-calibration-math.md`, `docs/plan/PLAN_AMENDMENT_V1_7.md`). Do **not** copy, inspect, expose, publish, or depend on DAL. Calibration, Brier score, clamped NLL, ECE/MCE, risk–coverage curves, AURC/E-AURC, and `P00` selective-assurance rates are implemented in clean-room pure Rust (`safeevidence_assurance::eval_metrics`) from published scientific definitions. The pre-amendment notes below are retained solely as dated historical context.
+
+Historical candidate paths (never copied):
 
 ```text
 src/gaxbench/metrics.py
@@ -386,8 +388,8 @@ Do not build ASR from scratch.
 | P05 semantic/rerank | **fastembed-rs** + sqlite-vec/USearch tournament |
 | P06 claim support | reuse MedScale evidence evaluation schemas/protocols; SafeEvidence-specific verifier remains core new work |
 | P07 appraisal/applicability | reuse MedScale evidence strategy/evaluation semantics; extend clinical model |
-| P08 decision assurance | **commandMed safety oracle/port + DAL harness + external typed-decision providers** |
-| P09 calibration | **DAL metrics/selective tooling** |
+| P08 decision assurance | **commandMed safety oracle/port + clean-room Rust assurance (`ADR-0001`; historical `DAL` permanently removed)** |
+| P09 calibration | **Clean-room Rust proper-scoring, `ECE`/`MCE`, and tie-exact `AURC`/`E-AURC` (`ADR-0001`; historical `DAL` permanently removed)** |
 | P10 synthesis/runtime | **MedScale Pack admission/runtime** + llama.cpp/mistral.rs provider |
 | P11 desktop | reuse core/platform primitives; SafeEvidence-specific clinician UX |
 | P12 documents/OCR | **Xberg/docling.rs/OpenMed/PaddleOCR**; no custom parser stack |
@@ -398,7 +400,7 @@ Do not build ASR from scratch.
 | P17 pairing/sync | existing authenticated transport + sibling QR protocol/test patterns |
 | P18 Deep Review | compose already-admitted retrieval/verification/appraisal components |
 | P19 voice | sherpa-onnx/whisper.cpp/etc. |
-| P20 SafeEvidenceBench | **DAL + MedScale evaluation tooling/protocol patterns** |
+| P20 SafeEvidenceBench | **SafeEvidence-owned reproducible benchmark runner + MedScale evaluation protocol patterns (`ADR-0001` / `ADR-0003`)** |
 | P21 privacy/security | **MedScale vault/network/sandbox/privacy adversarial tests** + Kernux capability patterns |
 | P22 release | reuse mature sibling release/SBOM/signing workflows |
 | P23 claims/publication | reuse evidence/claim-ledger discipline, not empirical results |

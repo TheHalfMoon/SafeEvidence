@@ -21,7 +21,7 @@ Scope: `V1` = in first release scope; `VS-1` = in the first vertical slice;
 | F09 | Evidence certainty (GRADE structures) | T26, G | REF/G | WP-10 | TA-12 | L1, L2, L11 | V1 |
 | F10 | Design-specific appraisal (RoB 2, ROBINS-I, QUADAS, AMSTAR 2) | T26, T28b/T34 (oracle), G | REF/BENCH/G | WP-10 | TA-12 | L2 | V1-PARTIAL (structures + human entry; automated RoB = benchmark only) |
 | F11 | Patient/population applicability | T28, T28d (bench), G | BENCH/G | WP-09 | TA-11 | L4 | VS-1 |
-| F12 | Calibrated uncertainty & abstention (categorical, no %) | T13, T14, G | P/C/G | WP-11a, WP-11 | TA-13 | L1, L5 | VS-1 |
+| F12 | Calibrated uncertainty & abstention (categorical, no %) | T13, G | P/G | WP-11a, WP-11 | TA-13 | L1, L5 | VS-1 |
 | F13 | Study-level dedup & overlap control | T15, T28c, G | C/REF/G | WP-05 | TA-07 | L3 | V1 |
 | F14 | Effect / result extraction with quotes | T28, T28d, T28b (bench), G | BENCH/G | WP-15 | TA-17 | L9 | V1-PARTIAL (proposals + confirmation) |
 | F15 | Systematic review screening & prioritisation | T15, T18 | C/W | WP-14 | TA-16 | L8 | V1 |
@@ -43,7 +43,7 @@ Scope: `V1` = in first release scope; `VS-1` = in the first vertical slice;
 | F31 | Mobile Ask / Scan / Saved | T24, T03, T20, T29 | D/C | WP-22 | TA-25, TA-29 | — | V1-PARTIAL (after desktop V1) |
 | F32 | Desktop↔mobile pairing/sync | iroh (candidate) | D | — | — | — | DEFERRED (P17) |
 | F33 | Interop exports (EBMonFHIR, RIS, SoF, EvidenceSnapshot) | T26, T15, T18 | REF/C/W | WP-10, WP-14 | TA-12, TA-16 | L11 | V1 |
-| F34 | SafeEvidenceBench | T14, T27, T28, SYNERGY, BEIR | C/BENCH | WP-20 | TA-23 | — | V1 |
+| F34 | SafeEvidenceBench | G, T27, T28, SYNERGY, BEIR | G/BENCH | WP-20 | TA-23 | — | V1 |
 | F35 | Citation-context signal (supporting/contrasting) | none admissible | — | — | — | L6 | DEFERRED |
 | F36 | Voice | sherpa-onnx (candidate) | D | — | — | — | DEFERRED (P19) |
 | F37 | Computable guidelines (CQL/CPG) | T33 | W | — | — | — | DEFERRED (P13) |

@@ -204,16 +204,64 @@ pub fn open_watch_registry_blob(
     serde_json::from_slice(&plaintext).map_err(|e| SurveillanceError::Serialization(e.to_string()))
 }
 
+fn canonical_term_key(text: &str) -> Option<String> {
+    let norm = NormalizedText::build(text).ok()?;
+    let collapsed = norm
+        .as_str()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if collapsed.is_empty() {
+        None
+    } else {
+        Some(collapsed)
+    }
+}
+
+fn terms_match_canonically(left: &str, right: &str) -> bool {
+    matches!(
+        (canonical_term_key(left), canonical_term_key(right)),
+        (Some(a), Some(b)) if a == b
+    )
+}
+
+fn prevalidate_surveillance_metadata(
+    events: &[SurveillanceUpdateEvent],
+) -> Result<(), SurveillanceError> {
+    for event in events {
+        if let SurveillanceUpdateEvent::NewTrialPublished {
+            doc_id,
+            study_id,
+            condition,
+            intervention,
+            summary,
+            ..
+        } = event
+            && (doc_id.trim().is_empty()
+                || study_id.trim().is_empty()
+                || canonical_term_key(condition).is_none()
+                || canonical_term_key(intervention).is_none()
+                || summary.chars().any(is_forbidden_bidi_control))
+        {
+            return Err(SurveillanceError::Serialization(
+                "NewTrialPublished carries empty or BiDi-spoofed metadata".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Applies one living-surveillance update cycle to `store` and `registry`, advancing
-/// `validity_epoch` to `new_epoch` and returning the newly emitted cause-named
-/// `SurveillanceAlert`s (`TA-19`).
+/// `validity_epoch` to `new_epoch` and executing all `ProofStore` updates inside a single atomic
+/// transaction before emitting cause-named `SurveillanceAlert`s (`TA-19`).
 pub fn apply_surveillance_cycle(
     store: &mut ProofStore,
     registry: &mut WatchRegistry,
     new_epoch: u64,
     events: &[SurveillanceUpdateEvent],
 ) -> Result<Vec<SurveillanceAlert>, SurveillanceError> {
-    store.advance_epoch(new_epoch)?;
+    prevalidate_surveillance_metadata(events)?;
+    store.execute_surveillance_batch(new_epoch, events)?;
     let mut emitted = Vec::new();
 
     for event in events {
@@ -221,10 +269,8 @@ pub fn apply_surveillance_cycle(
             SurveillanceUpdateEvent::RetractSource {
                 source_id,
                 rationale,
-                authorized_by,
-                recorded_time,
+                ..
             } => {
-                store.retract_source(source_id, rationale, authorized_by, recorded_time)?;
                 for watch in &registry.watches {
                     if watch.cited_source_ids.iter().any(|s| s == source_id) {
                         let proof_state = match &watch.linked_proof_id {
@@ -247,11 +293,9 @@ pub fn apply_surveillance_cycle(
             SurveillanceUpdateEvent::AmendSource {
                 prior_source_id,
                 superseding_source_id,
-                superseding_bytes,
                 amendment,
+                ..
             } => {
-                store.put_source(superseding_source_id, superseding_bytes)?;
-                store.amend(amendment)?;
                 for watch in &registry.watches {
                     if watch.cited_source_ids.iter().any(|s| s == prior_source_id) {
                         let proof_state = match &watch.linked_proof_id {
@@ -278,7 +322,6 @@ pub fn apply_surveillance_cycle(
                 new_grant_version,
                 reason,
             } => {
-                store.set_rights_grant(new_grant_version)?;
                 for watch in &registry.watches {
                     let proof_state = match &watch.linked_proof_id {
                         Some(pid) => Some(store.read(pid)?.state),
@@ -304,10 +347,9 @@ pub fn apply_surveillance_cycle(
                 contradicts_existing,
                 summary,
             } => {
-                store.put_source(doc_id, summary.as_bytes())?;
                 for watch in &registry.watches {
-                    if watch.condition.eq_ignore_ascii_case(condition)
-                        && watch.intervention.eq_ignore_ascii_case(intervention)
+                    if terms_match_canonically(&watch.condition, condition)
+                        && terms_match_canonically(&watch.intervention, intervention)
                     {
                         let proof_state = match &watch.linked_proof_id {
                             Some(pid) => Some(store.read(pid)?.state),
