@@ -204,6 +204,114 @@ pub fn open_watch_registry_blob(
     serde_json::from_slice(&plaintext).map_err(|e| SurveillanceError::Serialization(e.to_string()))
 }
 
+fn canonical_term_key(text: &str) -> Option<String> {
+    let norm = NormalizedText::build(text).ok()?;
+    let collapsed = norm
+        .as_str()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if collapsed.is_empty() {
+        None
+    } else {
+        Some(collapsed)
+    }
+}
+
+fn terms_match_canonically(left: &str, right: &str) -> bool {
+    matches!(
+        (canonical_term_key(left), canonical_term_key(right)),
+        (Some(a), Some(b)) if a == b
+    )
+}
+
+fn prevalidate_surveillance_batch(
+    store: &mut ProofStore,
+    new_epoch: u64,
+    events: &[SurveillanceUpdateEvent],
+) -> Result<(), SurveillanceError> {
+    if new_epoch <= store.epoch()? {
+        return Err(SurveillanceError::Store(StoreError::EpochMustIncrease));
+    }
+    for event in events {
+        match event {
+            SurveillanceUpdateEvent::RetractSource {
+                source_id,
+                rationale,
+                authorized_by,
+                ..
+            } => {
+                if source_id.trim().is_empty()
+                    || rationale.trim().is_empty()
+                    || authorized_by.trim().is_empty()
+                {
+                    return Err(SurveillanceError::Store(StoreError::InvalidRetraction));
+                }
+                if store.source(source_id)?.is_none() {
+                    return Err(SurveillanceError::Store(StoreError::SourceNotAdmitted(
+                        source_id.clone(),
+                    )));
+                }
+            }
+            SurveillanceUpdateEvent::AmendSource {
+                prior_source_id,
+                superseding_source_id,
+                superseding_bytes,
+                amendment,
+            } => {
+                if prior_source_id.trim().is_empty() || superseding_source_id.trim().is_empty() {
+                    return Err(SurveillanceError::Store(StoreError::InvalidAmendment));
+                }
+                if store.source(prior_source_id)?.is_none() {
+                    return Err(SurveillanceError::Store(StoreError::SourceNotAdmitted(
+                        prior_source_id.clone(),
+                    )));
+                }
+                if let Some(existing) = store.source(superseding_source_id)?
+                    && existing != *superseding_bytes
+                {
+                    return Err(SurveillanceError::Store(StoreError::SourceConflict));
+                }
+                if amendment.rationale.trim().is_empty() {
+                    return Err(SurveillanceError::Store(StoreError::InvalidAmendment));
+                }
+            }
+            SurveillanceUpdateEvent::RotateRightsGrant {
+                new_grant_version, ..
+            } => {
+                if new_grant_version.trim().is_empty() {
+                    return Err(SurveillanceError::Store(StoreError::InvalidRightsGrant));
+                }
+            }
+            SurveillanceUpdateEvent::NewTrialPublished {
+                doc_id,
+                study_id,
+                condition,
+                intervention,
+                summary,
+                ..
+            } => {
+                if doc_id.trim().is_empty()
+                    || study_id.trim().is_empty()
+                    || canonical_term_key(condition).is_none()
+                    || canonical_term_key(intervention).is_none()
+                    || summary.chars().any(is_forbidden_bidi_control)
+                {
+                    return Err(SurveillanceError::Serialization(
+                        "NewTrialPublished carries empty or BiDi-spoofed metadata".to_owned(),
+                    ));
+                }
+                if let Some(existing) = store.source(doc_id)?
+                    && existing != summary.as_bytes()
+                {
+                    return Err(SurveillanceError::Store(StoreError::SourceConflict));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Applies one living-surveillance update cycle to `store` and `registry`, advancing
 /// `validity_epoch` to `new_epoch` and returning the newly emitted cause-named
 /// `SurveillanceAlert`s (`TA-19`).
@@ -213,6 +321,7 @@ pub fn apply_surveillance_cycle(
     new_epoch: u64,
     events: &[SurveillanceUpdateEvent],
 ) -> Result<Vec<SurveillanceAlert>, SurveillanceError> {
+    prevalidate_surveillance_batch(store, new_epoch, events)?;
     store.advance_epoch(new_epoch)?;
     let mut emitted = Vec::new();
 
@@ -306,8 +415,8 @@ pub fn apply_surveillance_cycle(
             } => {
                 store.put_source(doc_id, summary.as_bytes())?;
                 for watch in &registry.watches {
-                    if watch.condition.eq_ignore_ascii_case(condition)
-                        && watch.intervention.eq_ignore_ascii_case(intervention)
+                    if terms_match_canonically(&watch.condition, condition)
+                        && terms_match_canonically(&watch.intervention, intervention)
                     {
                         let proof_state = match &watch.linked_proof_id {
                             Some(pid) => Some(store.read(pid)?.state),

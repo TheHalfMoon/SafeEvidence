@@ -137,7 +137,6 @@ impl NormalizedText {
             if is_arabic_ignorable_mark(ch) {
                 if let Some(last_norm_idx) = norm_to_raw_range.len().checked_sub(1) {
                     norm_to_raw_range[last_norm_idx].1 = raw_idx + 1;
-                    raw_to_norm_index[raw_idx] = Some(last_norm_idx);
                 } else if pending_leading_start.is_none() {
                     pending_leading_start = Some(raw_idx);
                 }
@@ -148,9 +147,7 @@ impl NormalizedText {
             let start = pending_leading_start.take().unwrap_or(raw_idx);
             normalized.push(canon);
             norm_to_raw_range.push((start, raw_idx + 1));
-            for slot in &mut raw_to_norm_index[start..=raw_idx] {
-                *slot = Some(norm_idx);
-            }
+            raw_to_norm_index[raw_idx] = Some(norm_idx);
         }
 
         Ok(Self {

@@ -1,38 +1,35 @@
 # SafeEvidence Final Engineering Qualification Dossier
 
-Status: `AUTHORIZED_ENGINEERING_COMPLETE` (`EXTERNAL_GATES_OPEN` for full V1 clinical, source-rights, human-review, and release closure)
+Status: `V1_RESEARCH_COMPLETION_ACTIVE` (`plan-v1.7` Founder Directive Enacted; 7-Axis Qualification Model)
 Date: `2026-11-27`
 Repository: `https://github.com/TheHalfMoon/SafeEvidence` (`Apache-2.0` for SafeEvidence-owned code)
 Canonical branch: `main`
 Recovered baseline SHA: `5ccecd7688f1d10fa8474a697d6b6670d8eafec8` (`2026-11-09`)
-Verified `main` SHA: `caab864ee2ea0520f922c4646a883b38e0ac02e7` (`2026-11-27`, PR #97 merged; 7/7 post-merge workflows `success`), extended by PR #98 (`safeevidence/adversarial-a11y-rtl-staging-20261127`)
+Verified `main` SHA: `ccbea102f8fb159da26372d176c41173f5b7351a` (`2026-11-27`, PR #98 merged; 7/7 post-merge workflows `success`), extended by PR #99 (`safeevidence/plan-v1-7-founder-directive-20261127`)
 Authorized development workstation: Windows 11 PC (`C:\Users\Shehr\.gemini\antigravity\scratch\SafeEvidence`) under explicit user override (`"use this pc , dont use mac"`), paired with hosted Ubuntu, Windows, and macOS GitHub Actions checks.
 
 ---
 
 ## 1. Executive Qualification Statement
 
-Every engineering requirement authorized under `EXT-02` (`docs/decisions/M0_EXT02_RATIFICATION_2026-11-05.md`) and `Issue #5` D2 (`ADM-0010`..`ADM-0012` + `ADM-0001`..`ADM-0009`) has been implemented, deterministically tested, independently audited, and qualified across bounded pull requests `#91`–`#98` (`main` @ `caab864ee2ea0520f922c4646a883b38e0ac02e7` through PR #97 with `15/15` PR checks and all 7 post-merge workflows `success`, plus PR #98 `safeevidence/adversarial-a11y-rtl-staging-20261127`). All external gates (`EXT-01`, `EXT-03`..`EXT-07`, `EXT-09`) remain strictly fail-closed (`docs/handoff/V1_GATE_AND_ADMISSION_AUDIT_2026-11-27.md`, `docs/decisions/V1_FOUNDER_DECISION_PACKET_2026-11-27.md`).
-
-In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
-1. **Frozen baselines remain byte-identical:** the root stdlib-only G01a baseline (`Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `.gitattributes`, `crates/g01a-synthetic/*`, `fixtures/g01a_synthetic_v1.txt`, `docs/evidence/g01a_synthetic_manifest.json`), all 9 frozen planning artifacts in `docs/PLAN_FREEZE.md`, and every `"modification": "none"` donor file in `docs/evidence/source_admissions.json` remain untouched.
-2. **Copy-first and donor-rights discipline is preserved:** zero unadmitted donor code (`T05`, `T07`, `T09`, `T10`, `T14`, `T15`, `T16`, `T18`-`T23`) was copied, and zero donor-assigned `COPY_BOUNDED` / `WORKER` / `DEPEND` subsystems (`T14` DAL selective-risk metrics, `T15` `MedOrigin` `litdb` fuzzy dedupe/screening, `T18` `ASReview`, `T19` `statsmodels` pooling) were reimplemented greenfield.
-3. **Separate qualification axes are never conflated:** `ENGINEERING_COMPLETE` for the `EXT-02` synthetic scope does **not** claim `CLINICALLY_EVALUATED`, `SOURCE_RIGHTS_CLEARED` (for unadmitted slices), `SECURITY_REVIEW_COMPLETE`, `RELEASE_QUALIFIED`, `PUBLIC_RELEASED`, or `CLINICAL_USE_AUTHORIZED`.
+Under the 2026-11-27 Founder Directive (`docs/plan/PLAN_AMENDMENT_V1_7.md`, `ADR-0001`..`ADR-0004`), SafeEvidence V1 is governed as a **zero-cost, local-first Research and Evidence-Analysis Workstation (`RESEARCH_WORKSTATION_NON_CLINICAL_V1`)**:
+1. **Permanent Removal of `DAL` (`ADR-0001`):** Private `TheHalfMoon/DAL` (`T14`, `D6`) is permanently deleted from V1 plans and pins (`39 -> 38` packets in `source_transplant_pins_2026-10-19.json`), banned fail-closed in `source_admission_check.py`, and replaced by clean-room Rust calibration, `ECE`/`MCE`, tie-exact `AURC`/`E-AURC`, Wilson/cluster-bootstrap CIs, and `P00` assurance metrics (`safeevidence-assurance/src/eval_metrics.rs`, verified to `1e-12` analytical precision).
+2. **Independent AI-Assisted Security Qualification (`ADR-0002`):** Mandatory internal human review (`EXT-06`, `D12`) is superseded by multi-agent independent review (`Google EGM` Goldfish, Alibaba `ocr delegate`, PStack `/ps-review`, `jev`), 6 structure-aware deterministic property/fuzz suites, static/supply-chain/adversarial/E2E gates, and exact-head verification, while truthfully preserving `HUMAN_INDEPENDENT_SECURITY_REVIEW = FALSE`.
+3. **V1 Research Scope & Automated Scientific Evaluation (`ADR-0003`):** V1 research qualification uses automated reproducible `SafeEvidenceBench` (`8/8` splits `PASS`, `30f3f081ec3348fde765954d73da26b1c5312e70121b03dbb779d0d9bbe49056`), while patient-specific CDS (`WP-21`), PHI, clinical validation (`ACTUAL_CLINICAL_VALIDATION = FALSE`), and medical-device claims (`ACTUAL_REGULATORY_AUTHORIZATION = FALSE`) remain strictly outside V1 scope.
 
 ---
 
-## 2. Multi-Axis Qualification Status
+## 2. Seven-Axis V1 Qualification Status (`plan-v1.7`)
 
-| Qualification Axis | Status | Governing Authority & Remaining External Gate |
+| Qualification Axis | Status | Governing Authority & Boundary |
 |---|---|---|
-| `ENGINEERING_COMPLETE` | `AUTHORIZED_SCOPE_COMPLETE` (`FALSE` for full V1) | All `EXT-02` + Issue #5 D2 (`ADM-0001`..`ADM-0012`) engineering slices implemented and verified across PRs `#91`–`#98` (`docs/handoff/V1_GATE_AND_ADMISSION_AUDIT_2026-11-27.md`); unadmitted V1 packets remain `BLOCKED_EXTERNAL` |
-| `MILESTONE_QUALIFIED` | `G01A_AND_M0_ENGINEERING_COMPLETE` (`AI_ONLY`; `EXT-06` open) | `docs/reviews/M0_M1_EXIT_REVIEW_2026-11-26.md`; human review (`EXT-06`) and `T05` (`EXT-01`) remain open |
-| `CLINICALLY_EVALUATED` | `FALSE` (`BLOCKED_EXTERNAL`) | `EXT-03` -- [Issue #4](https://github.com/TheHalfMoon/SafeEvidence/issues/4) clinical intended-use & evaluation charter |
-| `SOURCE_RIGHTS_CLEARED` | `PARTIAL_BOUNDED` (`ADM-0001`..`ADM-0012` only) | `EXT-01` & `EXT-07` -- [Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5) exact-source, dataset, and model-weight admissions |
-| `SECURITY_REVIEW_COMPLETE` | `FALSE` (`BLOCKED_EXTERNAL`) | `EXT-06` ([Issue #17](https://github.com/TheHalfMoon/SafeEvidence/issues/17)) & open [PR #43](https://github.com/TheHalfMoon/SafeEvidence/pull/43) independent human security review |
-| `RELEASE_QUALIFIED` | `FALSE` (`BLOCKED_EXTERNAL`) | `EXT-05` -- [Issue #5](https://github.com/TheHalfMoon/SafeEvidence/issues/5) signing key custody, TUF ceremony, and installer signing |
-| `PUBLIC_RELEASED` | `FALSE` | Zero GitHub Releases published |
-| `CLINICAL_USE_AUTHORIZED` | `FALSE` (`BLOCKED_EXTERNAL`) | `EXT-03` + `EXT-09` -- invented synthetic engineering fixtures only; never for patient care |
+| `COMPLETED_ENGINEERING` | `IN_PROGRESS_FINAL_V1_WAVES` | PRs `#91`–`#98` merged (`ccbea102`); PR #99 completes `plan-v1.7`, clean-room `WP-11` (`TA-13`), 8-split `SafeEvidenceBench`, 5 `egm-design` security fixes, `ResearchReleaseManifest`, and 6 property/fuzz suites; Wave 2 (`PR #43`) & Wave 3 (`PR #100`) follow immediately |
+| `INDEPENDENTLY_VERIFIED_ENGINEERING` | `VERIFIED_THROUGH_PR_98` (+ PR #99 review panel) | Multi-agent independent reviews + `15/15` PR checks + `7/7` post-merge `main` workflows (`ccbea102`) |
+| `AI_ASSISTED_SECURITY_QUALIFICATION` | `ACTIVE` (`HUMAN_INDEPENDENT_SECURITY_REVIEW = FALSE`) | `docs/decisions/AI_ASSISTED_SECURITY_QUALIFICATION_FRAMEWORK_2026-11-27.md` (`ADR-0002`) |
+| `AUTOMATED_SCIENTIFIC_EVALUATION` | `ACTIVE` (`8/8` splits `PASS`, `30f3f081...`) | `docs/decisions/V1_RESEARCH_INTENDED_USE_CHARTER_2026-11-27.md` (`ADR-0003`) |
+| `RESEARCH_RELEASE_QUALIFICATION` | `STAGING_AND_7AXIS_VERIFIER_ACTIVE` (`OS_CA_CODE_SIGNED = FALSE`) | `safeevidence-release/src/staging.rs` (`UnsignedStagingManifest` + `ResearchReleaseManifest`; `ADR-0003`, `ADR-0004`) |
+| `ACTUAL_CLINICAL_VALIDATION` | `FALSE` | Out of V1 research scope (`EXT-03` -- [Issue #4](https://github.com/TheHalfMoon/SafeEvidence/issues/4)) |
+| `ACTUAL_REGULATORY_AUTHORIZATION` | `FALSE` | Out of V1 research scope (`EXT-09` -- non-clinical research workstation only) |
 
 ---
 
@@ -47,7 +44,8 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 | [#95](https://github.com/TheHalfMoon/SafeEvidence/pull/95) | **M3/M4 Protocol Extraction, Multi-Pane Bilingual Workstation, SafeEvidenceBench & TA-M0 Baseline:** `review_protocol.rs` (`WP-14`/`WP-15`, `TA-17`), multi-pane `EN`/`AR` + `RTL` + WCAG 2.1 AA desktop workstation (`WP-18`/`WP-19`, `19/19` Win WebView2 E2E & `18/18` hosted Linux WebKitGTK E2E `PASS`), `SafeEvidenceBench` (`WP-20`, `TA-23`), `RUNTIME_BUDGET_BASELINE_2026-11-26.md` (`WP-M0`, `TA-M0`), final qualification dossier | `66224e134c6d02ec6594c680bb542d7c8092d290` | `69fea4c32eaa1384e5305e425fa1076e4b630d94` | `15/15 PASS` (+ `7/7` post-merge) |
 | [#96](https://github.com/TheHalfMoon/SafeEvidence/pull/96) | **V1 Gate Audit, 39-Packet Pin Verification & Candidate Admissions:** line-by-line V1 gate audit (`V1_GATE_AND_ADMISSION_AUDIT_2026-11-27.md`), non-authorizing candidate rows `ADM-0013`..`ADM-0041` (`copy_authorized = false`, `EXT-08` private-repo tripwire), `ADM-0004` `T17` D2 span-logic/test slice binding, and `V1_FOUNDER_DECISION_PACKET_2026-11-27.md` | `212e097aa645175321a16767bacfa16989173c10` | `12d9d583b472afdf609e85d3899e879d17602e5a` | `15/15 PASS` (+ `7/7` post-merge) |
 | [#97](https://github.com/TheHalfMoon/SafeEvidence/pull/97) | **T17 Span Audit/Projection, T12 Privacy/Hostile-MIME, TA-05 Disk-Full & Key-Loss/Backup Recovery:** `ADM-0004` `span_audit.rs` + `offset_projection.rs`, `document_intake.rs` + `ADM-0007` `privacy_probes_032` / `vault_privacy_023` / `hostile_mime_010`, `PRAGMA max_page_count` disk-full rollback + `verify_record_semantics_doctor()` + `SAFEVD/RECOVERY/ENVELOPE/v1` Argon2id key-loss recovery + B505 portable backup restore, bilingual desktop integration | `962b2e9518ed4ec911748a49f884a76b7000675b` | `caab864ee2ea0520f922c4646a883b38e0ac02e7` | `15/15 PASS` (+ `7/7` post-merge) |
-| PR #98 | **TA-27 Adversarial Injection, 7-Split SafeEvidenceBench, 5-View RTL SSR Snapshots, Clipboard/Crashpad E2E & Unsigned Staging:** `ta27_prompt_injection.rs` + `EffectMeasureSwap`, `ta27-prompt-injection` split (`TA-23`), `rtl-snapshots.test.ts` (`TA-22`), `21/21` Win & `20/20` Linux E2E (`TA-20`), `safeevidence-release/src/staging.rs` (`TA-28` prep under `EXT-05`), final ledger reconciliation | `(recorded on branch)` | `(recorded on main)` | `15/15` exact-head checks |
+| [#98](https://github.com/TheHalfMoon/SafeEvidence/pull/98) | **TA-27 Adversarial Injection, 7-Split SafeEvidenceBench, 5-View RTL SSR Snapshots, Clipboard/Crashpad E2E & Unsigned Staging:** `ta27_prompt_injection.rs` + `EffectMeasureSwap`, `ta27-prompt-injection` split (`TA-23`), `rtl-snapshots.test.ts` (`TA-22`), `21/21` Win & `20/20` Linux E2E (`TA-20`), `safeevidence-release/src/staging.rs` (`TA-28` prep under `EXT-05`), final ledger reconciliation | `60e462a58707a16866c90328b0526405f1c31778` | `ccbea102f8fb159da26372d176c41173f5b7351a` | `15/15 PASS` (+ `7/7` post-merge) |
+| PR #99 | **`plan-v1.7` Founder Directive, Permanent DAL Removal, Clean-Room Calibration/AURC/ECE (`TA-13`), 8-Split SafeEvidenceBench & 6 Property/Fuzz Suites:** `ADR-0001`..`ADR-0004`, `PLAN_AMENDMENT_V1_7.md`, `PLAN_FREEZE.md` (`T14` deleted), `eval_metrics.rs` + `full_assurance.rs` (`1e-12` precision), `ta13-assurance-calibration` (`30f3f081...`), 5 `egm-design` fixes (`ResearchReleaseManifest`), and 6 deterministic property/fuzz suites | `(recorded on branch)` | `(recorded on main)` | `15/15` exact-head checks |
 
 ---
 
@@ -67,7 +65,7 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 | `TA-10` | Claim support verification | `PARTIAL` (perturbation + `EffectMeasureSwap` `TESTED_PASSED`; `EXT-01`/`EXT-03`/`EXT-07` open) | `perturbation.rs` + `ta10_ta11_verification.rs` + `ta27_prompt_injection.rs` (`25/25` perturbations + RR/AR/OR/HR/MD `EffectMeasureSwap` flagged); `T27` SciFact, `T27b` MultiVerS, and clinical holdout gated |
 | `TA-11` | PICO applicability mismatch | `TESTED_PASSED` (synthetic scope) | `evaluate_pico_applicability` (`ta10_ta11_verification.rs`) + Ask typed `ReasonCode` exclusions |
 | `TA-12` | Appraisal structures & EBMonFHIR | `TESTED_PASSED` (synthetic scope) | `appraisal.rs` + `ta12_appraisal_ebmonfhir.rs` (`RoB 2`, `ROBINS-I`, `QUADAS-2`, `AMSTAR 2`, `GRADE`, human actor gate, `EBMonFHIR` JSON crosswalk) |
-| `TA-13` | Assurance determinism & zero UI percentage | `PARTIAL` (`plan-v1.4` `TESTED_PASSED`; `EXT-01` open) | `safeevidence-assurance` (`1,329` vectors + `17` cases + lexical-emergency ban) + UI zero-percentage check; `T14` DAL vectors gated on `EXT-01` |
+| `TA-13` | Assurance determinism, clean-room calibration/AURC/ECE & zero UI percentage | `TESTED_PASSED` (`plan-v1.7`, `ADR-0001`) | `safeevidence-assurance` (`1,329` `T13` vectors + `17` cases + `full_assurance.rs` + clean-room `eval_metrics.rs` verified to `1e-12` analytical parity & 1,000-trial property suite in `ta13_calibration_metrics.rs`) + UI zero-percentage check; `T14` (`DAL`) permanently removed |
 | `TA-14` | Atomic proof admission & fault withholding | `PARTIAL` (`VS-1a` `TESTED_PASSED`; `EXT-07` open) | `answer_faults.rs`, `proof_commit.rs`, `ask_command.rs` (`CommitUnknown` reconciliation); LLM worker kill tests gated on `EXT-07` |
 | `TA-15` | Document parsing & OCR | `PARTIAL` (`ADM-0007` hostile-MIME quarantine `TESTED_PASSED`; PDF/OCR worker `BLOCKED_EXTERNAL`) | `document_intake.rs` + `hostile_mime_010.rs` quarantine binary/container/HTML/XML/PDF-active polyglots, BOM, and control bytes; PDF/OCR worker gated on `EXT-01` (`T16`, `T20`), `EXT-07` (`T29` PaddleOCR models), and `WP-23a` (`T10` sandbox) |
 | `TA-16` | Screening replay & ASReview WSS@95 | `PARTIAL` (protocol audit `TESTED_PASSED`; `EXT-01` open) | `review_protocol.rs` hash-chained `ProtocolAuditBundle` (`ta17_protocol_extraction.rs`); `T15` PRISMA & `T18` `ASReview` gated on `EXT-01` |
@@ -77,7 +75,7 @@ In strict compliance with `AGENTS.md` and `docs/PLAN_FREEZE.md`:
 | `TA-20` | Desktop end-to-end journey & shell checklist | `PARTIAL` (`21/21` Win E2E & `20/20` Linux E2E `TESTED_PASSED`; `T07`/`D9` open) | `e2e/ask_checks.mjs` (Ask, span jump, refusals, Evidence/Deep Review/Packs/Privacy panes, CSP, capability refusal, clipboard non-mutation, restart, post-kill `dataDir`/vault/`Crashpad` zero-residue); signed pack import (`T07`) & `D9` shipped-Linux-incognito ruling remain open |
 | `TA-21` | No silent network egress | `PARTIAL` (captures active; `EXT-01` open) | Linux `strace -ff` + Windows `netstat`/port-80 0-byte captures; full `T05` OS broker firewall harness gated on `EXT-01` |
 | `TA-22` | Accessibility & RTL | `PARTIAL` (WCAG AA + 5-view SSR snapshots + live RTL E2E `TESTED_PASSED`) | `accessibility-rtl.test.ts` + `rtl-snapshots.test.ts` (16 deterministic `EN`/`AR` HTML/ARIA snapshots across all 5 views) + live E2E keyboard/RTL checks; `axe-core` package remains unadmitted under zero-lockfile-churn `ADM-0012` |
-| `TA-23` | `SafeEvidenceBench` reproducibility | `PARTIAL` (7 synthetic splits `TESTED_PASSED`; `EXT-01`/`EXT-03` open) | `safeevidence_bench` (`ta23_safeevidence_bench.rs`, `7` splits incl. `ta27-prompt-injection`) produces identical SHA-256 input (`3c123819...`) & output (`e8ad2856...`) digests across `--debug` and `--release` |
+| `TA-23` | `SafeEvidenceBench` reproducibility | `TESTED_PASSED` (8 synthetic V1 research splits under `ADR-0003`; external `T27` corpora optional) | `safeevidence_bench` (`ta23_safeevidence_bench.rs`, `8` splits incl. `ta27-prompt-injection` & `ta13-assurance-calibration`) produces identical SHA-256 input (`3c123819...`) & output (`30f3f081...`) digests with zero `DAL` or `confidence` tokens |
 | `TA-24` | FHIR patient context | `BLOCKED_EXTERNAL` | Gated on `EXT-01` (`T09`) and `EXT-03` ([Issue #4](https://github.com/TheHalfMoon/SafeEvidence/issues/4)) |
 | `TA-25` | Mobile offline shell | `BLOCKED_EXTERNAL` | Gated on `EXT-01` (`T20`, `T24`) + EGM finding V5 (`reqwest`/`hyper` in Tauri mobile targets) |
 | `TA-26` | OS worker sandboxing | `BLOCKED_EXTERNAL` | Gated on `EXT-01` (`T10` sandbox launcher slice) |

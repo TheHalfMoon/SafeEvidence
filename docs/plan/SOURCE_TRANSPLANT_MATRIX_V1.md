@@ -3,8 +3,8 @@
 Status: **PLANNING_BASELINE_V1** — freeze state is recorded only in `docs/PLAN_FREEZE.md`.
 Admission state: **NO_ADMISSIONS**. Nothing in this file authorizes copying a byte.
 Machine-readable pins: `docs/evidence/source_transplant_pins_2026-10-19.json`
-(332 files across 39 packets, Git blob OID + size, pinned at heads observed
-2026-10-19; upstream heads may have moved since: re-verify at admission).
+(327 files across 38 packets, Git blob OID + size, pinned at heads observed
+2026-10-19; `T14` / `DAL` permanently removed per 2026-11-27 Founder Directive `plan-v1.7`; upstream heads may have moved since: re-verify at admission).
 
 ## 1. How to read this matrix
 
@@ -21,10 +21,10 @@ Machine-readable pins: `docs/evidence/source_transplant_pins_2026-10-19.json`
 - **Branding:** copied code is renamed to `safeevidence-*` crates / `safeevidence`
   Python packages. Original copyright headers, `LICENSE`, `NOTICE` and author
   credits are retained in `THIRD_PARTY_NOTICES.md` and per-directory notices.
-- **Visibility note:** as of 2026-10-19, `DAL`, `ottari`, `kernux` and `Morize`
-  are **private** (they were public when first listed in `SOURCE_LEDGER.md`).
+- **Visibility note:** as of 2026-10-19, `ottari`, `kernux` and `Morize`
+  are **private** (they were public when first listed in `SOURCE_LEDGER.md`; private `DAL` was permanently removed from V1 per `plan-v1.7`).
   Their identities were already disclosed in this public repository. Path-level
-  pins for them are **not** published: the pins JSON carries only a SHA-256
+  pins for uncopied private repositories are **not** published: the pins JSON carries only a SHA-256
   commitment, file count and size per packet; the full list is a founder-held
   private record. Other private founder repositories inspected are not named.
 
@@ -44,7 +44,6 @@ Machine-readable pins: `docs/evidence/source_transplant_pins_2026-10-19.json`
 | T11 | CycloneDX-style release SBOM + deny.toml | MedScale @ same | `medscale-core/src/release_sbom.rs`, `scripts/generate-release-sbom.ps1`, `deny.toml` | COPY_BOUNDED | `tools/release/` | Already a P01 reference candidate (2026-10-08 ledger) | `release_sbom_054.rs` | Apache-2.0 |
 | T12 | Privacy probes (temp/WAL/cache residue), hostile MIME | MedScale @ same | `medscale-storage/src/privacy_probes.rs` + tests | COPY_BOUNDED (tests first) | `tests/privacy/` | Point probes at SafeEvidence paths | `privacy_probes_032.rs`, `vault_privacy_023.rs`, `hostile_mime_010.rs` | Apache-2.0 |
 | T13 | Deterministic safety/policy state machine (precedence, conflict fail-closed, tool provenance, exactly-one terminal) | commandMed @ `51f73ec05750137e5bd94ffa0765f6383f475fee` | `src/commandmed/spec006/*.py`, spec006 fixtures, `tests/spec006/*` (`data/eval/safety_policy.json` pinned as oracle-only data, never shipped) | ORACLE_COPY (Python, benchmark) + PORT_TO_RUST of mechanics only | `bench/oracles/commandmed_spec006/` + `crates/safeevidence-assurance` | Map vocabulary to `ControlAction`/`TerminalOutcome`; patient lexical policy **not** copied; lexical EMERGENCY classification disabled in V1 (`P00_DECISION_ASSURANCE_CONTRACT.md`) | parity on the **P00-conformant subset** of spec006 fixtures; excluded: `us2-context-safety.json` cases `emergency-keyword-en`, `emergency-keyword-ar-msa` and any other lexical-symptom EMERGENCY case | Apache-2.0 |
-| T14 | Calibration & selective-risk metrics (Brier, ECE, NLL, risk–coverage, AURC, unsafe-commit, over-abstain) | DAL @ `e460e766566d233c79b1270d6e425cb2005d9514` | metrics and selective-prediction modules with their tests, as listed in `REUSE_FIRST_IMPLEMENTATION_MAP.md` §5.2, plus one statistics helper (5 files; private pin record) | COPY_BOUNDED (Python, import-path changes only) | `bench/safeevidencebench/metrics/` | Only import paths; keep DAL negative Study-0 results as prior evidence | donor metric tests | Apache-2.0; repo private |
 | T15 | **Literature acquisition & review log**: PubMed/OpenAlex/S2/arXiv adapters, provenance-anchored deterministic parsers, title/ID dedupe with uncertain-merge list, append-only screening & review event logs with `ExclusionReason`, PRISMA summary, integrity/lineage | MedOrigin (formerly MESC) @ `ec8b1b6f7392b09ecbb023600b3a83cfff6f14a8` | `src/medscale/litdb/*.py`, `src/medscale/provenance.py`, `src/medscale/_layout.py`, `tests/test_litdb_*.py` (38 files, stdlib-only) | COPY_BOUNDED (Python worker) | `workers/research/safeevidence_research/litdb/` | Route all fetches through T05 broker (worker has no sockets; broker returns archived payload); add Europe PMC/Crossref parsers; rename package `medscale` → `safeevidence_research` | all `test_litdb_*` | Apache-2.0; public |
 | T16 | Critical-value OCR verification (`VERIFIED_AUTO / REVIEW_REQUIRED / ABSTAINED`), UCUM unit checks, lab-report contracts | SafeOCR @ `d2e2ea815b17a7a3f0e59ce43dbdd160966e73a4` | `src/safeocr/{contracts,verification,report,labgold}.py` + 3 tests, `LICENSE`, `NOTICE` (`ocr.py` = REFERENCE: it adds a second OCR route incl. subprocess Tesseract) | COPY_BOUNDED (worker) → PORT_TO_RUST of verification rules after parity | `workers/research/.../ocrverify/` then `crates/safeevidence-docverify` | Generalize from lab reports to dose/decimal/negation categories; Arabic numerals; OCR input comes only from T20 | `test_verification.py`, `test_foundation_contracts.py`, `test_labgold.py` | Apache-2.0; public |
 | T30 | Provenance gate tooling | ottari @ `73706029…` | `tools/provenance.py`, `tools/provenance_gate.py` | REFERENCE → COPY_BOUNDED for P01 admission tooling | `tools/governance/` | Already pinned as P01 candidates | — | Apache-2.0; repo private |
@@ -93,19 +92,19 @@ ORACLE only, FTS5 replaces it).
 
 ## 4. The one sandboxed research worker (decision D-03)
 
-Copy-first requires running ASReview, statsmodels, MedOrigin `litdb`, DAL
-metrics, commandMed oracle and SafeOCR verification with **only** import-path,
-package-rename and broker-fetch adaptations rather than rewriting them in Rust. They run in **one** on-demand local Python process
+Copy-first requires running ASReview, statsmodels, MedOrigin `litdb`,
+commandMed oracle and SafeOCR verification with **only** import-path,
+package-rename and broker-fetch adaptations rather than rewriting them in Rust (or porting latency/size-critical rules with donor tests as parity oracle under D-03's exit rule). They run in **one** on-demand local Python process
 (not a daemon fleet), packaged with a pinned embedded interpreter and a
 hash-locked wheel set, launched under the T10 sandbox plan with **no network
 capability**, JSON-lines over stdio, cancellable, memory-capped. It is a
 desktop Deep Review / benchmark component; the Ask vertical slice and mobile
 never require it. Exit strategy: any worker module that becomes
-latency-critical is ported to Rust with the copied Python tests as parity oracle.
+latency-critical or violates sandbox/install-size ceilings is ported to Rust with the copied Python tests as parity oracle.
 
 ## 5. Remaining original engineering (GREENFIELD_JUSTIFIED)
 
-No inspected donor implements these; each is SafeEvidence-specific semantics:
+No admissible donor implements these; each is SafeEvidence-specific semantics or published closed-form mathematics:
 
 | Component | Why no donor fits | WP |
 |---|---|---|
@@ -116,4 +115,5 @@ No inspected donor implements these; each is SafeEvidence-specific semantics:
 | Clinical query → PICO decomposition orchestration | research extractors are benchmarks/GPL; LLM prompt + schema is product-specific | WP-07 |
 | Current-validity overlay & alert explanation | Data sources exist; overlay semantics are P00-specific | WP-04 |
 | Clinician workstation UX and Arabic/English presentation | UX is product-specific; shell is copied (T36) | WP-18, WP-19 |
-| SafeEvidenceBench assembly | Metrics copied (T14); task design is product-specific | WP-20 |
+| Calibration, reliability & selective-risk mathematics (Brier, clamped NLL, ECE/MCE, risk–coverage, AURC/E-AURC, P00 assurance rates) | Private DAL permanently removed by 2026-11-27 Founder Directive (`ADR-0001`, `plan-v1.7`); standard published closed-form formulas implemented directly in pure Rust (`1e-12` analytical parity) | WP-11, WP-20 |
+| SafeEvidenceBench assembly | Task design, deterministic split governance, and automated scientific evaluation packet assembly are product-specific | WP-20 |

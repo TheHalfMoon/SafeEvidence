@@ -127,13 +127,28 @@ fn normalize_words(text: &str) -> (String, BTreeSet<String>) {
     (collapsed, words)
 }
 
+fn ends_with_abbreviation(prefix_with_dot: &str) -> bool {
+    let lower = prefix_with_dot.trim_end().to_ascii_lowercase();
+    const ABBREVS: &[&str] = &[
+        "e.g.", "i.e.", "vs.", "v.", "fig.", "figs.", "dr.", "drs.", "prof.", "mr.", "mrs.", "ms.",
+        "et al.", "no.", "nos.", "approx.", "ca.", "cf.", "inc.", "ltd.", "st.",
+    ];
+    ABBREVS.iter().any(|abbr| {
+        lower == *abbr
+            || (lower.len() > abbr.len()
+                && lower.ends_with(abbr)
+                && !lower.as_bytes()[lower.len() - abbr.len() - 1].is_ascii_alphanumeric())
+    })
+}
+
 fn split_sentences(source: &str) -> Vec<&str> {
     let mut found = Vec::new();
     let mut start = 0;
     for (index, _) in source.match_indices(". ") {
+        let candidate = &source[start..=index];
         let next = source[index + 2..].chars().next();
-        if next.is_some_and(char::is_uppercase) {
-            found.push(source[start..=index].trim());
+        if next.is_some_and(char::is_uppercase) && !ends_with_abbreviation(candidate) {
+            found.push(candidate.trim());
             start = index + 2;
         }
     }
@@ -176,24 +191,46 @@ pub fn extract_numeric_facets(text: &str) -> Vec<String> {
     tokens
 }
 
-/// Extracts `(number, unit)` pairs when a numeric token is immediately followed by a timeframe or
-/// dose unit, catching swaps like `"40 mg for 12 weeks"` -> `"12 mg for 40 weeks"`.
+/// Extracts `(number, unit)` pairs when a numeric token is immediately followed by (or attached
+/// without whitespace to, e.g. `"40mg"` / `"12weeks"`) a timeframe or dose/effect unit, catching
+/// swaps like `"40 mg for 12 weeks"` -> `"12 mg for 40 weeks"` or `"40mg"` -> `"40mcg"`.
 fn extract_number_unit_pairs(text: &str) -> Vec<(String, String)> {
     let raw_tokens: Vec<String> = text
         .to_ascii_lowercase()
+        .replace("micrograms", "mcg")
+        .replace("milligrams", "mg")
         .split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | ':' | '(' | ')' | '[' | ']'))
         .map(|tok| tok.trim_end_matches('.').to_owned())
         .filter(|tok| !tok.is_empty())
         .collect();
+    let is_known_unit =
+        |u: &str| DOSE_AND_EFFECT_UNITS.contains(&u) || TIMEFRAME_UNITS.contains(&u);
+
     let mut pairs = Vec::new();
-    for win in raw_tokens.windows(2) {
-        let first_nums = extract_numeric_facets(&win[0]);
-        if first_nums.len() == 1
-            && (DOSE_AND_EFFECT_UNITS.contains(&win[1].as_str())
-                || TIMEFRAME_UNITS.contains(&win[1].as_str()))
-        {
-            pairs.push((first_nums[0].clone(), win[1].clone()));
+    let mut idx = 0;
+    while idx < raw_tokens.len() {
+        let tok = &raw_tokens[idx];
+        let nums = extract_numeric_facets(tok);
+        if nums.len() == 1 {
+            let num = &nums[0];
+            if let Some(suffix) = tok.strip_prefix(num.as_str())
+                && !suffix.is_empty()
+                && is_known_unit(suffix)
+            {
+                pairs.push((num.clone(), suffix.to_owned()));
+                idx += 1;
+                continue;
+            }
+            if tok == num
+                && let Some(next_tok) = raw_tokens.get(idx + 1)
+                && is_known_unit(next_tok.as_str())
+            {
+                pairs.push((num.clone(), next_tok.clone()));
+                idx += 2;
+                continue;
+            }
         }
+        idx += 1;
     }
     pairs
 }

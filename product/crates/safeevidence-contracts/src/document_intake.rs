@@ -59,6 +59,12 @@ fn has_disallowed_control_bytes(bytes: &[u8]) -> bool {
         .any(|&b| b == 0x7f || (b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r' | 0x0c)))
 }
 
+fn has_disallowed_unicode_controls(trimmed: &str) -> bool {
+    trimmed.chars().any(|ch| {
+        ('\u{0080}'..='\u{009F}').contains(&ch) || crate::bilingual::is_forbidden_bidi_control(ch)
+    })
+}
+
 fn starts_with_binary_or_container_magic(trimmed: &str) -> bool {
     let raw = trimmed.as_bytes();
     raw.starts_with(b"%PDF-")
@@ -67,6 +73,23 @@ fn starts_with_binary_or_container_magic(trimmed: &str) -> bool {
         || raw.starts_with(b"PK\x07\x08")
         || raw.starts_with(b"MZ")
         || raw.starts_with(b"\x7fELF")
+        || raw.starts_with(b"{\\rtf")
+}
+
+fn contains_binary_polyglot_script(bytes: &[u8]) -> bool {
+    const BINARY_SCRIPT_TOKENS: &[&[u8]] = &[
+        b"<script",
+        b"<html",
+        b"<svg",
+        b"<iframe",
+        b"<?xml",
+        b"javascript:",
+        b"vbscript:",
+        b"data:text/html",
+    ];
+    BINARY_SCRIPT_TOKENS
+        .iter()
+        .any(|tok| contains_ascii_case_insensitive(bytes, tok))
 }
 
 fn contains_ascii_case_insensitive(haystack: &[u8], needle_lower: &[u8]) -> bool {
@@ -248,22 +271,20 @@ fn pdf_contains_active_action(bytes: &[u8]) -> bool {
             if end > start
                 && (end == bytes.len() || is_pdf_delim_or_ws(bytes[end]))
                 && let Some(decoded) = decode_pdf_name_token(&bytes[start..end])
-            {
-                if decoded.eq_ignore_ascii_case(b"javascript")
+                && (decoded.eq_ignore_ascii_case(b"javascript")
                     || decoded.eq_ignore_ascii_case(b"launch")
                     || decoded.eq_ignore_ascii_case(b"richmedia")
-                {
-                    return true;
-                }
-                if decoded.as_slice() == b"JS"
-                    && end < bytes.len()
-                    && matches!(
-                        bytes[end],
-                        b' ' | b'\t' | b'\r' | b'\n' | b'\x0c' | b'\0' | b'(' | b'<'
-                    )
-                {
-                    return true;
-                }
+                    || decoded.eq_ignore_ascii_case(b"openaction")
+                    || decoded.eq_ignore_ascii_case(b"submitform")
+                    || decoded.eq_ignore_ascii_case(b"importdata")
+                    || decoded.eq_ignore_ascii_case(b"gotor")
+                    || decoded.eq_ignore_ascii_case(b"gotoe")
+                    || decoded.eq_ignore_ascii_case(b"embeddedfiles")
+                    || decoded.eq_ignore_ascii_case(b"xfa")
+                    || decoded.as_slice() == b"AA"
+                    || decoded.as_slice() == b"JS")
+            {
+                return true;
             }
             idx = end;
         } else {
@@ -274,8 +295,8 @@ fn pdf_contains_active_action(bytes: &[u8]) -> bool {
 }
 
 /// Evaluates `req` fail-closed, quarantining denied MIME classes, empty/oversized payloads,
-/// invalid UTF-8 or control-byte plain text, BOM/whitespace/mid-body HTML/XML/script polyglots,
-/// active PDF script actions, and PDF/PNG/JPEG magic-header mismatches.
+/// invalid UTF-8 or control-byte/BiDi plain text, BOM/whitespace/mid-body HTML/XML/script polyglots,
+/// active PDF script/launch/form/embedded actions, and PDF/PNG/JPEG header/trailer mismatches.
 #[must_use]
 pub fn mime_decision(req: &DocumentIntakeRequest) -> (QuarantineDecision, DocumentDenyReason) {
     match req.mime {
@@ -330,7 +351,8 @@ pub fn mime_decision(req: &DocumentIntakeRequest) -> (QuarantineDecision, Docume
                     DocumentDenyReason::MagicHeaderMismatch,
                 );
             }
-            if has_disallowed_control_bytes(&req.bytes) {
+            if has_disallowed_control_bytes(&req.bytes) || has_disallowed_unicode_controls(trimmed)
+            {
                 return (
                     QuarantineDecision::Quarantine,
                     DocumentDenyReason::InvalidUtf8Text,
@@ -344,13 +366,17 @@ pub fn mime_decision(req: &DocumentIntakeRequest) -> (QuarantineDecision, Docume
             }
         }
         DocumentMimeClass::ApplicationPdf => {
-            if !req.bytes.starts_with(b"%PDF-") {
+            if req.bytes.len() < 7
+                || !req.bytes.starts_with(b"%PDF-")
+                || !req.bytes[5].is_ascii_digit()
+            {
                 return (
                     QuarantineDecision::Quarantine,
                     DocumentDenyReason::MagicHeaderMismatch,
                 );
             }
-            if pdf_contains_active_action(&req.bytes) {
+            if pdf_contains_active_action(&req.bytes) || contains_binary_polyglot_script(&req.bytes)
+            {
                 return (
                     QuarantineDecision::Quarantine,
                     DocumentDenyReason::MimeDenied,
@@ -358,18 +384,37 @@ pub fn mime_decision(req: &DocumentIntakeRequest) -> (QuarantineDecision, Docume
             }
         }
         DocumentMimeClass::ImagePng => {
-            if !req.bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+            if req.bytes.len() < 33
+                || !req.bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+                || &req.bytes[12..16] != b"IHDR"
+                || !req.bytes.ends_with(b"IEND\xaeB`\x82")
+            {
                 return (
                     QuarantineDecision::Quarantine,
                     DocumentDenyReason::MagicHeaderMismatch,
                 );
             }
+            if contains_binary_polyglot_script(&req.bytes) {
+                return (
+                    QuarantineDecision::Quarantine,
+                    DocumentDenyReason::MimeDenied,
+                );
+            }
         }
         DocumentMimeClass::ImageJpeg => {
-            if !req.bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+            if req.bytes.len() < 4
+                || !req.bytes.starts_with(&[0xff, 0xd8, 0xff])
+                || !req.bytes.ends_with(&[0xff, 0xd9])
+            {
                 return (
                     QuarantineDecision::Quarantine,
                     DocumentDenyReason::MagicHeaderMismatch,
+                );
+            }
+            if contains_binary_polyglot_script(&req.bytes) {
+                return (
+                    QuarantineDecision::Quarantine,
+                    DocumentDenyReason::MimeDenied,
                 );
             }
         }

@@ -392,6 +392,74 @@ class AdmissionTests(unittest.TestCase):
                     )
         self.assertEqual(ottari_entries, 41)
 
+    def test_dal_and_t14_are_permanently_banned(self):
+        self.assertTrue(
+            any(
+                "DAL" in e
+                for e in self.errors(self.mutated(repo="TheHalfMoon/DAL", packet="T99"))
+            )
+        )
+        self.assertTrue(
+            any("DAL" in e for e in self.errors(self.mutated(packet="T14")))
+        )
+
+    def test_public_license_adr_ref_and_bench_only_licenses(self):
+        adr_rel = "docs/adr/0004-public-license.md"
+        (self.root / "docs/adr").mkdir(parents=True, exist_ok=True)
+        (self.root / adr_rel).write_text("# ADR\n", encoding="utf-8")
+        (self.root / "bench/scifact").mkdir(parents=True, exist_ok=True)
+        (self.root / "bench/scifact/claims.jsonl").write_bytes(BYTES)
+
+        pub_row = self.mutated(basis="PUBLIC_LICENSE", decision_ref=adr_rel)
+        self.assertEqual(self.errors(pub_row), [])
+
+        # Missing ADR file or non-PUBLIC_LICENSE basis fails closed:
+        self.assertTrue(
+            self.errors(
+                self.mutated(
+                    basis="PUBLIC_LICENSE", decision_ref="docs/adr/9999-missing.md"
+                )
+            )
+        )
+        self.assertTrue(
+            self.errors(
+                self.mutated(basis="FOUNDER_OWNED", decision_ref=adr_rel)
+            )
+        )
+        self.assertTrue(
+            self.errors(
+                self.mutated(
+                    basis="SEPARATE_PERMISSION_VERIFIED", decision_ref=adr_rel
+                )
+            )
+        )
+
+        # CC-BY-4.0 allowed strictly under bench/, denied under product/:
+        bench_row = self.mutated(
+            basis="PUBLIC_LICENSE",
+            license_spdx="CC-BY-4.0",
+            decision_ref=adr_rel,
+            files=[
+                {
+                    "source_path": "data/claims.jsonl",
+                    "git_blob_oid": check.git_blob_oid(BYTES),
+                    "bytes": len(BYTES),
+                    "dest_path": "bench/scifact/claims.jsonl",
+                    "modification": "none",
+                }
+            ],
+        )
+        self.assertEqual(self.errors(bench_row), [])
+        self.assertTrue(
+            self.errors(
+                self.mutated(
+                    basis="PUBLIC_LICENSE",
+                    license_spdx="CC-BY-4.0",
+                    decision_ref=adr_rel,
+                )
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

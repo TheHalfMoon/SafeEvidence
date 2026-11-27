@@ -27,6 +27,19 @@ BASES = {"FOUNDER_OWNED", "PUBLIC_LICENSE", "SEPARATE_PERMISSION_VERIFIED"}
 DECISION_REF = re.compile(
     r"https://github\.com/TheHalfMoon/SafeEvidence/issues/[0-9]+#issuecomment-[0-9]+\Z"
 )
+REPO_ADR_DECISION_REF = re.compile(
+    r"docs/(?:adr/[0-9]{4}-[a-z0-9-]+\.md|plan/PLAN_AMENDMENT_V1_[0-9]+\.md)\Z"
+)
+WITHHELD_PRIVATE_REPOS = {
+    "thehalfmoon/dal",
+    "thehalfmoon/kernux",
+    "thehalfmoon/morize",
+    "thehalfmoon/inercative",
+    "thehalfmoon/signthos",
+    "thehalfmoon/wispral",
+    "thehalfmoon/sentrdel",
+    "thehalfmoon/ecra",
+}
 REPO = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 PACKET = re.compile(r"(T[0-9]{2}[a-z]?|CRATE-[a-z0-9-]+)\Z")
 CRATE_PACKET = re.compile(r"CRATE-[a-z0-9-]+\Z")
@@ -40,6 +53,11 @@ LICENSES = {
     "Zlib",
     "Unicode-3.0",
     "MPL-2.0",
+}
+BENCHMARK_ONLY_LICENSES = {
+    "CC0-1.0",
+    "CC-BY-4.0",
+    "ODC-By-1.0",
 }
 CLOSURE_ALLOWED_LICENSES = LICENSES | {
     "Apache-2.0 OR MIT",
@@ -202,6 +220,13 @@ def check_row(
         ids.add(identifier)
     if not isinstance(row["repo"], str) or not REPO.fullmatch(row["repo"]):
         errors.append(f"{label}: repo must be owner/name")
+        repo_lower = ""
+    else:
+        repo_lower = row["repo"].lower()
+    if repo_lower == "thehalfmoon/dal" or row.get("packet") == "T14":
+        errors.append(f"{label}: DAL (T14) is permanently banned from SafeEvidence")
+    elif repo_lower in WITHHELD_PRIVATE_REPOS:
+        errors.append(f"{label}: withheld private repository cannot appear in public manifest")
     if not isinstance(row["packet"], str) or not PACKET.fullmatch(row["packet"]):
         errors.append(f"{label}: packet id invalid")
     if not is_full_oid(row["source_commit"]):
@@ -211,19 +236,41 @@ def check_row(
         errors.append(f"{label}: unknown state")
     if row["copy_authorized"] is not (state == "VERIFIED_ALLOWED"):
         errors.append(f"{label}: copy_authorized must be true only for VERIFIED_ALLOWED")
+    files = row["files"]
     if state == "VERIFIED_ALLOWED":
-        if not isinstance(row["basis"], str) or row["basis"] not in BASES:
+        basis = row["basis"]
+        if not isinstance(basis, str) or basis not in BASES:
             errors.append(f"{label}: basis cannot admit")
         decision = row["decision_ref"]
-        if not isinstance(decision, str) or not DECISION_REF.fullmatch(decision):
+        valid_github_ref = isinstance(decision, str) and bool(DECISION_REF.fullmatch(decision))
+        valid_adr_ref = (
+            basis == "PUBLIC_LICENSE"
+            and repo_lower != "thehalfmoon/ottari"
+            and isinstance(decision, str)
+            and bool(REPO_ADR_DECISION_REF.fullmatch(decision))
+            and resolve_regular_file(root, decision) is not None
+        )
+        if not (valid_github_ref or valid_adr_ref):
             errors.append(f"{label}: decision_ref must cite a recorded decision")
         spdx = row["license_spdx"]
-        if not isinstance(spdx, str) or spdx not in LICENSES:
+        bench_only_ok = (
+            isinstance(spdx, str)
+            and spdx in BENCHMARK_ONLY_LICENSES
+            and basis == "PUBLIC_LICENSE"
+            and isinstance(files, list)
+            and bool(files)
+            and all(
+                isinstance(e, dict)
+                and isinstance(e.get("dest_path"), str)
+                and e["dest_path"].startswith("bench/")
+                for e in files
+            )
+        )
+        if not ((isinstance(spdx, str) and spdx in LICENSES) or bench_only_ok):
             errors.append(f"{label}: license not on the admitted allowlist")
         for key in ("notices", "transitive", "assets", "security_test_owner"):
             if not isinstance(row[key], str) or not row[key].strip():
                 errors.append(f"{label}: {key} required for admission")
-    files = row["files"]
     if not isinstance(files, list) or (state == "VERIFIED_ALLOWED" and not files):
         errors.append(f"{label}: files required")
         return
@@ -377,7 +424,13 @@ def check_closure(
     if row["basis"] != "PUBLIC_LICENSE":
         errors.append(f"{label}: lockfile closures must use PUBLIC_LICENSE basis")
     decision = row["decision_ref"]
-    if not isinstance(decision, str) or not DECISION_REF.fullmatch(decision):
+    valid_github_ref = isinstance(decision, str) and bool(DECISION_REF.fullmatch(decision))
+    valid_adr_ref = (
+        isinstance(decision, str)
+        and bool(REPO_ADR_DECISION_REF.fullmatch(decision))
+        and resolve_regular_file(root, decision) is not None
+    )
+    if not (valid_github_ref or valid_adr_ref):
         errors.append(f"{label}: decision_ref must cite a recorded decision")
     for key in ("notices", "security_test_owner"):
         if not isinstance(row[key], str) or not row[key].strip():

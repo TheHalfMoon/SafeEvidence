@@ -6,6 +6,9 @@
 
 use safeevidence_contracts::assurance::{ControlAction, TerminalOutcome};
 
+pub mod eval_metrics;
+pub mod full_assurance;
+
 /// What a fired rule requires: a bounded action, or a terminal outcome.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Requirement {

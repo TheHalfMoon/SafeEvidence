@@ -28,41 +28,43 @@ separates studies from reports, tracks corrections/retractions, supports
 systematic reviews, and abstains or asks for more when evidence does not
 justify an answer.
 
-Three completion states are always reported separately:
+Seven completion and qualification axes are always reported separately (`plan-v1.7`):
 
-1. **Engineering complete** — WP exit criteria and TA rows pass on an exact commit.
-2. **Clinically evaluated** — Issue #4 charter executed by qualified, named
-   clinical owners with adjudicated holdouts. Not scheduled by engineering.
-3. **Regulatorily qualified** — any jurisdiction-specific determination
-   (e.g., SFDA, FDA, CE). Not planned or claimed; out of scope for V1.
+1. **Completed engineering** — WP exit criteria and TA rows pass on an exact commit.
+2. **Independently verified engineering** — fresh-context multi-agent reviews (`EGM`, `ocr`, `jev`, `PStack`) and cross-platform CI pass on the exact commit.
+3. **AI-assisted security qualification** — threat model, supply-chain/socket denial, property/fuzz/adversarial suites, `SECURITY.md`, and independent AI security review pass (`HUMAN_INDEPENDENT_SECURITY_REVIEW = FALSE`).
+4. **Automated scientific evaluation** — reproducible `SafeEvidenceBench` protocol, grounding, perturbation, contradiction, applicability, and `1e-12` calibration/AURC/ECE evaluation pass.
+5. **Research release qualification** — reproducible zero-cost offline desktop research bundle, CycloneDX SBOM, notices, and `V1_RESEARCH_INTENDED_USE_CHARTER` active (`OS_CA_CODE_SIGNED = FALSE`).
+6. **Actual clinical validation** — clinician-adjudicated clinical trials under a signed `Issue #4` clinical charter (`FALSE` in V1 research release).
+7. **Actual regulatory authorization** — jurisdiction-specific medical-device determination (e.g., SFDA, FDA, CE; `FALSE` and out of scope for V1).
 
-V1 makes no safety, performance, superiority or regulatory claim.
+V1 makes no patient-care safety, clinical validation, superiority or regulatory claim.
 
 ## 2. Product architecture (summary)
 
-Rust core (contracts, assurance, verification, appraisal, applicability,
+Rust core (contracts, assurance, calibration/selective-risk evaluation, verification, appraisal, applicability,
 retrieval, vault, proof admission) → Tauri 2/React desktop shell copied from
 MedScale → three sandboxed, network-less, out-of-process workers (documents/OCR via Xberg;
-one Python research worker for litdb/ASReview/statsmodels/DAL/SafeOCR; optional
+one Python research worker for litdb/ASReview/statsmodels/SafeOCR; optional
 llama.cpp generator) → one network broker as the only egress path → two data
 planes (public signed evidence packs; private SQLCipher vault). Mobile reuses
-the Rust core via UniFFI. Full specification and the 16 frozen decisions:
+the Rust core via UniFFI (deferred post-V1 desktop research release per `plan-v1.7`). Full specification and the 16 frozen decisions:
 `ARCHITECTURE_SPEC_V1.md`.
 
 ## 3. Copy-first summary (what is reused vs built)
 
-- **Copied/adapted founder code (14 slices):** MedScale contracts, keys,
-  network broker, pack format, FHIR, OS sandbox, SBOM, privacy probes, Tauri
+- **Copied/adapted founder code (13 slices; private DAL permanently removed per `plan-v1.7`):** MedScale contracts, keys,
+  network broker, pack format, FHIR (deferred with WP-21), OS sandbox, SBOM, privacy probes, Tauri
   shell; ottari vault; commandMed assurance (oracle + Rust port of mechanics);
-  DAL metrics; MedOrigin litdb; SafeOCR verification.
+  MedOrigin litdb; SafeOCR verification.
 - **Dependencies/workers (external):** Xberg, PaddleOCR models, fastembed-rs,
   MedCPT weights, sqlite-vec, SQLite FTS5, ONNX Runtime, UniFFI, tough,
   ASReview, statsmodels, llama.cpp, OpenMed span/grounding slices.
-- **Benchmarks/oracles only:** SciFact, MultiVerS, Evidence Inference, PICOX,
-  RRnlp (GPL-2.0 weights), RobotReviewer (GPL-3.0), SYNERGY, BEIR, metafor.
+- **Benchmarks/oracles only:** SciFact, Evidence Inference (`CC-BY`/`CC0` subset), PICOX,
+  RRnlp (GPL-2.0 weights — never copied), RobotReviewer (GPL-3.0 — never copied), SYNERGY, BEIR, metafor.
 - **Justified original engineering:** Study/Report/Overlap model,
   applicability gate, claim-support policy and AnswerProofManifest, GRADE
-  assembly, PICO orchestration, validity overlay, clinician UX, bilingual
+  assembly, clinical guideline metadata/supersession, PICO orchestration, validity overlay, published closed-form calibration & selective-risk mathematics (`ADR-0001`), clinician/researcher UX, bilingual
   presentation, SafeEvidenceBench task design (`SOURCE_TRANSPLANT_MATRIX_V1.md` §5).
 
 ## 4. Reconciliation of conflicts found in the 2026-10-19 audit
@@ -73,7 +75,7 @@ older documents are amended by pointer, not silently rewritten.
 | # | Conflict / outdated assumption | Evidence | Resolution |
 |---|---|---|---|
 | C1 | `TheHalfMoon/MESC` named as donor | GitHub redirects to `TheHalfMoon/MedOrigin` | Use MedOrigin @ `ec8b1b6f…`; Python package still named `medscale` → renamed on copy |
-| C2 | `SOURCE_LEDGER.md` calls DAL, ottari, kernux, Morize, Inercative, Signthos, Wispral public | All private at 2026-10-19 | Visibility recorded per packet; identities were already public; founder may redact path pins |
+| C2 | `SOURCE_LEDGER.md` calls DAL, ottari, kernux, Morize, Inercative, Signthos, Wispral public | All private at 2026-10-19 | Visibility recorded per packet; DAL permanently removed from V1 (`plan-v1.7`); remaining uncopied private paths stay withheld |
 | C3 | PICOX listed `COPY_BOUNDED` | Repo contains notebooks + corpus zip only | `BENCHMARK` |
 | C4 | RRnlp listed `COPY_BOUNDED` | Weights are Zenodo "RobotReviewer v2 models", GPL-2.0; minimap pickles are UMLS-derived | `BENCHMARK_ONLY`; no distribution |
 | C5 | docling.rs listed as `DEPEND` default | Default features enable URL/image/YouTube/remote-VLM fetch | Challenger only, `--no-default-features --features pdf` |
@@ -120,13 +122,12 @@ overlaps. Each step is one bounded PR series; each cites its admission IDs.
 4. **WP-04** (fixture-import path only) → **WP-07** BM25 + funnel.
 5. **WP-08** deterministic checks (VS-1a) → **WP-09** applicability.
 6. **WP-11a** assurance subset (T13 port) → **WP-12** template brief + AnswerProofManifest → wire **WP-18a** Ask view.
-7. **VS-1 integration** → **M1 exit review** (Codex + Opus + OCR review per `GAP_REVIEW.md`).
+7. **VS-1 integration** → **M1 exit review** (independent multi-agent + OCR review per `plan-v1.5` & `plan-v1.7`).
 8. **WP-04** live acquisition via broker with D-16 query preview (rights-admitted subset; enabled only after TA-29 and TA-30 pass) ∥ **WP-05** dedup/overlap ∥ **WP-13** documents/OCR.
-9. **WP-08** NLI model (VS-1b, after EXT-07) → **WP-07** dense tournament (MedCPT/fastembed/sqlite-vec) → **WP-10** appraisal/GRADE → **WP-11** full assurance (T14 metrics) → **WP-M0** measurement (freeze budgets).
+9. **WP-08** NLI model (VS-1b, after EXT-07) → **WP-07** dense tournament (MedCPT/fastembed/sqlite-vec) → **WP-10** appraisal/GRADE → **WP-11** full assurance (published mathematical calibration & selective-risk evaluation, `ADR-0001`) → **WP-M0** measurement (freeze budgets).
 10. **WP-14** screening/PRISMA → **WP-15** extraction → **WP-16** meta-analysis → **WP-17** living alerts (per-query opt-in).
 11. **WP-12** generator tournament (D-06, sandboxed worker) ∥ **WP-18** full workstation ∥ **WP-19** bilingual/a11y ∥ **WP-20** benchmark.
-12. **WP-23** security/privacy qualification → **M4 exit review**.
-13. **WP-22** mobile → **WP-24** release (Windows first, then macOS/Linux, then mobile stores).
+12. **WP-23** AI-assisted security/privacy qualification (`ADR-0002`) → **WP-24** V1 desktop research release (`ADR-0003`, `ADR-0004`; **WP-22** mobile deferred post-V1).
 
 ## 7. Source provenance and licensing controls
 
@@ -154,10 +155,6 @@ overlaps. Each step is one bounded PR series; each cites its admission IDs.
   mirrors are static files.
 - Zero founder-funded runtime cost: all inference/search runs on the user's device.
 
-## 9. Gates that engineering cannot close
+## 9. Boundaries outside V1 research engineering
 
-Listed with owners and evidence in `docs/PLAN_FREEZE.md` §5. Summary: rights
-rows (Issue #5), synthetic-scope extension beyond stdlib-only G01a (founder
-signature), intended-use & clinical evaluation charter (Issue #4), phase
-owners for the 41 P1 findings (Issue #3), key custody/release trust (Issue #5),
-G01a independent review (Issue #17), authenticated REA follow-ups (optional).
+Listed with owners and evidence in `docs/PLAN_FREEZE.md` §5 and `docs/plan/PLAN_AMENDMENT_V1_7.md`. Summary: non-public/copyleft source grants (Issue #5), commercial OS CA code-signing & production offline TUF root private-key custody (`EXT-05`), actual clinical validation & patient-specific CDS/PHI (`EXT-03`, Issue #4, `WP-21`), and regulatory medical-device authorization (`EXT-09`).

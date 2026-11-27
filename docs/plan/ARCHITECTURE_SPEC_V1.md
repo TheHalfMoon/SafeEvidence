@@ -8,11 +8,11 @@ overturn each decision (exit criteria). Nothing here authorizes import or releas
 
 ## 1. Product boundary
 
-SafeEvidence V1 is a **local-first, bilingual (English/Arabic) clinical
-evidence research workstation** for population-level questions by clinicians
-and researchers. It is research support, **not** clinically validated decision
-support: no patient-specific diagnosis, treatment, dosing, triage or prescribing
-output is released by V1 (P01 proposed wedge; ratification is Issue #4).
+SafeEvidence V1 is a **local-first, bilingual (English/Arabic) biomedical
+evidence research and analysis workstation** for population-level questions by
+researchers and scientifically trained users (`docs/decisions/V1_RESEARCH_INTENDED_USE_CHARTER_2026-11-27.md`, `plan-v1.7`). It is research support, **not** clinically validated decision
+support: no patient-specific diagnosis, treatment, dosing, triage, PHI ingestion (`WP-21`), or prescribing
+output is released by V1 (`ACTUAL_CLINICAL_VALIDATION = FALSE`, `ACTUAL_REGULATORY_AUTHORIZATION = FALSE`).
 
 ## 2. Component boundaries
 
@@ -32,9 +32,9 @@ output is released by V1 (P01 proposed wedge; ratification is Issue #4).
 │ Xberg+OCR  │  │ Python, pinned:   │  │ llama.cpp GGUF  │   │ allowlist, modes:     │
 │ (T20,T29)  │  │ litdb T15, ASReview│ │ (D-06), optional│   │ LOCKED / UPDATE_ONLY /│
 │ sandboxed  │  │ T18, statsmodels   │  │ sandboxed, no   │   │ SELECTED_CONNECTORS   │
-│ no network │  │ T19, DAL T14,      │  │ net, no keys    │   └───────────────────────┘
+│ no network │  │ T19, SafeOCR T16;  │  │ net, no keys    │   └───────────────────────┘
 │            │  │                    │  └─────────────────┘
-└────────────┘  │ SafeOCR T16; no net│
+└────────────┘  │ no net             │
                 └────────────────────┘
 Mobile (P15/P16): SwiftUI / Compose shells → UniFFI (T24) → same Rust core subset
 (contracts, vault protectors, lexical+compact rerank, assurance, proof admission).
@@ -54,7 +54,7 @@ documents are never parsed inside the core process. Only the
 |---|---|---|---|---|
 | D-01 | Tensor/ONNX runtime (one primary) | **ONNX Runtime via `ort`**; `tract` only where ORT cannot link (wasm/Android x86 emulator) | fastembed-rs (T21) and xberg-paddle-ocr (T20) both use `ort`, but pin different exact versions (`=2.0.0-rc.13` vs `=2.0.0-rc.14`); because the docs worker is a separate binary it lives in its own Cargo workspace so each side resolves one `ort`; WP-01 attempts alignment to a single version first | ORT fails WP-23 sandbox/no-network or WP-24 packaging on a tier-1 OS |
 | D-02 | Primary document engine | **Xberg** incumbent; docling.rs challenger | Xberg core crate with `pdf-native` only plus `xberg-paddle-ocr` is network-free (xberg OCR presets and `xberg-ffi` are not: see T20); docling.rs defaults include URL/image/YouTube/VLM network features | docling.rs (no-default-features) beats Xberg on WP-13 medical fixtures by the pre-registered margin |
-| D-03 | Python | **One** sandboxed, on-demand, network-less research worker (desktop only) | Copy-first: ASReview, statsmodels, litdb, DAL, SafeOCR, commandMed oracle are Python and tested; rewriting them violates `AGENTS.md` | Worker cannot meet WP-23 sandbox or WP-24 install-size ceiling → port the failing module with copied tests as oracle |
+| D-03 | Python | **One** sandboxed, on-demand, network-less research worker (desktop only) | Copy-first: ASReview, statsmodels, litdb, SafeOCR, commandMed oracle are Python and tested (calibration/selective-risk mathematics moved to pure Rust under `ADR-0001` / `plan-v1.7`, permanently removing private DAL) | Worker cannot meet WP-23 sandbox or WP-24 install-size ceiling → port the failing module with copied tests as oracle |
 | D-04 | Private vault & keys | **ottari `himsat-core` vault slice (T03)** is the single key hierarchy; MedScale T02 is reference with a bounded fallback | T03 has SQLCipher, lease, backup/restore/verify, rotation, deletion, four OS protectors and kill/spill/adversarial tests | Fails `P00_VAULT_DURABILITY_CONTRACT.md` campaign in WP-03 |
 | D-05 | Retrieval stack | **SQLite FTS5 BM25** (public plane DB) → **MedCPT** query/article encoders + **MedCPT cross-encoder** via fastembed-rs (ONNX) → **sqlite-vec** projection, exact flat-scan fallback | P00 requires MedCPT benchmark; donors exist for every layer | Dense layer not admitted unless it beats BM25 on WP-07 held-out set (P05 promotion rule) |
 | D-06 | Local generator | **llama.cpp** (GGUF, CPU) incumbent, `mistral.rs` challenger; model chosen by WP-12 tournament among Apache-2.0/MIT-weight instruct models that fit the RAM ceiling | Broadest CPU/OS support; runs as a sandboxed out-of-process worker; deterministic template fallback keeps the generator off the critical path | Challenger wins WP-12 on quality-per-RAM |

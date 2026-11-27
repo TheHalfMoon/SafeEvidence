@@ -577,19 +577,6 @@
    "unmatched_globs": [],
    "repo_visibility_2026_10_19": "public"
   },
-  "T14": {
-   "repo": "TheHalfMoon/DAL",
-   "commit": "e460e766566d233c79b1270d6e425cb2005d9514",
-   "unmatched_globs": [],
-   "repo_visibility_2026_10_19": "private",
-   "redacted_file_manifest": {
-    "file_count": 5,
-    "total_bytes": 64525,
-    "commitment_sha256": "52150bf16545f246865a5505410899aad48102b380f836b7a2882fbe80851d49",
-    "commitment_rule": "SHA-256 of sorted UTF-8 lines 'path\\tgit_blob_oid\\tbytes' joined by LF with trailing LF",
-    "reason": "private repository; path-level detail held in a founder-controlled record (AGENTS.md private-source rule)"
-   }
-  },
   "T15": {
    "repo": "TheHalfMoon/MedOrigin",
    "commit": "ec8b1b6f7392b09ecbb023600b3a83cfff6f14a8",

@@ -229,9 +229,11 @@ Implemented behavior already includes:
 
 **SafeEvidence direction:** preserve fixtures and semantics as an executable oracle. Port/adapt the trusted deterministic subset to Rust rather than redesigning the state machine from a blank file.
 
-### 5.2 DAL metrics/selective prediction — COPY/ADAPT benchmark tooling
+### 5.2 DAL metrics/selective prediction — SUPERSEDED BY 2026-11-27 FOUNDER DIRECTIVE (`ADR-0001`, `plan-v1.7`)
 
-Candidate paths:
+> **Superseded (`2026-11-27`):** The Founder permanently removed `TheHalfMoon/DAL` (`T14`) from SafeEvidence V1 (`docs/adr/0001-permanently-remove-dal-and-adopt-clean-room-calibration-math.md`, `docs/plan/PLAN_AMENDMENT_V1_7.md`). Do **not** copy, inspect, expose, publish, or depend on DAL. Calibration, Brier score, clamped NLL, ECE/MCE, risk–coverage curves, AURC/E-AURC, and `P00` selective-assurance rates are implemented in clean-room pure Rust (`safeevidence_assurance::eval_metrics`) from published scientific definitions. The pre-amendment notes below are retained solely as dated historical context.
+
+Historical candidate paths (never copied):
 
 ```text
 src/gaxbench/metrics.py
