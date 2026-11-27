@@ -5,7 +5,8 @@
 //! deletes of those records, sources and amendments, including `INSERT OR REPLACE`. This guards
 //! against bugs in this codebase. It is no boundary against malicious in-process code or anyone
 //! holding the key. It holds invented fixture data today and makes no clinical claim.
-//! Covered: process kills. Not covered: power loss, disk full, restore, cross-store outbox.
+//! Covered: process kills, SQLite page-quota disk-full rollback, key-loss recovery, and backup
+//! restore. Not covered: physical power loss, cross-store outbox.
 
 use std::path::Path;
 
@@ -121,6 +122,8 @@ pub enum StoreError {
     NotEstablished,
     /// SQLite reported the database busy. Nothing was written; retry.
     Busy,
+    /// SQLite reported disk or page-quota exhaustion (`SQLITE_FULL`); transaction rolled back.
+    DiskFull,
     /// A statement ended the transaction early. Nothing from this call was written.
     TransactionLost,
     /// The commit outcome is unknown. Retry with the same proof to reconcile.
@@ -177,10 +180,10 @@ impl From<GuardedSqlError> for StoreError {
 }
 
 fn provider_error(error: rusqlite::Error) -> StoreError {
-    if error.sqlite_error_code() == Some(rusqlite::ErrorCode::DatabaseBusy) {
-        StoreError::Busy
-    } else {
-        StoreError::Provider(error)
+    match error.sqlite_error_code() {
+        Some(rusqlite::ErrorCode::DatabaseBusy) => StoreError::Busy,
+        Some(rusqlite::ErrorCode::DiskFull) => StoreError::DiskFull,
+        _ => StoreError::Provider(error),
     }
 }
 
@@ -230,6 +233,33 @@ pub struct StoredAnswer {
     pub final_text: Vec<u8>,
     pub manifest: AnswerProofManifest,
     pub state: ProofState,
+}
+
+/// Runtime `plan-v1.3` record-semantics, durability, and SQLCipher integrity doctor report.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordSemanticsDoctorReport {
+    pub schema_matches: bool,
+    pub durable_settings_hold: bool,
+    pub cipher_and_sqlite_integrity_ok: bool,
+    pub table_count: usize,
+    pub append_only_trigger_count: usize,
+}
+
+impl RecordSemanticsDoctorReport {
+    pub const EXPECTED_TABLES: usize = 11;
+    pub const EXPECTED_TRIGGERS: usize = 22;
+
+    /// True only when SQLCipher page-HMAC integrity, SQLite integrity, WAL + `FULL` sync +
+    /// `recursive_triggers`, exact `SCHEMA_OBJECTS_SHA256`, and all 11 tables + 22 append-only /
+    /// monotonic triggers are verified live.
+    #[must_use]
+    pub const fn passed(&self) -> bool {
+        self.schema_matches
+            && self.durable_settings_hold
+            && self.cipher_and_sqlite_integrity_ok
+            && self.table_count == Self::EXPECTED_TABLES
+            && self.append_only_trigger_count == Self::EXPECTED_TRIGGERS
+    }
 }
 
 pub struct ProofStore {
@@ -1120,6 +1150,67 @@ impl ProofStore {
                     )?)
                 }),
         )
+    }
+
+    /// Returns the live SQLite page count of this encrypted store.
+    ///
+    /// # Errors
+    /// Fails on lease or provider failure.
+    pub fn page_count(&mut self) -> Result<u32, StoreError> {
+        flatten_setup(self.handle.page_count())
+    }
+
+    /// Sets SQLite's `PRAGMA max_page_count` ceiling (`0` or `0x3fff_ffff` restores SQLite's
+    /// default `1_073_741_823`-page ceiling) to exercise deterministic `StoreError::DiskFull`
+    /// rollback (`TA-05`).
+    ///
+    /// # Errors
+    /// Fails on lease or provider failure.
+    pub fn set_max_page_count(&mut self, max_pages: u32) -> Result<u32, StoreError> {
+        flatten_setup(self.handle.set_max_page_count(max_pages))
+    }
+
+    /// Verifies `plan-v1.3` append-only record-semantics triggers, exact `SCHEMA_OBJECTS_SHA256`,
+    /// WAL/`FULL`/`recursive_triggers` durability posture, and SQLCipher + SQLite integrity.
+    ///
+    /// # Errors
+    /// Fails on lease or provider query failure.
+    pub fn verify_record_semantics_doctor(
+        &mut self,
+    ) -> Result<RecordSemanticsDoctorReport, StoreError> {
+        let cipher_and_sqlite_integrity_ok = self.handle.verify_integrity().is_ok();
+        let durable_settings_hold = flatten_setup(self.handle.durable_settings_hold())?;
+        let schema_matches =
+            schema_objects_digest(&mut self.handle)?.as_deref() == Some(SCHEMA_OBJECTS_SHA256);
+        let (table_count, append_only_trigger_count) = flatten(self.handle.deferred_transaction(
+            |tx| -> Result<(usize, usize), StoreError> {
+                let tables = one(tx.query(
+                    "SELECT count(*) FROM sqlite_master
+                     WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )?)
+                .unwrap_or(0);
+                let triggers = one(tx.query(
+                    "SELECT count(*) FROM sqlite_master
+                     WHERE type = 'trigger' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )?)
+                .unwrap_or(0);
+                Ok((
+                    usize::try_from(tables).unwrap_or(0),
+                    usize::try_from(triggers).unwrap_or(0),
+                ))
+            },
+        ))?;
+        Ok(RecordSemanticsDoctorReport {
+            schema_matches,
+            durable_settings_hold,
+            cipher_and_sqlite_integrity_ok,
+            table_count,
+            append_only_trigger_count,
+        })
     }
 }
 

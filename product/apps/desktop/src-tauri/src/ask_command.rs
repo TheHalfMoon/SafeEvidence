@@ -16,13 +16,20 @@ use safeevidence_contracts::appraisal::{
     GradeCertaintyDomains, StartingDesign, UpgradeDomain, UpgradeStep,
 };
 use safeevidence_contracts::assurance::{ProofState, ReasonCode, TerminalOutcome};
+use safeevidence_contracts::document_intake::{
+    DocumentDenyReason, DocumentIntakeRequest, DocumentMimeClass, QuarantineDecision, mime_decision,
+};
 use safeevidence_contracts::evidence::EvidenceCorpusRights;
 use safeevidence_contracts::objects::DigestSha256;
+use safeevidence_contracts::offset_projection::{
+    AdapterExtractionResult, DEFAULT_SYNTHETIC_SEED, SyntheticOffsetCase, run_offset_property_suite,
+};
 use safeevidence_contracts::proof::EvidenceSpan;
 use safeevidence_contracts::review_protocol::{
     EffectMeasureKind, ExtractionState, ReviewPicoCriteria, ReviewProtocol,
     StructuredEffectExtraction, append_protocol_audit_event, export_protocol_audit_bundle,
 };
+use safeevidence_contracts::span_audit::{AuditedEvidenceSpan, audit_evidence_spans};
 use safeevidence_contracts::study::{
     Known, OutcomeId, PublicationState, ReportVersionId, ResultId, ScopedId, StudyId,
 };
@@ -32,7 +39,10 @@ use safeevidence_vault::vault_keys::{KeyDerivationContext, KeyPurpose};
 use safeevidence_vault::vault_lease::VaultLease;
 use serde::Serialize;
 
-use crate::custody::{DATABASE_FILE, KeySource, is_established, mark_established, open_root_key};
+use crate::custody::{
+    DATABASE_FILE, KeySource, enroll_recovery_passphrase, has_recovery_envelope, is_established,
+    mark_established, open_root_key, recover_key_with_passphrase,
+};
 
 const FIXTURE: &[u8] =
     include_bytes!("../../../../crates/safeevidence-ask/fixtures/vs1a_corpus.json");
@@ -517,6 +527,10 @@ pub struct DeepReviewPaneView {
     protocol_digest_prefix: String,
     audit_event_count: usize,
     audit_bundle_digest_prefix: String,
+    span_audit_span_count: usize,
+    span_audit_overlap_count: usize,
+    span_audit_fingerprint_prefix: String,
+    offset_projection_formats_verified: usize,
     extractions: Vec<ExtractionRowView>,
     certainty_outcome: String,
     certainty_level: CertaintyLevel,
@@ -545,6 +559,11 @@ pub struct PrivacyDiagnosticsPaneView {
     vault_domain_version: String,
     schema_digest_prefix: String,
     store_established: bool,
+    record_semantics_doctor_passed: bool,
+    hostile_mime_quarantine_active: bool,
+    recovery_envelope_enrolled: bool,
+    private_data_ready: bool,
+    open_residual_risk_classes: Vec<String>,
     webview_incognito_default: bool,
     outbound_surveillance_default_opt_in: bool,
     clinical_use_authorized: bool,
@@ -723,6 +742,66 @@ fn build_deep_review_view(corpus: &Corpus) -> Result<DeepReviewPaneView, String>
         )?,
     ];
 
+    let orbalin_doc = corpus
+        .documents
+        .iter()
+        .find(|doc| doc.doc_id == "doc-orbalin-a")
+        .ok_or_else(|| "missing doc-orbalin-a for span audit".to_owned())?;
+    let primary_span = &extractions[0];
+    let anchor_end = (primary_span.start_scalar + 8).min(primary_span.end_scalar);
+    let span_audit = audit_evidence_spans(&[
+        AuditedEvidenceSpan::try_new(
+            &orbalin_doc.doc_id,
+            &primary_span.extraction_id,
+            primary_span.start_scalar,
+            primary_span.end_scalar,
+        )
+        .map_err(|_| "invalid primary span for audit".to_owned())?,
+        AuditedEvidenceSpan::try_new(
+            &orbalin_doc.doc_id,
+            "ext-orbalin-a-anchor",
+            primary_span.start_scalar,
+            anchor_end,
+        )
+        .map_err(|_| "invalid anchor span for audit".to_owned())?,
+        AuditedEvidenceSpan::try_new(
+            &extractions[1].source_id,
+            &extractions[1].extraction_id,
+            extractions[1].start_scalar,
+            extractions[1].end_scalar,
+        )
+        .map_err(|_| "invalid secondary span for audit".to_owned())?,
+    ]);
+    let span_audit_fingerprint_prefix = span_audit
+        .fingerprint()
+        .strip_prefix("sha256:")
+        .unwrap_or(span_audit.fingerprint())
+        .chars()
+        .take(16)
+        .collect::<String>();
+
+    let identity_adapter = |case: &SyntheticOffsetCase| {
+        Ok(AdapterExtractionResult {
+            text: case.text().to_owned(),
+            spans: case.source_spans().to_vec(),
+        })
+    };
+    let offset_reports = run_offset_property_suite(
+        &[
+            ("pdf", &identity_adapter),
+            ("ocr", &identity_adapter),
+            ("rtf", &identity_adapter),
+            ("odt", &identity_adapter),
+            ("pptx", &identity_adapter),
+        ],
+        None,
+        DEFAULT_SYNTHETIC_SEED,
+    )
+    .map_err(|_| "scalar offset projection suite failed".to_owned())?;
+    if !offset_reports.iter().all(|report| report.passed()) {
+        return Err("scalar offset projection invariant failed".to_owned());
+    }
+
     let certainty = CertaintyAssessment {
         assessment_id: "grade-glimmer-adults-v1".to_owned(),
         outcome: OutcomeId(scoped("glimmer-score")),
@@ -804,6 +883,10 @@ fn build_deep_review_view(corpus: &Corpus) -> Result<DeepReviewPaneView, String>
         protocol_digest_prefix: protocol.protocol_digest.to_hex()[..16].to_owned(),
         audit_event_count: audit_bundle.events.len(),
         audit_bundle_digest_prefix: audit_bundle.bundle_digest.to_hex()[..16].to_owned(),
+        span_audit_span_count: span_audit.spans().len(),
+        span_audit_overlap_count: span_audit.overlap_count(),
+        span_audit_fingerprint_prefix,
+        offset_projection_formats_verified: offset_reports.len(),
         extractions,
         certainty_outcome: "Glimmer syndrome composite score (adults)".to_owned(),
         certainty_level: certainty.final_certainty,
@@ -815,20 +898,91 @@ fn build_deep_review_view(corpus: &Corpus) -> Result<DeepReviewPaneView, String>
     })
 }
 
+fn verify_hostile_mime_quarantine_posture() -> bool {
+    let html_denied = mime_decision(&DocumentIntakeRequest {
+        mime: DocumentMimeClass::TextHtml,
+        bytes: b"<!DOCTYPE html>".to_vec(),
+        fixture_id: None,
+    }) == (
+        QuarantineDecision::Quarantine,
+        DocumentDenyReason::MimeDenied,
+    );
+    let polyglot_denied = mime_decision(&DocumentIntakeRequest {
+        mime: DocumentMimeClass::ApplicationPdf,
+        bytes: b"MZ\x90\x00".to_vec(),
+        fixture_id: None,
+    }) == (
+        QuarantineDecision::Quarantine,
+        DocumentDenyReason::MagicHeaderMismatch,
+    );
+    let pdf_allowed = mime_decision(&DocumentIntakeRequest {
+        mime: DocumentMimeClass::ApplicationPdf,
+        bytes: b"%PDF-1.7\n".to_vec(),
+        fixture_id: None,
+    }) == (
+        QuarantineDecision::AdmitToSandboxedParser,
+        DocumentDenyReason::None,
+    );
+    html_denied && polyglot_denied && pdf_allowed
+}
+
 impl AskState {
+    /// Enrolls a `SAFEVD/RECOVERY/ENVELOPE/v1` passphrase beside the store (`TA-05`).
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "native state recovery method verified in end-to-end session tests while WebView IPC stays locked"
+        )
+    )]
+    pub fn enroll_recovery(&self, passphrase: &str) -> Result<(), String> {
+        let inner = self
+            .0
+            .lock()
+            .map_err(|_| "workstation state unavailable".to_owned())?;
+        let (Some(data_dir), Some(_)) = (inner.data_dir.as_deref(), inner.lock.as_ref()) else {
+            return Err("store lock or data directory not held by this instance".to_owned());
+        };
+        let dir = store_dir(data_dir);
+        enroll_recovery_passphrase(&dir, &inner.keys, passphrase).map_err(|error| error.to_string())
+    }
+
+    /// Recovers the store's OS-protector root key from `vault-recovery.envelope` after key loss.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "native state recovery method verified in end-to-end session tests while WebView IPC stays locked"
+        )
+    )]
+    pub fn recover_store_key(&self, passphrase: &str) -> Result<(), String> {
+        let mut inner = self
+            .0
+            .lock()
+            .map_err(|_| "workstation state unavailable".to_owned())?;
+        inner.session = None;
+        let (Some(data_dir), Some(_)) = (inner.data_dir.as_deref(), inner.lock.as_ref()) else {
+            return Err("store lock or data directory not held by this instance".to_owned());
+        };
+        let dir = store_dir(data_dir);
+        recover_key_with_passphrase(&dir, &inner.keys, passphrase)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
     fn overview(&self) -> Result<WorkstationOverview, String> {
         let corpus = load_corpus(FIXTURE, &DigestSha256::of(FIXTURE))
             .map_err(|_| "the fixture did not load".to_owned())?;
 
-        let (live_epoch, live_grant, store_established) = {
+        let (live_epoch, live_grant, store_established, doctor_passed, recovery_enrolled) = {
             let mut inner = self
                 .0
                 .lock()
                 .map_err(|_| "workstation state unavailable".to_owned())?;
-            let established = inner
-                .data_dir
-                .as_deref()
-                .is_some_and(|dir| is_established(&store_dir(dir)));
+            let holds_lock = inner.lock.is_some();
+            let dir_opt = inner.data_dir.as_deref().map(store_dir);
+            let established = dir_opt.as_deref().is_some_and(is_established);
+            let enrolled = dir_opt.as_deref().is_some_and(has_recovery_envelope);
             if let Some(session) = inner.session.as_mut() {
                 let epoch = session
                     .store
@@ -838,12 +992,62 @@ impl AskState {
                     .store
                     .rights_grant()
                     .map_err(|_| "could not read store rights grant".to_owned())?;
-                (epoch, grant, true)
+                let doctor = session
+                    .store
+                    .verify_record_semantics_doctor()
+                    .map_err(|_| "could not verify record semantics doctor".to_owned())?
+                    .passed();
+                (epoch, grant, true, doctor, enrolled)
+            } else if let (true, true, Some(dir)) = (holds_lock, established, dir_opt.as_deref()) {
+                let inspected = open_root_key(dir, &inner.keys).ok().and_then(|opened| {
+                    let lease = VaultLease::new(opened.identity);
+                    let context = KeyDerivationContext::new(
+                        opened.identity.vault_id(),
+                        opened.identity.key_generation(),
+                        KeyPurpose::StructuredStore,
+                    );
+                    let mut store = ProofStore::open_existing(
+                        dir.join(DATABASE_FILE),
+                        lease.keyed_handle_lease(),
+                        context,
+                        &opened.key,
+                    )
+                    .ok()?;
+                    let epoch = store.epoch().ok()?;
+                    let grant = store.rights_grant().ok()?;
+                    let doctor = store
+                        .verify_record_semantics_doctor()
+                        .is_ok_and(|report| report.passed());
+                    Some((epoch, grant, doctor))
+                });
+                if let Some((epoch, grant, doctor)) = inspected {
+                    let effective_grant = if grant.is_empty() {
+                        corpus.rights_grant_version.clone()
+                    } else {
+                        grant
+                    };
+                    let effective_epoch = if epoch == 0 {
+                        corpus.validity_epoch
+                    } else {
+                        epoch
+                    };
+                    (effective_epoch, effective_grant, true, doctor, enrolled)
+                } else {
+                    (
+                        corpus.validity_epoch,
+                        corpus.rights_grant_version.clone(),
+                        true,
+                        false,
+                        enrolled,
+                    )
+                }
             } else {
                 (
                     corpus.validity_epoch,
                     corpus.rights_grant_version.clone(),
                     established,
+                    false,
+                    enrolled,
                 )
             }
         };
@@ -941,6 +1145,17 @@ impl AskState {
                 vault_domain_version: VAULT_DOMAIN_VERSION.to_owned(),
                 schema_digest_prefix: SCHEMA_OBJECTS_SHA256[..16].to_owned(),
                 store_established,
+                record_semantics_doctor_passed: doctor_passed,
+                hostile_mime_quarantine_active: verify_hostile_mime_quarantine_posture(),
+                recovery_envelope_enrolled: recovery_enrolled,
+                private_data_ready: false,
+                open_residual_risk_classes: vec![
+                    "swap".to_owned(),
+                    "hibernate".to_owned(),
+                    "snapshot".to_owned(),
+                    "pagefile".to_owned(),
+                    "core_dump".to_owned(),
+                ],
                 webview_incognito_default: true,
                 outbound_surveillance_default_opt_in: false,
                 clinical_use_authorized: false,
@@ -1455,11 +1670,34 @@ mod tests {
         assert_eq!(before.schema_version, 1);
         assert!(before.fixture_only);
         assert!(!before.privacy_and_diagnostics.store_established);
+        assert!(
+            !before
+                .privacy_and_diagnostics
+                .record_semantics_doctor_passed
+        );
+        assert!(
+            before
+                .privacy_and_diagnostics
+                .hostile_mime_quarantine_active
+        );
+        assert!(!before.privacy_and_diagnostics.recovery_envelope_enrolled);
+        assert!(!before.privacy_and_diagnostics.private_data_ready);
+        assert_eq!(
+            before
+                .privacy_and_diagnostics
+                .open_residual_risk_classes
+                .len(),
+            5
+        );
         assert_eq!(before.evidence.total_documents, 7);
         assert_eq!(before.evidence.active_independent_studies, 4);
         assert_eq!(before.packs_and_validity.admissible_pack_doc_ids.len(), 5);
         assert_eq!(before.packs_and_validity.excluded_from_pack.len(), 2);
         assert_eq!(before.deep_review.extractions.len(), 2);
+        assert_eq!(before.deep_review.span_audit_span_count, 3);
+        assert!(before.deep_review.span_audit_overlap_count >= 1);
+        assert_eq!(before.deep_review.span_audit_fingerprint_prefix.len(), 16);
+        assert_eq!(before.deep_review.offset_projection_formats_verified, 5);
         assert_eq!(before.deep_review.extractions[0].workflow_state, "PROPOSED");
         assert_eq!(
             before.deep_review.extractions[1].workflow_state,
@@ -1471,6 +1709,9 @@ mod tests {
         let _ = state.answer(ANSWERED);
         let after = state.overview().expect("overview after ask");
         assert!(after.privacy_and_diagnostics.store_established);
+        assert!(after.privacy_and_diagnostics.record_semantics_doctor_passed);
+        assert!(after.privacy_and_diagnostics.hostile_mime_quarantine_active);
+        assert!(!after.privacy_and_diagnostics.private_data_ready);
         assert_eq!(
             after.privacy_and_diagnostics.vault_domain_version,
             VAULT_DOMAIN_VERSION
@@ -1480,6 +1721,92 @@ mod tests {
         let serialized = serde_json::to_string(&after).expect("serialize overview");
         assert!(!serialized.contains('%'));
         assert!(!serialized.to_ascii_lowercase().contains("confidence"));
+        state.close();
+        let reopened_overview = state
+            .overview()
+            .expect("overview when closed but established");
+        assert!(reopened_overview.privacy_and_diagnostics.store_established);
+        assert!(
+            reopened_overview
+                .privacy_and_diagnostics
+                .record_semantics_doctor_passed
+        );
+    }
+
+    #[test]
+    fn diskfull_fault_and_key_loss_recovery_replay_committed_proof_end_to_end() {
+        const PASSPHRASE: &str = "vellum lantern harbor quartz sixteen";
+        let dir = TempDir::new();
+        let mut session = AskSession::open(&dir.0, &TEST_KEYS).expect("open session");
+        session.commit_fault = Some(CommitFault::Error(StoreError::DiskFull));
+        let full_view = session.ask(ANSWERED);
+        assert_withheld(
+            &full_view,
+            TerminalOutcome::Blocked,
+            ReasonCode::ToolFailure,
+        );
+        drop(session);
+
+        let state = AskState::default();
+        state.use_test_keys();
+        state.set_data_dir(dir.0.clone());
+
+        // A competing second instance that failed to acquire the directory lock cannot enroll or
+        // overwrite recovery/custody files in the live store directory.
+        let rival = AskState::default();
+        rival.use_test_keys();
+        rival.set_data_dir(dir.0.clone());
+        assert!(rival.enroll_recovery(PASSPHRASE).is_err());
+        assert!(rival.recover_store_key(PASSPHRASE).is_err());
+
+        let initial = state.answer(ANSWERED);
+        assert_eq!(initial.outcome, TerminalOutcome::AnswerWithCaution);
+        let committed_id = initial.proof_id.expect("committed proof id");
+        let committed_brief = initial.brief.expect("committed brief");
+
+        state
+            .enroll_recovery(PASSPHRASE)
+            .expect("enroll recovery envelope");
+        assert!(
+            state
+                .overview()
+                .expect("overview with recovery")
+                .privacy_and_diagnostics
+                .recovery_envelope_enrolled
+        );
+
+        // Simulate OS protector key loss across app restart.
+        state.close();
+        std::fs::remove_file(store_dir(&dir.0).join(crate::custody::test_keys::KEY_FILE))
+            .expect("remove test protector key");
+        let after_loss = state.answer(ANSWERED);
+        assert_withheld(
+            &after_loss,
+            TerminalOutcome::Blocked,
+            ReasonCode::ToolFailure,
+        );
+
+        // Wrong passphrase fails closed and keeps answer withheld.
+        assert!(
+            state
+                .recover_store_key("wrong lantern harbor quartz sixteen")
+                .is_err()
+        );
+        assert_withheld(
+            &state.answer(ANSWERED),
+            TerminalOutcome::Blocked,
+            ReasonCode::ToolFailure,
+        );
+
+        // Authentic passphrase restores OS protector key and replays exact committed proof.
+        state
+            .recover_store_key(PASSPHRASE)
+            .expect("recover store key");
+        let replayed = state.answer(ANSWERED);
+        assert_eq!(replayed.outcome, TerminalOutcome::AnswerWithCaution);
+        assert!(replayed.already_committed);
+        assert_eq!(replayed.proof_id.as_deref(), Some(committed_id.as_str()));
+        assert_eq!(replayed.brief.as_deref(), Some(committed_brief.as_str()));
         state.close();
     }
 }

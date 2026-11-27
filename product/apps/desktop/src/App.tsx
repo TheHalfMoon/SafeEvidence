@@ -141,6 +141,18 @@ function DeepReviewSection({ overview, text }: { overview: WorkstationOverview; 
             <code dir="ltr">{deepReview.auditBundleDigestPrefix}</code>)
           </dd>
         </div>
+        <div>
+          <dt>{text.spanAuditLabel}</dt>
+          <dd>
+            <span className="count">{deepReview.spanAuditSpanCount}</span> /{" "}
+            <span className="count">{deepReview.spanAuditOverlapCount}</span> (
+            <code dir="ltr">{deepReview.spanAuditFingerprintPrefix}</code>)
+          </dd>
+        </div>
+        <div>
+          <dt>{text.offsetProjectionLabel}</dt>
+          <dd className="count">{deepReview.offsetProjectionFormatsVerified}</dd>
+        </div>
       </dl>
 
       <h3>{text.extractionsHeading}</h3>
@@ -263,6 +275,22 @@ function PrivacySection({ overview, text }: { overview: WorkstationOverview; tex
           <dd>{yn(p.storeEstablished)}</dd>
         </div>
         <div>
+          <dt>{text.recordDoctorLabel}</dt>
+          <dd>{yn(p.recordSemanticsDoctorPassed)}</dd>
+        </div>
+        <div>
+          <dt>{text.mimeQuarantineLabel}</dt>
+          <dd>{yn(p.hostileMimeQuarantineActive)}</dd>
+        </div>
+        <div>
+          <dt>{text.recoveryEnvelopeLabel}</dt>
+          <dd>{yn(p.recoveryEnvelopeEnrolled)}</dd>
+        </div>
+        <div>
+          <dt>{text.privateDataReadyLabel}</dt>
+          <dd>{yn(p.privateDataReady)}</dd>
+        </div>
+        <div>
           <dt>{text.incognitoDefaultLabel}</dt>
           <dd>{yn(p.webviewIncognitoDefault)}</dd>
         </div>
@@ -275,6 +303,12 @@ function PrivacySection({ overview, text }: { overview: WorkstationOverview; tex
           <dd>{yn(p.clinicalUseAuthorized)}</dd>
         </div>
       </dl>
+      <h3>{text.residualRiskHeading}</h3>
+      <ul>
+        {p.openResidualRiskClasses.map((riskClass) => (
+          <li key={riskClass}><code dir="ltr">{riskClass}</code></li>
+        ))}
+      </ul>
     </section>
   );
 }

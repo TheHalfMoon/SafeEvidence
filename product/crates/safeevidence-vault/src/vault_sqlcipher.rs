@@ -711,6 +711,58 @@ impl SqlCipherDatabaseHandle {
             Err(KeyedIoError::Backend(error)) => Err(error),
         }
     }
+
+    /// Returns the current SQLite database page count behind the lease gate.
+    ///
+    /// # Errors
+    /// Returns the lease or provider failure.
+    pub fn page_count(
+        &mut self,
+    ) -> Result<u32, SqlCipherTransactionError<std::convert::Infallible>> {
+        let result = self.inner.write(|backend| {
+            backend
+                ._connection
+                .query_row("PRAGMA page_count;", [], |row| row.get::<_, u32>(0))
+                .map_err(SqlCipherTransactionError::Provider)
+        });
+        match result {
+            Ok(value) => Ok(value),
+            Err(KeyedIoError::Access(error)) => Err(SqlCipherTransactionError::Access(error)),
+            Err(KeyedIoError::Backend(error)) => Err(error),
+        }
+    }
+
+    /// SQLite's default maximum page ceiling (`0x3fff_ffff` = `1_073_741_823` pages).
+    pub const DEFAULT_MAX_PAGE_COUNT: u32 = 0x3fff_ffff;
+
+    /// Sets SQLite's `PRAGMA max_page_count` ceiling (`0` or [`Self::DEFAULT_MAX_PAGE_COUNT`]
+    /// restores SQLite's default `1_073_741_823`-page ceiling) to exercise deterministic
+    /// `SQLITE_FULL` disk-quota exhaustion at transaction boundaries (`TA-05`).
+    ///
+    /// # Errors
+    /// Returns the lease or provider failure.
+    pub fn set_max_page_count(
+        &mut self,
+        max_pages: u32,
+    ) -> Result<u32, SqlCipherTransactionError<std::convert::Infallible>> {
+        let effective = if max_pages == 0 {
+            Self::DEFAULT_MAX_PAGE_COUNT
+        } else {
+            max_pages
+        };
+        let sql = format!("PRAGMA max_page_count = {effective};");
+        let result = self.inner.write(|backend| {
+            backend
+                ._connection
+                .query_row(&sql, [], |row| row.get::<_, u32>(0))
+                .map_err(SqlCipherTransactionError::Provider)
+        });
+        match result {
+            Ok(value) => Ok(value),
+            Err(KeyedIoError::Access(error)) => Err(SqlCipherTransactionError::Access(error)),
+            Err(KeyedIoError::Backend(error)) => Err(error),
+        }
+    }
 }
 
 impl SqlCipherDatabaseHandle {

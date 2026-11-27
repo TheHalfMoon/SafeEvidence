@@ -17,8 +17,17 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
 - Adapted from pinned donor tests: `tests/record_semantics_019.rs` keeps four of six tests, with imports changed;
   `tests/source_immutability.rs` is rewritten around `SourceRecord`, because the donor used a store helper and an
   always-failing overwrite stub. Exclusions: `docs/plan/PLAN_AMENDMENT_V1_3.md`.
-- `tests/fixtures/t17/` is admission `ADM-0004` (T17): the frozen fixture plus its source note, which is outside
-  the frozen pins, with the donor's LICENSE and NOTICE. T17's span code and Python are not copied.
+- `tests/fixtures/t17/`, `src/span_audit.rs`, `src/offset_projection.rs`, and `tests/t17_span_audit_parity.rs` are
+  admission `ADM-0004` (T17, `maziyarpanahi/openmed` @ `8440bdac59621981372d318f43c8bfb2d6625b86`, Apache-2.0,
+  authorized under Issue #5 D2 for Apache-2.0 span logic and tests only): `tests/fixtures/t17/` carries the frozen
+  fixture plus donor `LICENSE` and `NOTICE` (`modification: "none"`), while `src/span_audit.rs`,
+  `src/offset_projection.rs`, and `tests/t17_span_audit_parity.rs` are pure-Rust ports of
+  `openmed/clinical/evidence_span_audit.py`, `openmed/structured/offset_properties.py`, and
+  `tests/unit/clinical/test_evidence_span_audit.py` with bit-for-bit HMAC-SHA256 parity vectors (`openmed/core/schemas/span.py`
+  remains `not_copied` because `EvidenceSpan` already resides in `src/proof.rs`; the 6 T17 worker/decoding files remain
+  isolated and uncopied in `ADM-0041`).
+- `src/document_intake.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED fail-closed magic-byte and hostile-MIME
+  quarantine contract supporting `ADM-0007` `T12` `hostile_mime_010.rs` and desktop diagnostics).
 - T01's `ClinicalAssertion`, `Proposal.confidence`, and `IdentityAssertion.confidence` are gated against
   `docs/P00_DECISION_ASSURANCE_CONTRACT.md` via `validate_assured_surface()` / `validate_p00_contract()` so no
   unpromoted proposal or heuristic confidence percentage can enter an assured V1 surface.

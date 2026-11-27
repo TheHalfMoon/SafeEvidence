@@ -56,15 +56,17 @@ Admission `ADM-0003` (T03) in `docs/evidence/source_admissions.json`.
     `tests/native_keyring.rs`, as `native_keyring_phase_1_store_and_inspect` and
     `native_keyring_phase_2_restart_unlock_delete_and_lock`, with a new phase 1b between them.
   - `src/lib.rs` dropped the donor's `build_identity_is_deterministic` at admission, with the identity it tested.
-- **TA-05 durability & contention evidence (`safeevidence-proofstore/tests/proof_commit.rs`):** kills just
+- **TA-05 durability, contention, disk-full, key-loss, and B505 restore evidence (`safeevidence-proofstore/tests/proof_commit.rs` and `safeevidence-proofstore/tests/ta05_diskfull_and_recovery.rs`):** kills just
   after each of eight acknowledged commits through `ProofStore::open` and `ProofStore::open_existing`,
   pre-reopen plaintext scans across `vault.db` and `-wal`, cross-process `IMMEDIATE` writer lock contention
   returning `StoreError::Busy` while concurrent WAL reads proceed, `snapshot_quiesced_sqlcipher_database`
-  (`PRAGMA wal_checkpoint(TRUNCATE)`) followed by clean-directory restore + wrong-key rejection, and
-  post-checkpoint hot-WAL kill recovery. Still not covered: a kill before the first acknowledged commit,
-  a kill inside SQLite's C commit syscall, a crash during an active checkpoint, disk-full injection,
-  key-loss recovery, and physical power loss (`CommitUnknown` reconciliation is verified in desktop
-  `ask_command.rs`).
+  (`PRAGMA wal_checkpoint(TRUNCATE)`) followed by clean-directory restore + wrong-key rejection, post-checkpoint
+  hot-WAL kill recovery, deterministic `PRAGMA max_page_count` (`SQLITE_FULL` -> `StoreError::DiskFull`) rollback
+  across all write paths (`put_source`, `commit`, `put_assertion`, `amend_assertion`, `retract_source`),
+  `ProofStore::verify_record_semantics_doctor` (`11` tables, `22` append-only triggers), Argon2id
+  `SAFEVD/RECOVERY/ENVELOPE/v1` key-loss recovery (including live Windows DPAPI recovery in desktop `custody.rs`),
+  and end-to-end B505 portable backup creation + tamper rejection + clean-directory fresh-device restore. Still not
+  covered: physical power loss (`CommitUnknown` reconciliation is verified in desktop `ask_command.rs`).
 
 SafeEvidence change to `src/vault_linux_secret_service.rs`: the founder chose a separate helper process (2026-11-06), so that the core stays socket-free. The record format, binding and policy
 checks stay here, and now compile on every OS. The Secret Service calls moved to `safeevidence-linux-keyring-helper`, reached over stdin and stdout through `safeevidence-keyring-wire`. Its tests

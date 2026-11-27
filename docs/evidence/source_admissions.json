@@ -483,7 +483,7 @@
       "license_spdx": "Apache-2.0",
       "decision_ref": "https://github.com/TheHalfMoon/SafeEvidence/issues/5#issuecomment-6647500204",
       "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE and NOTICE travel with the fixture",
-      "transitive": "none; copied files are test fixtures and notices only; pure-stdlib span/offset modules pinned for Rust port under product/deny.toml",
+      "transitive": "none; copied files are test fixtures and notices plus Rust adaptations of pure-stdlib span/offset/audit modules under product/deny.toml",
       "assets": "synthetic donor fixture text, stated non-PHI by its source",
       "security_test_owner": "founder",
       "files": [
@@ -526,22 +526,22 @@
           "source_path": "openmed/structured/offset_properties.py",
           "git_blob_oid": "405195c704538c4fd3e6f74552f55b94e9bc2003",
           "bytes": 22396,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/offset_projection.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "openmed/clinical/evidence_span_audit.py",
           "git_blob_oid": "79a13c445b429ecfda63a21802c91b0d8b8739cd",
           "bytes": 13626,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/span_audit.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "tests/unit/clinical/test_evidence_span_audit.py",
           "git_blob_oid": "b6088d5490c6cd28808d9c82988d95a033be7507",
           "bytes": 5721,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/t17_span_audit_parity.rs",
+          "modification": "adapted"
         }
       ]
     },
@@ -913,22 +913,22 @@
           "source_path": "crates/medscale-core/tests/privacy_probes_032.rs",
           "git_blob_oid": "6615336a642e84efe956118f89d8db6b2a5a9595",
           "bytes": 2470,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/tests/privacy/tests/privacy_probes_032.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-core/tests/vault_privacy_023.rs",
           "git_blob_oid": "4e89724eb33f9a9b01bfed1ac098fc81af8a1eeb",
           "bytes": 1556,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/tests/privacy/tests/vault_privacy_023.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-core/tests/hostile_mime_010.rs",
           "git_blob_oid": "d35cce1777aa95b51fd9a6466678f0eb4e48035b",
           "bytes": 1154,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/tests/privacy/tests/hostile_mime_010.rs",
+          "modification": "adapted"
         }
       ]
     },
