@@ -26,7 +26,7 @@
    - Donor: `AbdulazizShehri/safeOCR` @ `d2e2ea815b17a7a3f0e59ce43dbdd160966e73a4` (`Apache-2.0`; verbatim `LICENSE` and `NOTICE` preserved in `tests/fixtures/t16/`).
    - Targets: workspace crate `product/crates/safeevidence-docs` (`safeocr_contracts.rs`, `safeocr_verify.rs`, `safeocr_report.rs`, `native_pdf.rs`, `tests/t16_safeocr_verification.rs`, `tests/ta15_native_pdf_and_ocr.rs`, `PROVENANCE.md`) + 9th `SafeEvidenceBench` split `ta15-native-pdf-and-safeocr`.
 6. **Lockfile Closures (`ADM-0010` & `ADM-0011`):**
-   - `ADM-0010` (`product/Cargo.lock`): `179` packages (`175 -> 179` internal workspace crates; zero new external crates.io packages added except permissive `num-bigint 0.4.6` / `num-integer 0.1.46` / `num-traits 0.2.19` / `semver 1.0.27` already audited under `product/deny.toml`).
+   - `ADM-0010` (`product/Cargo.lock`): `179` packages (`175 -> 179` internal workspace crates + permissive `num-bigint 0.4.8` / `num-traits 0.2.19` audited under `product/deny.toml`, alongside existing `semver 1.0.28`).
    - `ADM-0011` (`product/apps/desktop/src-tauri/Cargo.lock`): `462` packages (`460 -> 462` internal workspace crates `safeevidence-docs` and `safeevidence-fhir`; zero new external crates).
 
 ---
