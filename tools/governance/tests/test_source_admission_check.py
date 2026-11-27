@@ -353,7 +353,7 @@ class AdmissionTests(unittest.TestCase):
             )
         )["packets"]
         unadmitted = [r for r in manifest["admissions"] if r["state"] != "VERIFIED_ALLOWED"]
-        self.assertEqual(len(unadmitted), 29)
+        self.assertEqual(len(unadmitted), 24)
         withheld_private_repos = {
             "thehalfmoon/dal",
             "thehalfmoon/kernux",

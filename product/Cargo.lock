@@ -866,6 +866,7 @@ dependencies = [
  "rusqlite",
  "safeevidence-assurance",
  "safeevidence-contracts",
+ "safeevidence-docs",
  "serde",
  "serde_json",
 ]
@@ -883,6 +884,31 @@ dependencies = [
 name = "safeevidence-contracts"
 version = "0.0.0"
 dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "safeevidence-docs"
+version = "0.0.0"
+dependencies = [
+ "hex",
+ "safeevidence-contracts",
+ "safeevidence-fhir",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "safeevidence-fhir"
+version = "0.0.0"
+dependencies = [
+ "safeevidence-contracts",
  "serde",
  "serde_json",
  "sha2",
@@ -904,6 +930,33 @@ dependencies = [
  "safeevidence-vault",
  "secret-service",
  "zeroize",
+]
+
+[[package]]
+name = "safeevidence-network"
+version = "0.0.0"
+dependencies = [
+ "safeevidence-contracts",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "safeevidence-pack"
+version = "0.0.0"
+dependencies = [
+ "hex",
+ "num-bigint",
+ "num-traits",
+ "safeevidence-contracts",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

@@ -1,0 +1,11 @@
+SafeOCR
+Copyright 2026 Abdulaziz Alshehri
+
+This product is licensed under the Apache License, Version 2.0.
+
+SafeOCR depends on and interoperates with third-party software, standards,
+terminology, models, and evaluation data that retain their own licenses and
+terms. See docs/THIRD_PARTY_NOTICES.md and docs/SOURCE_REGISTRY.md for the
+v0.1 attribution and license registry.
+
+No third-party license is replaced or relicensed by this NOTICE.

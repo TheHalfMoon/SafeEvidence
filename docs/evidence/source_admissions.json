@@ -1103,11 +1103,11 @@
       "packet": "T05",
       "repo": "AbdulazizShehri/MedScale",
       "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
-      "state": "CANDIDATE",
-      "copy_authorized": false,
-      "basis": "FOUNDER_OWNED",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "PUBLIC_LICENSE",
       "license_spdx": "Apache-2.0",
-      "decision_ref": null,
+      "decision_ref": "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
       "notices": "THIRD_PARTY_NOTICES.md",
       "transitive": "Cargo.lock closure review owed at admission (safeevidence-network is the sole crate permitted HTTP transport under TA-29)",
       "assets": "none; fixture transport only in NETWORK_LOCKED mode",
@@ -1117,57 +1117,57 @@
           "source_path": "crates/medscale-contracts/src/network/mod.rs",
           "git_blob_oid": "a5015d6799c42939c9a5311949071933da24ef82",
           "bytes": 3019,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/network/mod.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-core/tests/network_broker_013.rs",
           "git_blob_oid": "d1ac44b89284069f79c51892af23518ebc91fe61",
           "bytes": 10358,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-network/tests/network_broker_013.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-network/Cargo.toml",
           "git_blob_oid": "c5c136583ac5d6e696cbdf32e847b3cbf16d097f",
           "bytes": 492,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-network/Cargo.toml",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-network/src/adapters.rs",
           "git_blob_oid": "923fcec941259190da824ee944dcc0165313eea7",
           "bytes": 2754,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-network/src/adapters.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-network/src/allowlist.rs",
           "git_blob_oid": "ae645dd41e5e1f5a051e87ea8e11089775c3bc17",
           "bytes": 3099,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-network/src/allowlist.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-network/src/browse.rs",
           "git_blob_oid": "edca0c203d3e0cff23d9b51b7c592841ee717317",
           "bytes": 26825,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-network/src/browse.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-network/src/lib.rs",
           "git_blob_oid": "f066c1accb98acf553235b0cfe46a2df52ef0053",
           "bytes": 3446,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-network/src/lib.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-network/src/transport.rs",
           "git_blob_oid": "33eb2482ced7d0c9df674d05319ecb7ea2a525c7",
           "bytes": 2291,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-network/src/transport.rs",
+          "modification": "adapted"
         }
       ]
     },
@@ -1176,11 +1176,11 @@
       "packet": "T07",
       "repo": "AbdulazizShehri/MedScale",
       "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
-      "state": "CANDIDATE",
-      "copy_authorized": false,
-      "basis": "FOUNDER_OWNED",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "PUBLIC_LICENSE",
       "license_spdx": "Apache-2.0",
-      "decision_ref": null,
+      "decision_ref": "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
       "notices": "THIRD_PARTY_NOTICES.md",
       "transitive": "Cargo.lock closure review owed at admission; pack_runtime.rs excluded per F8 (no candle/tract runtimes); pairs with T25 tough under EXT-05",
       "assets": "none; item-level corpus/model pack rights checked independently",
@@ -1190,29 +1190,29 @@
           "source_path": "crates/medscale-contracts/src/packs/mod.rs",
           "git_blob_oid": "cc449dd22465adaf7cbe56e361c4442c6c0c31f3",
           "bytes": 8550,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/packs/mod.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-core/tests/pack_signer_026.rs",
           "git_blob_oid": "a2d539616ca356ff6fcf273ec1142b02a623426b",
           "bytes": 4332,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-pack/tests/pack_signer_026.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-core/tests/packs_008.rs",
           "git_blob_oid": "139a769d8bfa646968161daa83f144df370bf3cc",
           "bytes": 4472,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-pack/tests/packs_008.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-pack/src/format.rs",
           "git_blob_oid": "09353f8a7c2ffe4ba01440773c375978e5e81365",
           "bytes": 10347,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-pack/src/format.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-pack/src/runtime.rs",
@@ -1225,8 +1225,8 @@
           "source_path": "crates/medscale-pack/src/store.rs",
           "git_blob_oid": "bbccb97a888b9932f0f2d2f80971b06013f833c6",
           "bytes": 4280,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-pack/src/store.rs",
+          "modification": "adapted"
         }
       ]
     },
@@ -1235,11 +1235,11 @@
       "packet": "T09",
       "repo": "AbdulazizShehri/MedScale",
       "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
-      "state": "CANDIDATE",
-      "copy_authorized": false,
-      "basis": "FOUNDER_OWNED",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "PUBLIC_LICENSE",
       "license_spdx": "Apache-2.0",
-      "decision_ref": null,
+      "decision_ref": "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
       "notices": "THIRD_PARTY_NOTICES.md",
       "transitive": "Cargo.lock closure review owed at admission; WP-21 patient-context activation additionally gated on EXT-03 (Issue #4)",
       "assets": "none; synthetic FHIR R4 test fixtures only",
@@ -1249,50 +1249,50 @@
           "source_path": "crates/medscale-contracts/src/fhir/mod.rs",
           "git_blob_oid": "7ccc5081ba271c68b8b742650bb6395aeb07e6d0",
           "bytes": 13216,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/fhir/mod.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-core/tests/fhir_interchange_020.rs",
           "git_blob_oid": "37569d0377bc31ad19821662da713d57e00a1072",
           "bytes": 5612,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-fhir/tests/fhir_interchange_020.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-fhir/Cargo.toml",
           "git_blob_oid": "6beaaf4c2ea0a7e55569d44bdc7eda8aceb4357a",
           "bytes": 425,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-fhir/Cargo.toml",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-fhir/src/extractors/mod.rs",
           "git_blob_oid": "33a737802f6adb5500ffce7e70cca42ac18fa6d0",
           "bytes": 15240,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-fhir/src/extractors/mod.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-fhir/src/lexical.rs",
           "git_blob_oid": "b206033284060ccff9b10e3ff7fc0c71fa0a6fa1",
           "bytes": 12272,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-fhir/src/lexical.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-fhir/src/lib.rs",
           "git_blob_oid": "290582956c23d80ee5812df67f3459791a413743",
           "bytes": 697,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-fhir/src/lib.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-fhir/src/units/mod.rs",
           "git_blob_oid": "90389ec2849fcdd17ecb7332fed5ae53d417ebb1",
           "bytes": 3956,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-fhir/src/units/mod.rs",
+          "modification": "adapted"
         }
       ]
     },
@@ -1301,11 +1301,11 @@
       "packet": "T10",
       "repo": "AbdulazizShehri/MedScale",
       "source_commit": "5c33d77c0a82748c1fab85a9f2fd7b515145fea2",
-      "state": "CANDIDATE",
-      "copy_authorized": false,
-      "basis": "FOUNDER_OWNED",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "PUBLIC_LICENSE",
       "license_spdx": "Apache-2.0",
-      "decision_ref": null,
+      "decision_ref": "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
       "notices": "THIRD_PARTY_NOTICES.md",
       "transitive": "OS sandbox APIs (Windows AppContainer/Job, Linux Landlock/seccomp/rlimit, macOS Seatbelt); production launcher spike owed in WP-23a",
       "assets": "none",
@@ -1315,127 +1315,127 @@
           "source_path": "crates/medscale-contracts/src/bin/os_sandbox_probe.rs",
           "git_blob_oid": "fa061d5c59701be9378e96b21fd72fa3bcb48e83",
           "bytes": 10849,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/bin/os_sandbox_probe.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/src/os_sandbox/linux_rlimit.rs",
           "git_blob_oid": "af9b39199acc7407c0b438b832a80ef1e8bc3db6",
           "bytes": 2351,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/os_sandbox/linux_rlimit.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/src/os_sandbox/linux_seccomp.rs",
           "git_blob_oid": "e35937543eed44152b39e6f9b28b2b3f1a0ca315",
           "bytes": 10294,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/os_sandbox/linux_seccomp.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/src/os_sandbox/macos_app_sandbox.rs",
           "git_blob_oid": "ba34f907e81b4fc7bb18b5ddc9ca801b55af1e77",
           "bytes": 3318,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/os_sandbox/macos_app_sandbox.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/src/os_sandbox/macos_seatbelt.rs",
           "git_blob_oid": "efd0e98a0bf38009f98aa8dceb6e7426c6191ea4",
           "bytes": 2905,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/os_sandbox/macos_seatbelt.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/src/os_sandbox/mod.rs",
           "git_blob_oid": "df31186c81d523c0ef1c93ec56d13193d87a35aa",
           "bytes": 38805,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/os_sandbox/mod.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/src/os_sandbox/windows_appcontainer.rs",
           "git_blob_oid": "253e02535527588b24e47d8f330bee05a78a1aa3",
           "bytes": 22086,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/os_sandbox/windows_appcontainer.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/src/os_sandbox/windows_job.rs",
           "git_blob_oid": "08d496ba646bfbc797ee42dd7d5f75db1ca91d23",
           "bytes": 3255,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/os_sandbox/windows_job.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/src/worker_policy/mod.rs",
           "git_blob_oid": "8bbcdb436e824343e333b02fc47024a05e0e8742",
           "bytes": 2042,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/src/worker_policy/mod.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/tests/os_sandbox_030.rs",
           "git_blob_oid": "740296b93ae23aa493cf3217a6473a6330f50d6c",
           "bytes": 2571,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/os_sandbox_030.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/tests/os_sandbox_031.rs",
           "git_blob_oid": "f050a030c03e8a5a2c0af6a4a911793c26df5c10",
           "bytes": 2326,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/os_sandbox_031.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/tests/os_sandbox_033.rs",
           "git_blob_oid": "0b33e34e066dce6acd8214176f2bed78f32040b3",
           "bytes": 2121,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/os_sandbox_033.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/tests/os_sandbox_038.rs",
           "git_blob_oid": "2235e3ed1c6193f281322e952fb32e979ca11fcd",
           "bytes": 2277,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/os_sandbox_038.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/tests/os_sandbox_040.rs",
           "git_blob_oid": "4b8174bb509322d92a3ae21e52e1858c0ed52135",
           "bytes": 2510,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/os_sandbox_040.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/tests/os_sandbox_041.rs",
           "git_blob_oid": "5c49d191a29186a7477d18409a7a3aab21b01adf",
           "bytes": 1846,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/os_sandbox_041.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/tests/os_sandbox_052.rs",
           "git_blob_oid": "8285486b5386f12f90f68d7ab0460dc35e06af67",
           "bytes": 4022,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/os_sandbox_052.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-contracts/tests/os_sandbox_053.rs",
           "git_blob_oid": "e14a7ef2043462512bed170ad94ac26b95efefa5",
           "bytes": 2354,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/os_sandbox_053.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "crates/medscale-core/tests/worker_policy_deny_default.rs",
           "git_blob_oid": "6c212471a5a2a4de24e3020aceed95cf56b45123",
           "bytes": 538,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-contracts/tests/worker_policy_deny_default.rs",
+          "modification": "adapted"
         }
       ]
     },
@@ -1727,11 +1727,11 @@
       "packet": "T16",
       "repo": "AbdulazizShehri/safeOCR",
       "source_commit": "d2e2ea815b17a7a3f0e59ce43dbdd160966e73a4",
-      "state": "CANDIDATE",
-      "copy_authorized": false,
-      "basis": "FOUNDER_OWNED",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "PUBLIC_LICENSE",
       "license_spdx": "Apache-2.0",
-      "decision_ref": null,
+      "decision_ref": "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
       "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE and NOTICE pinned",
       "transitive": "Python standard library verification slice (ocr.py and test_ocr_adapters.py excluded per F11; no subprocess Tesseract)",
       "assets": "synthetic labgold fixtures only",
@@ -1741,22 +1741,22 @@
           "source_path": "LICENSE",
           "git_blob_oid": "ce1cf4c68cdbdf95cc0b18da50ad34b8adbd91e7",
           "bytes": 10385,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-docs/tests/fixtures/t16/LICENSE",
+          "modification": "none"
         },
         {
           "source_path": "NOTICE",
           "git_blob_oid": "9d21137ce751dc73e18b89aa2546ba1c0c1a4540",
           "bytes": 439,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-docs/tests/fixtures/t16/NOTICE",
+          "modification": "none"
         },
         {
           "source_path": "src/safeocr/contracts.py",
           "git_blob_oid": "3c3271fbfad5a226424a8c6ea3e1f82a16e68174",
           "bytes": 10103,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-docs/src/safeocr_contracts.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "src/safeocr/labgold.py",
@@ -1769,22 +1769,22 @@
           "source_path": "src/safeocr/report.py",
           "git_blob_oid": "51970da5bb4a8f6860f9dc16ad3296539782b0ec",
           "bytes": 10331,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-docs/src/safeocr_report.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "src/safeocr/verification.py",
           "git_blob_oid": "b7b28c04af8bd434f6aef7178a1a68a2f0625f05",
           "bytes": 23519,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-docs/src/safeocr_verify.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "tests/test_foundation_contracts.py",
           "git_blob_oid": "74982a807dff081af1ed2ceb8716bfcac1ded3b0",
           "bytes": 6891,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-docs/tests/t16_foundation_contracts.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "tests/test_labgold.py",
@@ -1797,8 +1797,8 @@
           "source_path": "tests/test_verification.py",
           "git_blob_oid": "5392ec6781d2038bd89eb1012d49346c5340de89",
           "bytes": 20755,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-docs/tests/t16_safeocr_verification.rs",
+          "modification": "adapted"
         }
       ]
     },
@@ -2943,9 +2943,9 @@
       "packet": "CRATE-product-cargo",
       "ecosystem": "cargo",
       "lockfile": "product/Cargo.lock",
-      "lockfile_lf_sha256": "fa504397b2620b6e1131000c441d8bf4ee762477000241c50197d45488fd0e4c",
-      "lockfile_lf_bytes": 40856,
-      "package_count": 175,
+      "lockfile_lf_sha256": "9999752eacee0938e8995683a0842f8e74b7bd428415e2c53af86f0a5595a7df",
+      "lockfile_lf_bytes": 41590,
+      "package_count": 179,
       "state": "VERIFIED_ALLOWED",
       "copy_authorized": true,
       "basis": "PUBLIC_LICENSE",
@@ -2970,9 +2970,9 @@
       "packet": "CRATE-desktop-cargo",
       "ecosystem": "cargo",
       "lockfile": "product/apps/desktop/src-tauri/Cargo.lock",
-      "lockfile_lf_sha256": "2ff4842260882dca7edb0172d47afebfcf3feb4814856cbeb8f66bb3508bd699",
-      "lockfile_lf_bytes": 116409,
-      "package_count": 460,
+      "lockfile_lf_sha256": "629d5224223e0025bcb2318267b0420ffca840d79d49a1e192c11c2ec6184a55",
+      "lockfile_lf_bytes": 116802,
+      "package_count": 462,
       "state": "VERIFIED_ALLOWED",
       "copy_authorized": true,
       "basis": "PUBLIC_LICENSE",

@@ -8,7 +8,7 @@ Status: `AUTOMATED_SCIENTIFIC_EVALUATION_ACTIVE` (`plan-v1.7` / `ADR-0001` / `AD
 
 Under `ADR-0001`, private `DAL` (`T14`) is permanently removed from SafeEvidence and replaced by clean-room Rust proper-scoring, reliability-diagram (`ECE`/`MCE`), tie-exact `AURC`/`E-AURC`, Wilson/cluster-bootstrap CI, and `P00` selective-assurance rate evaluation (`ta13-assurance-calibration`).
 
-## 2. Registered Synthetic Splits (8 Splits)
+## 2. Registered Synthetic Splits (9 Splits)
 
 | Split ID | Acceptance Row | Language | Description |
 |---|---|---|---|
@@ -20,6 +20,7 @@ Under `ADR-0001`, private `DAL` (`T14`) is permanently removed from SafeEvidence
 | `ta17-extraction-and-assurance` | `TA-17` | `en` | Quote-anchored structured extraction (`PROPOSED` default) and zero unsafe-commit check across canonical refusal prompts |
 | `ta27-prompt-injection` | `TA-27` | `en+ar` | Retrieved-abstract prompt injection, FTS5 operator/DDL syntax, Unicode homoglyph/BiDi rejection, and `EffectMeasureSwap` gate |
 | `ta13-assurance-calibration` | `TA-13` | `en+ar` | Clean-room Brier, clamped NLL, `ECE`/`MCE`, tie-exact `AURC`/`oracle_aurc`/`E-AURC`, and `P00` selective-assurance rates (`ADR-0001`) |
+| `ta15-native-pdf-and-safeocr` | `TA-15` | `en+ar` | Bilingual native `FlateDecode` PDF text/span extraction, hostile-PDF quarantine, scanned-page abstain, and `T16` SafeOCR critical-number/decimal/unit/negation verification |
 
 ## 3. Fenced External Splits (`BLOCKED_EXTERNAL`)
 

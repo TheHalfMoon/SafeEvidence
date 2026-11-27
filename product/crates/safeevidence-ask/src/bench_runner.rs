@@ -1300,9 +1300,12 @@ fn eval_assurance_calibration_split() -> Result<SplitEvaluation, String> {
         let pt = r
             .point_estimate
             .ok_or_else(|| format!("ta13 {label} had zero denominator"))?;
-        match r.bootstrap_ci95.or(r.wilson_ci95) {
-            Some((lo, hi)) => Ok(metric_with_ci(pt, lo, hi)),
-            None => Ok(metric_point(pt)),
+        match (r.bootstrap_ci95, r.wilson_ci95) {
+            (Some((b_lo, b_hi)), Some((w_lo, w_hi))) => {
+                Ok(metric_with_ci(pt, b_lo.min(w_lo), b_hi.max(w_hi)))
+            }
+            (Some((lo, hi)), None) | (None, Some((lo, hi))) => Ok(metric_with_ci(pt, lo, hi)),
+            (None, None) => Ok(metric_point(pt)),
         }
     };
 
@@ -1329,29 +1332,39 @@ fn eval_assurance_calibration_split() -> Result<SplitEvaluation, String> {
     );
     metrics.insert("e_aurc".to_owned(), metric_point(report.selective.e_aurc));
     metrics.insert("selective_risk".to_owned(), metric_point(sel_risk));
-    metrics.insert(
-        "unsafe_commit_rate_on_non_commit".to_owned(),
-        rate_interval(
+    for (name, r, short) in [
+        (
+            "unsafe_commit_rate_on_non_commit",
             &report.unsafe_commit_rate_on_non_commit_cases,
             "unsafe_commit_on_non_commit",
-        )?,
-    );
-    metrics.insert(
-        "overall_unsafe_commit_rate".to_owned(),
-        rate_interval(&report.overall_unsafe_commit_rate, "overall_unsafe_commit")?,
-    );
-    metrics.insert(
-        "useful_coverage".to_owned(),
-        rate_interval(&report.useful_coverage, "useful_coverage")?,
-    );
-    metrics.insert(
-        "over_abstention_rate".to_owned(),
-        rate_interval(&report.over_abstention_rate, "over_abstention")?,
-    );
-    metrics.insert(
-        "false_escalation_rate".to_owned(),
-        rate_interval(&report.false_escalation_rate, "false_escalation")?,
-    );
+        ),
+        (
+            "overall_unsafe_commit_rate",
+            &report.overall_unsafe_commit_rate,
+            "overall_unsafe_commit",
+        ),
+        (
+            "useful_coverage",
+            &report.useful_coverage,
+            "useful_coverage",
+        ),
+        (
+            "over_abstention_rate",
+            &report.over_abstention_rate,
+            "over_abstention",
+        ),
+        (
+            "false_escalation_rate",
+            &report.false_escalation_rate,
+            "false_escalation",
+        ),
+    ] {
+        metrics.insert(name.to_owned(), rate_interval(r, short)?);
+        metrics.insert(
+            format!("{name}_denominator"),
+            metric_point(r.denominator as f64),
+        );
+    }
 
     let mut basis = VS1A_CORPUS_BYTES.to_vec();
     for c in &cases {
@@ -1375,6 +1388,279 @@ fn eval_assurance_calibration_split() -> Result<SplitEvaluation, String> {
         language_slice: "en+ar".to_owned(),
         item_count: cases.len(),
         input_sha256: DigestSha256::of(&basis),
+        metrics,
+        gate_passed,
+    })
+}
+
+fn eval_native_pdf_and_safeocr_split() -> Result<SplitEvaluation, String> {
+    use safeevidence_docs::native_pdf::{
+        extract_native_pdf, extract_native_pdf_strict, zlib_compress_stored,
+    };
+    use safeevidence_docs::safeocr_contracts::{
+        BoundingBox, CandidateSpan, Criticality, DecisionState, LabFieldCandidate, PageAsset,
+        export_allowed,
+    };
+    use safeevidence_docs::safeocr_verify::{
+        APPROVED_PERTURBATIONS, IndependentCropRead, PerturbationRead, verify_critical_field,
+    };
+
+    let s1 = b"BT /F1 12 Tf 72 720 Td [(Veltrixamine) -220 (improved) -200 (glimmer) -200 (score) -200 (by) -200 (9) -200 (points.)] TJ ET";
+    let s1_z = zlib_compress_stored(s1);
+    let ar_txt = "\u{062d}\u{0633}\u{0646} \u{0641}\u{0644}\u{062a}\u{0631}\u{064a}\u{0643}\u{0633}\u{0627}\u{0645}\u{064a}\u{0646} \u{0627}\u{0644}\u{0646}\u{062a}\u{064a}\u{062c}\u{0629}";
+    let mut hex_ar = String::from("FEFF");
+    for u in ar_txt.encode_utf16() {
+        hex_ar.push_str(&format!("{u:04X}"));
+    }
+    let s2 = format!("BT /F1 12 Tf 72 700 Td <{hex_ar}> Tj ET").into_bytes();
+
+    let mut clean_pdf = Vec::new();
+    clean_pdf.extend_from_slice(b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+    clean_pdf
+        .extend_from_slice(b"2 0 obj\n<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>\nendobj\n");
+    clean_pdf
+        .extend_from_slice(b"3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>\nendobj\n");
+    clean_pdf.extend_from_slice(
+        format!(
+            "4 0 obj\n<< /Length {} /Filter /FlateDecode >>\nstream\n",
+            s1_z.len()
+        )
+        .as_bytes(),
+    );
+    clean_pdf.extend_from_slice(&s1_z);
+    clean_pdf.extend_from_slice(b"\nendstream\nendobj\n");
+    clean_pdf
+        .extend_from_slice(b"5 0 obj\n<< /Type /Page /Parent 2 0 R /Contents [6 0 R] >>\nendobj\n");
+    clean_pdf
+        .extend_from_slice(format!("6 0 obj\n<< /Length {} >>\nstream\n", s2.len()).as_bytes());
+    clean_pdf.extend_from_slice(&s2);
+    clean_pdf.extend_from_slice(b"\nendstream\nendobj\n%%EOF\n");
+
+    let doc = extract_native_pdf_strict("bench_bilingual.pdf", &clean_pdf)
+        .map_err(|e| format!("ta15 pdf: {e}"))?;
+    let mut exact_spans = 0_usize;
+    for p in &doc.pages {
+        if extract_raw_scalar_span(&doc.full_text, p.start_scalar as u64, p.end_scalar as u64).ok()
+            == Some(p.text.as_str())
+        {
+            exact_spans += 1;
+        }
+    }
+    let span_rate = exact_spans as f64 / doc.pages.len() as f64;
+
+    let hostile_pdfs: &[&[u8]] = &[
+        b"%PDF-1.7\n1 0 obj\n<< /OpenAction << /S /JavaScript /JS(1) >> >>\nendobj\n%%EOF\n",
+        b"%PDF-1.7\n1 0 obj\n<< /Type /Page /JS%c\n(1) >>\nendobj\n%%EOF\n",
+        b"%PDF-1.7\n1 0 obj\n<< /Type /Page /Launch (cmd.exe) >>\nendobj\n%%EOF\n",
+    ];
+    let quarantined = hostile_pdfs
+        .iter()
+        .filter(|b| extract_native_pdf("hostile.pdf", b).is_err())
+        .count();
+    let quarantine_rate = quarantined as f64 / hostile_pdfs.len() as f64;
+
+    let scanned = b"%PDF-1.7\n1 0 obj\n<< /Type /Page /Contents 2 0 R >>\nendobj\n2 0 obj\n<< /Length 0 >>\nstream\n\nendstream\nendobj\n%%EOF\n";
+    let scan_abstained = usize::from(extract_native_pdf_strict("scan.pdf", scanned).is_err());
+
+    let page = PageAsset::new(&"c".repeat(64), 0, 1000, 1400, &"d".repeat(64))
+        .map_err(|e| format!("{e}"))?;
+    let bbox = BoundingBox::new(50, 80, 220, 120).map_err(|e| format!("{e}"))?;
+    let perts = |val: &str| -> Vec<PerturbationRead> {
+        APPROVED_PERTURBATIONS
+            .iter()
+            .enumerate()
+            .map(|(idx, &n)| PerturbationRead {
+                name: n.to_owned(),
+                image_sha256: format!("{idx:064x}"),
+                text: Some(val.to_owned()),
+                runtime_healthy: true,
+            })
+            .collect()
+    };
+
+    // 4 adversarial SafeOCR cases (decimal shift, sign flip, unrecognized unit, low-score scan) + 1 valid case:
+    let valid_span = CandidateSpan::new(
+        page.clone(),
+        bbox,
+        "4.20",
+        "paddleocr-onnx",
+        "2.8.0",
+        Some(0.97),
+    )
+    .map_err(|e| format!("{e}"))?;
+    let valid_rec = verify_critical_field(
+        LabFieldCandidate::new(
+            "Potassium",
+            "4.20",
+            Some("mmol/L".to_owned()),
+            Criticality::Critical,
+            vec![valid_span.clone()],
+        )
+        .map_err(|e| format!("{e}"))?,
+        Some(&IndependentCropRead {
+            engine_name: "native-pdf-cross".to_owned(),
+            text: Some("4.2".to_owned()),
+            runtime_healthy: true,
+        }),
+        &perts("4.20"),
+        true,
+        true,
+    )
+    .map_err(|e| format!("{e}"))?;
+
+    let mut false_auto = 0_usize;
+    // 1. Decimal shift 4.20 vs 42
+    let r_dec = verify_critical_field(
+        LabFieldCandidate::new(
+            "Potassium",
+            "4.20",
+            Some("mmol/L".to_owned()),
+            Criticality::Critical,
+            vec![valid_span.clone()],
+        )
+        .map_err(|e| format!("{e}"))?,
+        Some(&IndependentCropRead {
+            engine_name: "native-pdf-cross".to_owned(),
+            text: Some("42".to_owned()),
+            runtime_healthy: true,
+        }),
+        &perts("4.20"),
+        true,
+        true,
+    )
+    .map_err(|e| format!("{e}"))?;
+    if export_allowed(&r_dec) {
+        false_auto += 1;
+    }
+    // 2. Comparator flip `< 0.05` vs `> 0.05`
+    let cmp_span = CandidateSpan::new(
+        page.clone(),
+        bbox,
+        "< 0.05",
+        "paddleocr-onnx",
+        "2.8.0",
+        Some(0.95),
+    )
+    .map_err(|e| format!("{e}"))?;
+    let r_cmp = verify_critical_field(
+        LabFieldCandidate::new(
+            "Troponin",
+            "< 0.05",
+            Some("g/dL".to_owned()),
+            Criticality::Critical,
+            vec![cmp_span],
+        )
+        .map_err(|e| format!("{e}"))?,
+        Some(&IndependentCropRead {
+            engine_name: "native-pdf-cross".to_owned(),
+            text: Some("> 0.05".to_owned()),
+            runtime_healthy: true,
+        }),
+        &perts("< 0.05"),
+        true,
+        true,
+    )
+    .map_err(|e| format!("{e}"))?;
+    if export_allowed(&r_cmp) {
+        false_auto += 1;
+    }
+    // 3. Negation flip `NOT DETECTED` vs `DETECTED`
+    let neg_span = CandidateSpan::new(
+        page.clone(),
+        bbox,
+        "NOT DETECTED",
+        "paddleocr-onnx",
+        "2.8.0",
+        Some(0.95),
+    )
+    .map_err(|e| format!("{e}"))?;
+    let mut neg_perts = perts("NOT DETECTED");
+    neg_perts[0].text = Some("DETECTED".to_owned());
+    let r_neg = verify_critical_field(
+        LabFieldCandidate::new(
+            "Assay",
+            "NOT DETECTED",
+            None,
+            Criticality::Critical,
+            vec![neg_span],
+        )
+        .map_err(|e| format!("{e}"))?,
+        Some(&IndependentCropRead {
+            engine_name: "native-pdf-cross".to_owned(),
+            text: Some("NOT DETECTED".to_owned()),
+            runtime_healthy: true,
+        }),
+        &neg_perts,
+        true,
+        true,
+    )
+    .map_err(|e| format!("{e}"))?;
+    if export_allowed(&r_neg) {
+        false_auto += 1;
+    }
+    // 4. Low OCR engine score (0.45) -> Abstained
+    let degraded_span =
+        CandidateSpan::new(page, bbox, "4.20", "paddleocr-onnx", "2.8.0", Some(0.45))
+            .map_err(|e| format!("{e}"))?;
+    let r_deg = verify_critical_field(
+        LabFieldCandidate::new(
+            "Potassium",
+            "4.20",
+            Some("mmol/L".to_owned()),
+            Criticality::Critical,
+            vec![degraded_span],
+        )
+        .map_err(|e| format!("{e}"))?,
+        Some(&IndependentCropRead {
+            engine_name: "native-pdf-cross".to_owned(),
+            text: Some("4.20".to_owned()),
+            runtime_healthy: true,
+        }),
+        &perts("4.20"),
+        true,
+        true,
+    )
+    .map_err(|e| format!("{e}"))?;
+    if export_allowed(&r_deg) {
+        false_auto += 1;
+    }
+
+    let false_auto_rate = false_auto as f64 / 4.0;
+    let degraded_abstain_rate =
+        (scan_abstained + usize::from(r_deg.decision.state == DecisionState::Abstained)) as f64
+            / 2.0;
+
+    let mut metrics = BTreeMap::new();
+    metrics.insert(
+        "native_pdf_span_exact_rate".to_owned(),
+        metric_point(span_rate),
+    );
+    metrics.insert(
+        "hostile_pdf_quarantine_rate".to_owned(),
+        metric_point(quarantine_rate),
+    );
+    metrics.insert(
+        "critical_number_false_auto_rate".to_owned(),
+        metric_point(false_auto_rate),
+    );
+    metrics.insert(
+        "degraded_scan_abstain_rate".to_owned(),
+        metric_point(degraded_abstain_rate),
+    );
+
+    let gate_passed = exact_spans == doc.pages.len()
+        && quarantined == hostile_pdfs.len()
+        && export_allowed(&valid_rec)
+        && false_auto == 0
+        && degraded_abstain_rate >= 1.0 - 1e-12;
+
+    Ok(SplitEvaluation {
+        split_id: "ta15-native-pdf-and-safeocr".to_owned(),
+        acceptance_row: "TA-15".to_owned(),
+        split_role: "native_pdf_extraction_and_safeocr_verification_synthetic".to_owned(),
+        language_slice: "en+ar".to_owned(),
+        item_count: doc.pages.len() + hostile_pdfs.len() + 6,
+        input_sha256: DigestSha256::of(&clean_pdf),
         metrics,
         gate_passed,
     })
@@ -1462,6 +1748,7 @@ pub fn run_safeevidence_bench() -> Result<BenchPacket, String> {
         eval_extraction_and_assurance_split()?,
         eval_prompt_injection_split()?,
         eval_assurance_calibration_split()?,
+        eval_native_pdf_and_safeocr_split()?,
     ];
 
     let fenced_external_components = vec![

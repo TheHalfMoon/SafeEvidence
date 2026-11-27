@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """TA-29 HTTP-client clause: no shipped crate may depend on a denied HTTP client.
 
-Checks every target's normal dependencies. `safeevidence-network`, the one crate allowed
-an HTTP client by the architecture, does not exist yet, so nothing is exempt. Xberg and
-docling.rs clauses bind WP-13 (plan-v1.1). This does not detect sockets opened directly.
+Checks every target's normal dependencies across the workspace, including `safeevidence-network`
+(which uses fixture-only transport with `ureq` removed). Xberg and docling.rs clauses bind WP-13
+(plan-v1.1). This does not detect sockets opened directly.
 """
 from __future__ import annotations
 

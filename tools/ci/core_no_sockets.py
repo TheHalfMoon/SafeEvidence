@@ -18,7 +18,10 @@ CORE = (
     "safeevidence-contracts",
     "safeevidence-assurance",
     "safeevidence-ask",
+    "safeevidence-docs",
+    "safeevidence-fhir",
     "safeevidence-keyring-wire",
+    "safeevidence-pack",
     "safeevidence-vault",
     "safeevidence-proofstore",
 )

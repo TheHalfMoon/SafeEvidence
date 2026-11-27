@@ -254,7 +254,7 @@ def check_row(
     else:
         repo_lower = row["repo"].lower()
     pkt_str = row["packet"] if isinstance(row["packet"], str) else ""
-    if repo_lower == "thehalfmoon/dal" or pkt_str == "T14":
+    if repo_lower == "thehalfmoon/dal" or pkt_str.startswith("T14"):
         errors.append(f"{label}: DAL (T14) is permanently banned from SafeEvidence")
     elif repo_lower in WITHHELD_PRIVATE_REPOS:
         errors.append(f"{label}: withheld private repository cannot appear in public manifest")
@@ -268,11 +268,11 @@ def check_row(
     if row["copy_authorized"] is not (state == "VERIFIED_ALLOWED"):
         errors.append(f"{label}: copy_authorized must be true only for VERIFIED_ALLOWED")
     files = row["files"]
+    excluded_pkt = pkt_str in ADR0004_EXCLUDED_PACKETS or pkt_str.startswith(
+        ("T27b", "T28b", "T34", "T35")
+    )
     if state == "VERIFIED_ALLOWED":
-        if (
-            repo_lower in ADR0004_EXCLUDED_REPOS
-            or pkt_str in ADR0004_EXCLUDED_PACKETS
-        ):
+        if repo_lower in ADR0004_EXCLUDED_REPOS or excluded_pkt:
             errors.append(
                 f"{label}: copyleft, unlicensed, or dropped packet/repository cannot be admitted under ADR-0004"
             )
@@ -285,7 +285,7 @@ def check_row(
             basis == "PUBLIC_LICENSE"
             and repo_lower in ADR0004_VERIFIED_PUBLIC_REPOS
             and repo_lower not in ADR0004_EXCLUDED_REPOS
-            and pkt_str not in ADR0004_EXCLUDED_PACKETS
+            and not excluded_pkt
             and isinstance(decision, str)
             and decision in PUBLIC_LICENSE_ADR_REFS
             and resolve_regular_file(root, decision) is not None
