@@ -3,8 +3,8 @@
 //! Verifies that:
 //! 1. Independent invocations of the compiled `safeevidence_bench` binary from separate working
 //!    directories emit byte-for-byte identical JSON packets and identical input/output digests.
-//! 2. Every registered synthetic split identity (`TA-09`, `TA-08`, `TA-10`, `TA-07`, `TA-17`) is
-//!    present, passes its engineering gate, and carries an exact SHA-256 input digest.
+//! 2. Every registered synthetic split identity (`TA-09`, `TA-08`, `TA-10`, `TA-07`, `TA-17`,
+//!    `TA-27`) is present, passes its engineering gate, and carries an exact SHA-256 input digest.
 //! 3. `clinical_claim_emitted` is `false`, no confidence percentages appear, and externally gated
 //!    components (`EXT-01`, `EXT-03`, `EXT-07`) are explicitly fenced as `BLOCKED_EXTERNAL`.
 
@@ -49,7 +49,7 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
         DigestSha256::of(json_b.as_bytes())
     );
 
-    // Verify all 6 split identities and passing gates:
+    // Verify all 7 split identities and passing gates:
     let split_ids: Vec<&str> = run_a
         .body
         .splits
@@ -65,6 +65,7 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
             "ta10-perturbation-gate",
             "ta07-study-independence",
             "ta17-extraction-and-assurance",
+            "ta27-prompt-injection",
         ]
     );
     for split in &run_a.body.splits {

@@ -122,7 +122,7 @@ export async function runAskChecks(driver) {
     assert.ok(view.citations > 0);
     assert.equal(view.funnel, 7);
     assert.match(view.body, /doc-veltrix-peds \(APPLICABILITY_UNRESOLVED\): population children does not match adults/);
-    assert.doesNotMatch(view.body, /\d\s*%|confidence/i);
+    assert.doesNotMatch(view.body, /%|\u066A|percent|confidence/i);
     passed("an answer shows its outcome, committed proof, citations and funnel, with no percentage");
     const answered = view;
 
@@ -261,7 +261,7 @@ export async function runAskChecks(driver) {
     );
     assert.match(evidenceText, /doc-veltrix-a/);
     assert.match(evidenceText, /doc-quenzil-retracted/);
-    assert.doesNotMatch(evidenceText, /\d\s*%|percent|confidence/i);
+    assert.doesNotMatch(evidenceText, /%|\u066A|percent|confidence/i);
 
     await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
     const reviewText = await waitFor(
@@ -274,7 +274,7 @@ export async function runAskChecks(driver) {
     assert.match(reviewText, /Moderate/);
     assert.match(reviewText, /Opaque span-overlap audit/);
     assert.match(reviewText, /Verified scalar-offset adapter formats/);
-    assert.doesNotMatch(reviewText, /\d\s*%|percent|confidence/i);
+    assert.doesNotMatch(reviewText, /%|\u066A|percent|confidence/i);
 
     await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
     const packsText = await waitFor(
@@ -283,7 +283,7 @@ export async function runAskChecks(driver) {
     );
     assert.match(packsText, /pack-vs1a-synthetic/);
     assert.match(packsText, /doc-tessarine-unknown-rights \(RIGHTS_UNRESOLVED\)/);
-    assert.doesNotMatch(packsText, /\d\s*%|percent|confidence/i);
+    assert.doesNotMatch(packsText, /%|\u066A|percent|confidence/i);
 
     await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
     const privacyText = await waitFor(
@@ -333,6 +333,59 @@ export async function runAskChecks(driver) {
     );
     passed("Arabic locale toggle switches document to RTL, reverses tab arrow direction, and restores English LTR");
 
+    // Clipboard non-exposure check: verify Ask, citation span-jump, and Privacy tab inspection never
+    // invoke navigator.clipboard.writeText/write, document.execCommand("copy"), or auto-select sensitive text.
+    await page.eval(`(() => {
+      window.__seClipboardOps = [];
+      const origExec = document.execCommand?.bind(document);
+      document.execCommand = function(cmd, ...rest) {
+        window.__seClipboardOps.push(String(cmd));
+        return origExec ? origExec(cmd, ...rest) : false;
+      };
+      const hookTarget = (target) => {
+        if (!target) return;
+        for (const method of ["writeText", "write"]) {
+          if (typeof target[method] === "function") {
+            try {
+              target[method] = async (...args) => {
+                window.__seClipboardOps.push(method + ":" + JSON.stringify(args));
+              };
+            } catch {
+              // Read-only getter on prototype in some engines; instance hook covers it if writable.
+            }
+          }
+        }
+      };
+      if (typeof Clipboard !== "undefined" && Clipboard.prototype) {
+        hookTarget(Clipboard.prototype);
+      }
+      hookTarget(navigator.clipboard);
+      window.getSelection()?.removeAllRanges();
+    })()`);
+    await ask(page, ANSWERED);
+    await page.eval(`document.querySelector(".citations button").click()`);
+    await waitFor(
+      () => page.eval(`document.activeElement?.tagName === "MARK"`),
+      "focus on cited mark during clipboard check",
+    );
+    await page.eval(`document.querySelector("#tab-privacy").click()`);
+    await waitFor(
+      () => page.eval(`!!document.querySelector("#privacy-heading")`),
+      "Privacy tab during clipboard check",
+    );
+    await page.eval(`document.querySelector("#tab-ask").click()`);
+    await waitFor(
+      () => page.eval(`!!document.querySelector("#question")`),
+      "returning to Ask tab after clipboard check",
+    );
+    const clipState = await page.eval(`({
+      ops: window.__seClipboardOps,
+      selectedText: window.getSelection()?.toString() ?? "",
+    })`);
+    assert.deepEqual(clipState.ops, [], `unexpected clipboard writes: ${clipState.ops.join(", ")}`);
+    assert.equal(clipState.selectedText, "", "span jump must not auto-select sensitive text");
+    passed("Ask, citation span-jump, and Privacy inspection perform zero clipboard writes and leave selection empty");
+
     page.close();
     await driver.stop({ mustBeRunning: true });
     page = await driver.launch(dataDir);
@@ -363,6 +416,18 @@ export async function runAskChecks(driver) {
     assert.ok(webview.scanned > 0, "the web view left files to scan");
     assert.deepEqual(webview.found, [], `what the page saw is in ${webview.found.join(", ")}`);
     passed(`the web view's ${webview.scanned} files hold none of the typed question, answer, cited span or proof id`);
+
+    // Full dataDir & Crashpad/Minidump residue scan after forced process kill: verifies zero plaintext
+    // markers across encrypted vault files, lockfiles, Crashpad/minidump artifacts, and sibling dirs.
+    const fullDataDir = scanForMarkers(dataDir, markers);
+    assert.deepEqual(fullDataDir.unreadable, []);
+    assert.ok(fullDataDir.scanned > webview.scanned, "vault and sibling files in dataDir were scanned");
+    assert.deepEqual(
+      fullDataDir.found,
+      [],
+      `plaintext marker leaked in dataDir / crash artifacts: ${fullDataDir.found.join(", ")}`,
+    );
+    passed(`all ${fullDataDir.scanned} dataDir, vault, and Crashpad files hold zero plaintext markers after forced kill`);
     assert.equal(checks.length, driver.expectedChecks, "every check this driver should run has run");
     failed = false;
   } catch (error) {

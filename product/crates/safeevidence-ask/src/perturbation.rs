@@ -22,6 +22,7 @@ pub enum ClaimVerificationDefect {
     NegationOrPolarityFlip,
     UnitMismatch,
     ComparatorSwap,
+    EffectMeasureSwap,
     TimeframeSwap,
     PopulationOrSubgroupSwap,
     UnmatchedWording,
@@ -81,6 +82,17 @@ const COMPARATOR_PHRASES: &[&str] = &[
     "sham",
     "no treatment",
     "waitlist",
+];
+
+const EFFECT_MEASURE_PHRASES: &[&str] = &[
+    "relative risk",
+    "absolute risk",
+    "risk difference",
+    "odds ratio",
+    "hazard ratio",
+    "mean difference",
+    "rate ratio",
+    "number needed to treat",
 ];
 
 const POPULATION_MARKERS: &[&str] = &[
@@ -187,18 +199,17 @@ fn extract_number_unit_pairs(text: &str) -> Vec<(String, String)> {
 }
 
 fn present_phrases<'a>(collapsed: &str, phrases: &[&'a str]) -> BTreeSet<&'a str> {
-    let padded = format!(" {} ", collapsed.trim_end_matches('.'));
+    let alnum_words: Vec<&str> = collapsed
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let padded = format!(" {} ", alnum_words.join(" "));
     phrases
         .iter()
         .copied()
         .filter(|phrase| {
             let needle = format!(" {phrase} ");
-            let punct_needle = format!(" {phrase}.");
-            let comma_needle = format!(" {phrase},");
             padded.contains(&needle)
-                || collapsed.ends_with(phrase)
-                || collapsed.contains(&punct_needle)
-                || collapsed.contains(&comma_needle)
         })
         .collect()
 }
@@ -280,6 +291,15 @@ pub fn verify_claim_against_source(
             && present_phrases(&s_col, COMPARATOR_PHRASES) == claim_comparators
     }) {
         return Err(ClaimVerificationDefect::ComparatorSwap);
+    }
+
+    let claim_measures = present_phrases(&claim_collapsed, EFFECT_MEASURE_PHRASES);
+    if !any_sentence(&|s| {
+        let (s_col, _) = normalize_words(s);
+        extract_numeric_facets(s) == claim_nums
+            && present_phrases(&s_col, EFFECT_MEASURE_PHRASES) == claim_measures
+    }) {
+        return Err(ClaimVerificationDefect::EffectMeasureSwap);
     }
 
     let claim_populations = present_phrases(&claim_collapsed, POPULATION_MARKERS);

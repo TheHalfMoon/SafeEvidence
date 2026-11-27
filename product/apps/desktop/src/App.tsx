@@ -313,6 +313,163 @@ function PrivacySection({ overview, text }: { overview: WorkstationOverview; tex
   );
 }
 
+export type WorkstationShellProps = {
+  locale: Locale;
+  activeTab: WorkstationTab;
+  question: string;
+  view: AskView | null;
+  selected: Citation | null;
+  failure: string | null;
+  busy: boolean;
+  asked: string;
+  overview: WorkstationOverview | null;
+  overviewError: string | null;
+  onToggleLocale?: () => void;
+  onSelectTab?: (tab: WorkstationTab) => void;
+  onTabKeyDown?: (event: KeyboardEvent<HTMLButtonElement>, current: WorkstationTab) => void;
+  onTabRef?: (tab: WorkstationTab, el: HTMLButtonElement | null) => void;
+  onQuestionChange?: (value: string) => void;
+  onSubmit?: (event: FormEvent) => void;
+  onSelectCitation?: (citation: Citation) => void;
+};
+
+export function WorkstationShell({
+  locale,
+  activeTab,
+  question,
+  view,
+  selected,
+  failure,
+  busy,
+  asked,
+  overview,
+  overviewError,
+  onToggleLocale,
+  onSelectTab,
+  onTabKeyDown,
+  onTabRef,
+  onQuestionChange,
+  onSubmit,
+  onSelectCitation,
+}: WorkstationShellProps) {
+  const dir = directionForLocale(locale);
+  const text = UI_TEXT[locale];
+
+  return (
+    <div className="workstation-shell" lang={locale} dir={dir}>
+      <a className="skip-link" href="#main-content">{text.skipToMain}</a>
+      <header className="topbar">
+        <div className="topbar-row">
+          <h1>{activeTab === "ask" ? text.askHeading : text.workstationHeading}</h1>
+          <button
+            id="locale-toggle"
+            type="button"
+            className="locale-button"
+            onClick={onToggleLocale}
+          >
+            {text.switchLocaleButton}
+          </button>
+        </div>
+        <nav aria-label={text.sectionsNavLabel}>
+          <div role="tablist" aria-label={text.sectionsNavLabel} className="tablist">
+            {WORKSTATION_TABS.map((tab) => (
+              <button
+                key={tab}
+                ref={(el) => {
+                  onTabRef?.(tab, el);
+                }}
+                id={`tab-${tab}`}
+                role="tab"
+                type="button"
+                className="tab-button"
+                aria-selected={activeTab === tab}
+                aria-controls={`panel-${tab}`}
+                tabIndex={activeTab === tab ? 0 : -1}
+                onClick={() => onSelectTab?.(tab)}
+                onKeyDown={(event) => onTabKeyDown?.(event, tab)}
+              >
+                {text.tabs[tab]}
+              </button>
+            ))}
+          </div>
+        </nav>
+      </header>
+
+      <main id="main-content">
+        <p className="notice" role="note">{locale === "en" ? FIXTURE_NOTICE : text.fixtureNotice}</p>
+
+        <div id={`panel-${activeTab}`} role="tabpanel" aria-labelledby={`tab-${activeTab}`}>
+          {activeTab === "ask" && (
+            <>
+              <form onSubmit={onSubmit}>
+                <label htmlFor="question">{text.questionLabel}</label>
+                <textarea
+                  id="question"
+                  dir="auto"
+                  rows={2}
+                  maxLength={1024}
+                  value={question}
+                  readOnly={busy}
+                  onChange={(event) => onQuestionChange?.(event.target.value)}
+                />
+                <button type="submit" disabled={busy}>{busy ? text.checkingButton : text.askButton}</button>
+              </form>
+
+              <div aria-live="polite">
+                {failure && <p className="failure" role="alert">{text.failurePrefix}{failure}</p>}
+                {view && (
+                  <section aria-labelledby="outcome-heading">
+                    <p className="asked">{text.askedLabel}<span dir="auto">{asked}</span></p>
+                    <h2 id="outcome-heading" className={`outcome ${view.brief ? "answered" : "refused"}`}>
+                      {text.outcomes[view.outcome]}
+                    </h2>
+                    {text.reasons[view.reason] && <p>{text.reasons[view.reason]}</p>}
+                    {view.brief && <p dir="auto" className="brief">{view.brief}</p>}
+                    {view.proofId && (
+                      <p className="proof">
+                        {view.alreadyCommitted ? text.alreadyCommitted : text.justCommitted}{" "}
+                        <code dir="ltr">{view.proofId}</code>
+                      </p>
+                    )}
+                  </section>
+                )}
+              </div>
+
+              {view && view.citations.length > 0 && (
+                <section aria-labelledby="citations-heading">
+                  <h2 id="citations-heading">{text.citationsHeading}</h2>
+                  <ul className="citations">
+                    {view.citations.map((citation) => (
+                      <li key={`${citation.claimId}-${citation.startScalar}`}>
+                        <button type="button" onClick={() => onSelectCitation?.(citation)}>
+                          {text.showCitedSpanPrefix}<span dir="ltr">{citation.sourceId}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {selected && <SourcePanel citation={selected} text={text} />}
+              {view && <FunnelTrace view={view} text={text} />}
+            </>
+          )}
+
+          {activeTab !== "ask" && overviewError && (
+            <p className="failure" role="alert">{text.failurePrefix}{overviewError}</p>
+          )}
+          {activeTab !== "ask" && !overview && !overviewError && (
+            <p className="notice">{text.loadingOverview}</p>
+          )}
+          {activeTab === "evidence" && overview && <EvidenceSection overview={overview} text={text} />}
+          {activeTab === "review" && overview && <DeepReviewSection overview={overview} text={text} />}
+          {activeTab === "packs" && overview && <PacksSection overview={overview} text={text} />}
+          {activeTab === "privacy" && overview && <PrivacySection overview={overview} text={text} />}
+        </div>
+      </main>
+    </div>
+  );
+}
+
 export function App() {
   const [locale, setLocale] = useState<Locale>("en");
   const [activeTab, setActiveTab] = useState<WorkstationTab>("ask");
@@ -335,7 +492,6 @@ export function App() {
   });
 
   const dir = directionForLocale(locale);
-  const text = UI_TEXT[locale];
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -388,116 +544,26 @@ export function App() {
   }
 
   return (
-    <div className="workstation-shell" lang={locale} dir={dir}>
-      <a className="skip-link" href="#main-content">{text.skipToMain}</a>
-      <header className="topbar">
-        <div className="topbar-row">
-          <h1>{activeTab === "ask" ? text.askHeading : text.workstationHeading}</h1>
-          <button
-            id="locale-toggle"
-            type="button"
-            className="locale-button"
-            onClick={() => setLocale((prev) => (prev === "en" ? "ar" : "en"))}
-          >
-            {text.switchLocaleButton}
-          </button>
-        </div>
-        <nav aria-label={text.sectionsNavLabel}>
-          <div role="tablist" aria-label={text.sectionsNavLabel} className="tablist">
-            {WORKSTATION_TABS.map((tab) => (
-              <button
-                key={tab}
-                ref={(el) => {
-                  tabRefs.current[tab] = el;
-                }}
-                id={`tab-${tab}`}
-                role="tab"
-                type="button"
-                className="tab-button"
-                aria-selected={activeTab === tab}
-                aria-controls={`panel-${tab}`}
-                tabIndex={activeTab === tab ? 0 : -1}
-                onClick={() => setActiveTab(tab)}
-                onKeyDown={(event) => onTabKeyDown(event, tab)}
-              >
-                {text.tabs[tab]}
-              </button>
-            ))}
-          </div>
-        </nav>
-      </header>
-
-      <main id="main-content">
-        <p className="notice" role="note">{locale === "en" ? FIXTURE_NOTICE : text.fixtureNotice}</p>
-
-        <div id={`panel-${activeTab}`} role="tabpanel" aria-labelledby={`tab-${activeTab}`}>
-          {activeTab === "ask" && (
-            <>
-              <form onSubmit={submit}>
-                <label htmlFor="question">{text.questionLabel}</label>
-                <textarea
-                  id="question"
-                  dir="auto"
-                  rows={2}
-                  maxLength={1024}
-                  value={question}
-                  readOnly={busy}
-                  onChange={(event) => setQuestion(event.target.value)}
-                />
-                <button type="submit" disabled={busy}>{busy ? text.checkingButton : text.askButton}</button>
-              </form>
-
-              <div aria-live="polite">
-                {failure && <p className="failure" role="alert">{text.failurePrefix}{failure}</p>}
-                {view && (
-                  <section aria-labelledby="outcome-heading">
-                    <p className="asked">{text.askedLabel}<span dir="auto">{asked}</span></p>
-                    <h2 id="outcome-heading" className={`outcome ${view.brief ? "answered" : "refused"}`}>
-                      {text.outcomes[view.outcome]}
-                    </h2>
-                    {text.reasons[view.reason] && <p>{text.reasons[view.reason]}</p>}
-                    {view.brief && <p dir="auto" className="brief">{view.brief}</p>}
-                    {view.proofId && (
-                      <p className="proof">
-                        {view.alreadyCommitted ? text.alreadyCommitted : text.justCommitted}{" "}
-                        <code dir="ltr">{view.proofId}</code>
-                      </p>
-                    )}
-                  </section>
-                )}
-              </div>
-
-              {view && view.citations.length > 0 && (
-                <section aria-labelledby="citations-heading">
-                  <h2 id="citations-heading">{text.citationsHeading}</h2>
-                  <ul className="citations">
-                    {view.citations.map((citation) => (
-                      <li key={`${citation.claimId}-${citation.startScalar}`}>
-                        <button type="button" onClick={() => setSelected(citation)}>
-                          {text.showCitedSpanPrefix}<span dir="ltr">{citation.sourceId}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-              {selected && <SourcePanel citation={selected} text={text} />}
-              {view && <FunnelTrace view={view} text={text} />}
-            </>
-          )}
-
-          {activeTab !== "ask" && overviewError && (
-            <p className="failure" role="alert">{text.failurePrefix}{overviewError}</p>
-          )}
-          {activeTab !== "ask" && !overview && !overviewError && (
-            <p className="notice">{text.loadingOverview}</p>
-          )}
-          {activeTab === "evidence" && overview && <EvidenceSection overview={overview} text={text} />}
-          {activeTab === "review" && overview && <DeepReviewSection overview={overview} text={text} />}
-          {activeTab === "packs" && overview && <PacksSection overview={overview} text={text} />}
-          {activeTab === "privacy" && overview && <PrivacySection overview={overview} text={text} />}
-        </div>
-      </main>
-    </div>
+    <WorkstationShell
+      locale={locale}
+      activeTab={activeTab}
+      question={question}
+      view={view}
+      selected={selected}
+      failure={failure}
+      busy={busy}
+      asked={asked}
+      overview={overview}
+      overviewError={overviewError}
+      onToggleLocale={() => setLocale((prev) => (prev === "en" ? "ar" : "en"))}
+      onSelectTab={setActiveTab}
+      onTabKeyDown={onTabKeyDown}
+      onTabRef={(tab, el) => {
+        tabRefs.current[tab] = el;
+      }}
+      onQuestionChange={setQuestion}
+      onSubmit={submit}
+      onSelectCitation={setSelected}
+    />
   );
 }

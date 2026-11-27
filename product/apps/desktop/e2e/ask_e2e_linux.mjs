@@ -84,7 +84,7 @@ const output = [];
 let driver = null;
 
 await runAskChecks({
-  expectedChecks: 18,
+  expectedChecks: 20,
   // The network log is the one check missing here: WebDriver does not expose one.
   keyStore: {
     name: "the real Secret Service",
