@@ -37,7 +37,7 @@ PINNED_WORKFLOW_SHA256 = {
 
 # The TA-03 gate runs from this script, so it is pinned like a workflow.
 CORE_SOCKET_SCRIPT = "tools/ci/core_no_sockets.py"
-CORE_SOCKET_SCRIPT_SHA256 = "d9efa22166b2d42b2910456f9e1fc2c66e1e973b5fedfe4dcf57b2496f9768d4"
+CORE_SOCKET_SCRIPT_SHA256 = "0996c22560d87b029ddbd7db4ed34f7e44d121845f7cd123684f12667dbd8863"
 TA03_SCRIPT = "tools/ci/ta03_isolated.sh"
 TA29_SCRIPT = "tools/ci/ta29_dependency_denial.py"
 TA29_SCRIPT_SHA256 = "8891d6358d5d147807a0490d7db1558537be2cbcf0deca8c715a0ee99bf9ad20"

@@ -1666,6 +1666,420 @@ fn eval_native_pdf_and_safeocr_split() -> Result<SplitEvaluation, String> {
     })
 }
 
+fn eval_hybrid_bilingual_rrf_split() -> Result<SplitEvaluation, String> {
+    use crate::hybrid_retrieval::hybrid_retrieve_bilingual;
+    use crate::nli_verifier::{NliLabel, verify_bilingual_entailment};
+
+    let lexicon = vec![
+        BilingualConcept {
+            concept_id: "int_veltrixamine".to_owned(),
+            en_terms: vec!["veltrixamine".to_owned(), "vtx modulator".to_owned()],
+            ar_terms: vec![
+                "\u{0641}\u{0644}\u{062a}\u{0631}\u{064a}\u{0643}\u{0633}\u{0627}\u{0645}\u{064a}\u{0646}".to_owned(),
+                "\u{0627}\u{0644}\u{0641}\u{0644}\u{062a}\u{0631}\u{064a}\u{0643}\u{0633}\u{0627}\u{0645}\u{064a}\u{0646}".to_owned(),
+            ],
+        },
+        BilingualConcept {
+            concept_id: "int_placebo".to_owned(),
+            en_terms: vec!["placebo".to_owned()],
+            ar_terms: vec![
+                "\u{0627}\u{0644}\u{0639}\u{0644}\u{0627}\u{062c} \u{0627}\u{0644}\u{0648}\u{0647}\u{0645}\u{064a}".to_owned(),
+            ],
+        },
+        BilingualConcept {
+            concept_id: "pop_adults".to_owned(),
+            en_terms: vec!["adults".to_owned()],
+            ar_terms: vec!["\u{0627}\u{0644}\u{0628}\u{0627}\u{0644}\u{063a}\u{064a}\u{0646}".to_owned()],
+        },
+        BilingualConcept {
+            concept_id: "cond_glimmer".to_owned(),
+            en_terms: vec!["glimmer syndrome".to_owned()],
+            ar_terms: vec![
+                "\u{0645}\u{062a}\u{0644}\u{0627}\u{0632}\u{0645}\u{0629} \u{0627}\u{0644}\u{0628}\u{0631}\u{064a}\u{0642}".to_owned(),
+            ],
+        },
+    ];
+
+    let corpus = BilingualCorpus {
+        description: "Synthetic TA-09 hybrid RRF bilingual split".to_owned(),
+        validity_epoch: 1,
+        rights_grant_version: "SYNTHETIC-V1".to_owned(),
+        arabic_path_promoted: true,
+        quality_appraised: true,
+        lexicon,
+        documents: vec![
+            BilingualDocument {
+                doc_id: "hyb-en-1".to_owned(),
+                study_id: "st-hyb-1".to_owned(),
+                language: TextLanguage::En,
+                title: "Synthetic Trial of VTX Modulator".to_owned(),
+                text: "Veltrixamine 50 mg reduced symptom burden in adults over 8 weeks.".to_owned(),
+                finding: "Veltrixamine 50 mg reduced symptom burden in adults over 8 weeks.".to_owned(),
+                population_concept: "pop_adults".to_owned(),
+                condition_concept: "cond_glimmer".to_owned(),
+                intervention_concept: "int_veltrixamine".to_owned(),
+                direction: Direction::Benefit,
+                publication_state: PublicationState::Current,
+                rights: EvidenceCorpusRights::SyntheticOwned,
+            },
+            BilingualDocument {
+                doc_id: "hyb-ar-2".to_owned(),
+                study_id: "st-hyb-2".to_owned(),
+                language: TextLanguage::Ar,
+                title: "\u{062a}\u{062c}\u{0631}\u{0628}\u{0629} \u{0627}\u{0635}\u{0637}\u{0646}\u{0627}\u{0639}\u{064a}\u{0629}".to_owned(),
+                text: "\u{062e}\u{064e}\u{0641}\u{064e}\u{0651}\u{0636}\u{064e} \u{0627}\u{0644}\u{0641}\u{0644}\u{062a}\u{0631}\u{064a}\u{0643}\u{0633}\u{0627}\u{0645}\u{064a}\u{0646} \u{0665}\u{0660} \u{0645}\u{062c}\u{0645} \u{0627}\u{0644}\u{0627}\u{0639}\u{0631}\u{0627}\u{0636} \u{0641}\u{064a} \u{0627}\u{0644}\u{0628}\u{0627}\u{0644}\u{063a}\u{064a}\u{0646}.".to_owned(),
+                finding: "\u{062e}\u{064e}\u{0641}\u{064e}\u{0651}\u{0636}\u{064e} \u{0627}\u{0644}\u{0641}\u{0644}\u{062a}\u{0631}\u{064a}\u{0643}\u{0633}\u{0627}\u{0645}\u{064a}\u{0646} \u{0665}\u{0660} \u{0645}\u{062c}\u{0645} \u{0627}\u{0644}\u{0627}\u{0639}\u{0631}\u{0627}\u{0636} \u{0641}\u{064a} \u{0627}\u{0644}\u{0628}\u{0627}\u{0644}\u{063a}\u{064a}\u{0646}.".to_owned(),
+                population_concept: "pop_adults".to_owned(),
+                condition_concept: "cond_glimmer".to_owned(),
+                intervention_concept: "int_veltrixamine".to_owned(),
+                direction: Direction::Benefit,
+                publication_state: PublicationState::Current,
+                rights: EvidenceCorpusRights::SyntheticOwned,
+            },
+            BilingualDocument {
+                doc_id: "hyb-dist-3".to_owned(),
+                study_id: "st-hyb-3".to_owned(),
+                language: TextLanguage::En,
+                title: "Unrelated Acoustic Sensor Calibration".to_owned(),
+                text: "Piezoelectric sensor drift remained unchanged in dry air.".to_owned(),
+                finding: "Piezoelectric sensor drift remained unchanged in dry air.".to_owned(),
+                population_concept: "pop_sensors".to_owned(),
+                condition_concept: "cond_drift".to_owned(),
+                intervention_concept: "int_piezo".to_owned(),
+                direction: Direction::NoBenefit,
+                publication_state: PublicationState::Current,
+                rights: EvidenceCorpusRights::SyntheticOwned,
+            },
+        ],
+    };
+
+    let queries = [
+        "Does veltrixamine vs placebo help adults with glimmer syndrome?",
+        "\u{0647}\u{0644} \u{064a}\u{0633}\u{0627}\u{0639}\u{062f} \u{0627}\u{0644}\u{0641}\u{0644}\u{062a}\u{0631}\u{064a}\u{0643}\u{0633}\u{0627}\u{0645}\u{064a}\u{0646} \u{0645}\u{0642}\u{0627}\u{0628}\u{0644} \u{0627}\u{0644}\u{0639}\u{0644}\u{0627}\u{062c} \u{0627}\u{0644}\u{0648}\u{0647}\u{0645}\u{064a} \u{0645}\u{0639} \u{0645}\u{062a}\u{0644}\u{0627}\u{0632}\u{0645}\u{0629} \u{0627}\u{0644}\u{0628}\u{0631}\u{064a}\u{0642}\u{061F}",
+    ];
+    let mut recall_hits = 0_usize;
+    for q in queries {
+        let trace = hybrid_retrieve_bilingual(&corpus, q, 2).map_err(|e| format!("{e:?}"))?;
+        if trace.reranked_doc_ids.contains(&"hyb-en-1".to_owned())
+            && trace.reranked_doc_ids.contains(&"hyb-ar-2".to_owned())
+        {
+            recall_hits += 1;
+        }
+    }
+    let recall_rate = recall_hits as f64 / queries.len() as f64;
+
+    let nli_cases = [
+        (
+            "Veltrixamine 50 mg reduced symptom burden in adults over 8 weeks.",
+            &corpus.documents[0].text,
+            NliLabel::Entails,
+        ),
+        (
+            "Veltrixamine 50 mg did not reduce symptom burden in adults over 8 weeks.",
+            &corpus.documents[0].text,
+            NliLabel::Contradicts,
+        ),
+        (
+            "\u{062e}\u{0641}\u{0636} \u{0627}\u{0644}\u{0641}\u{0644}\u{062a}\u{0631}\u{064a}\u{0643}\u{0633}\u{0627}\u{0645}\u{064a}\u{0646} 50 \u{0645}\u{062c}\u{0645} \u{0627}\u{0644}\u{0627}\u{0639}\u{0631}\u{0627}\u{0636} \u{0641}\u{064a} \u{0627}\u{0644}\u{0628}\u{0627}\u{0644}\u{063a}\u{064a}\u{0646}.",
+            &corpus.documents[1].text,
+            NliLabel::Entails,
+        ),
+        (
+            "\u{0644}\u{0645} \u{064a}\u{062e}\u{0641}\u{0636} \u{0627}\u{0644}\u{0641}\u{0644}\u{062a}\u{0631}\u{064a}\u{0643}\u{0633}\u{0627}\u{0645}\u{064a}\u{0646} 50 \u{0645}\u{062c}\u{0645} \u{0627}\u{0644}\u{0627}\u{0639}\u{0631}\u{0627}\u{0636} \u{0641}\u{064a} \u{0627}\u{0644}\u{0628}\u{0627}\u{0644}\u{063a}\u{064a}\u{0646}.",
+            &corpus.documents[1].text,
+            NliLabel::Contradicts,
+        ),
+    ];
+    let mut nli_exact = 0_usize;
+    for (claim, src, expected) in nli_cases {
+        let v = verify_bilingual_entailment(claim, src).map_err(|e| format!("{e:?}"))?;
+        if v.label == expected {
+            nli_exact += 1;
+        }
+    }
+    let nli_rate = nli_exact as f64 / nli_cases.len() as f64;
+
+    let corpus_bytes = serde_json::to_vec(&corpus).map_err(|e| e.to_string())?;
+    let mut metrics = BTreeMap::new();
+    metrics.insert(
+        "cross_lingual_hybrid_recall_at_2".to_owned(),
+        metric_point(recall_rate),
+    );
+    metrics.insert(
+        "bilingual_nli_exact_rate".to_owned(),
+        metric_point(nli_rate),
+    );
+
+    Ok(SplitEvaluation {
+        split_id: "ta09-hybrid-bilingual-rrf".to_owned(),
+        acceptance_row: "TA-09".to_owned(),
+        split_role: "hybrid_bm25_dense_rrf_and_bilingual_nli_synthetic".to_owned(),
+        language_slice: "en+ar".to_owned(),
+        item_count: queries.len() + nli_cases.len(),
+        input_sha256: DigestSha256::of(&corpus_bytes),
+        metrics,
+        gate_passed: recall_hits == queries.len() && nli_exact == nli_cases.len(),
+    })
+}
+
+fn eval_systematic_review_split() -> Result<SplitEvaluation, String> {
+    use safeevidence_review::active_metrics::{ndcg as active_ndcg, wss_at_recall};
+    use safeevidence_review::classifiers::MultinomialNbScreeningClassifier;
+    use safeevidence_review::dedupe::dedupe_records;
+    use safeevidence_review::prisma_review::{
+        ExclusionReason, ReviewDecision, ReviewEvent, prisma_summary, render_review_log_jsonl,
+        replay_reviews_jsonl,
+    };
+    use safeevidence_review::queriers::{QueryStrategy, query_order};
+    use safeevidence_review::records::{EvidenceTier, Identifiers, LiteratureRecord};
+
+    let records = vec![
+        LiteratureRecord {
+            identifiers: Identifiers::new(None, None, Some("2501.00001"), None)
+                .map_err(|e| e.to_string())?,
+            title: "Veltrixamine in Adults With Synthetic Glimmer Syndrome: Randomized Trial"
+                .to_owned(),
+            evidence_tier: EvidenceTier::Preprint,
+            source_adapter: "synthetic".to_owned(),
+            year: Some(2025),
+            venue: None,
+            authors: vec!["Ada Researcher".to_owned()],
+            abstract_text: Some("Preprint report.".to_owned()),
+            license_spdx: Some("CC-BY-4.0".to_owned()),
+            tags: Vec::new(),
+        },
+        LiteratureRecord {
+            identifiers: Identifiers::new(Some("10.1000/vtx.2025.1"), Some("99001122"), None, None)
+                .map_err(|e| e.to_string())?,
+            title: "Veltrixamine in Adults With Synthetic Glimmer Syndrome Randomized Trial"
+                .to_owned(),
+            evidence_tier: EvidenceTier::PeerReviewed,
+            source_adapter: "synthetic".to_owned(),
+            year: Some(2025),
+            venue: Some("J Synth Res".to_owned()),
+            authors: vec!["Ada Researcher".to_owned()],
+            abstract_text: Some("Peer-reviewed report.".to_owned()),
+            license_spdx: Some("CC-BY-4.0".to_owned()),
+            tags: Vec::new(),
+        },
+        LiteratureRecord {
+            identifiers: Identifiers::new(Some("10.1000/vtx.2025.2"), Some("99001123"), None, None)
+                .map_err(|e| e.to_string())?,
+            title: "Distinct Secondary Trial of Placebo Controls in Glimmer Syndrome".to_owned(),
+            evidence_tier: EvidenceTier::PeerReviewed,
+            source_adapter: "synthetic".to_owned(),
+            year: Some(2025),
+            venue: Some("J Synth Res".to_owned()),
+            authors: vec!["B. Scientist".to_owned()],
+            abstract_text: Some("Independent trial.".to_owned()),
+            license_spdx: Some("CC-BY-4.0".to_owned()),
+            tags: Vec::new(),
+        },
+    ];
+
+    let deduped = dedupe_records(&records);
+    let ids = vec!["sr-1".to_owned(), "sr-2".to_owned()];
+    let events = vec![
+        ReviewEvent::new(
+            "sr-1",
+            ReviewDecision::Pending,
+            ReviewDecision::Include,
+            "researcher-a",
+            "2026-11-27T00:00:00Z",
+            "0.1.0",
+            "00000000",
+            None,
+            "meets PICO",
+        )
+        .map_err(|e| e.to_string())?,
+        ReviewEvent::new(
+            "sr-2",
+            ReviewDecision::Pending,
+            ReviewDecision::Exclude,
+            "researcher-a",
+            "2026-11-27T00:01:00Z",
+            "0.1.0",
+            "00000000",
+            Some(ExclusionReason::WrongOutcome),
+            "surrogate endpoint only",
+        )
+        .map_err(|e| e.to_string())?,
+    ];
+    let (jsonl, log_digest) = render_review_log_jsonl(&events).map_err(|e| e.to_string())?;
+    let replayed = replay_reviews_jsonl(&jsonl).map_err(|e| e.to_string())?;
+    let summary = prisma_summary(&ids, &replayed, Some(records.len()));
+    let prisma_conserved = deduped.records.len() == 2
+        && summary.identified == Some(3)
+        && summary.deduplicated == 2
+        && summary.screened == 2
+        && summary.included + summary.excluded == summary.screened;
+
+    // Active-learning screening prioritization (`T18` ASReview):
+    let seeds = vec![
+        "Randomized trial of veltrixamine in adults with glimmer syndrome".to_owned(),
+        "\u{062a}\u{062c}\u{0631}\u{0628}\u{0629} \u{0639}\u{0634}\u{0648}\u{0627}\u{0626}\u{064a}\u{0629} \u{0644}\u{062f}\u{0648}\u{0627}\u{0621} \u{0641}\u{0644}\u{062a}\u{0631}\u{064a}\u{0643}\u{0633}\u{0627}\u{0645}\u{064a}\u{0646} \u{0645}\u{0639} \u{0645}\u{062a}\u{0644}\u{0627}\u{0632}\u{0645}\u{0629} \u{0627}\u{0644}\u{0628}\u{0631}\u{064a}\u{0642}".to_owned(),
+        "Photovoltaic perovskite solar cell annealing crystal lattice".to_owned(),
+        "Alpine conifer soil nitrogen fixation under drought".to_owned(),
+    ];
+    let seed_labels = vec![true, true, false, false];
+    let clf = MultinomialNbScreeningClassifier::fit(&seeds, &seed_labels, 1.0)
+        .map_err(|e| e.to_string())?;
+    let mut pool = Vec::new();
+    let mut gold = Vec::new();
+    for idx in 0..20_usize {
+        if idx == 12 {
+            pool.push(
+                "Double-blind trial of veltrixamine in adults with glimmer syndrome".to_owned(),
+            );
+            gold.push(true);
+        } else if idx == 17 {
+            pool.push(
+                "\u{062f}\u{0648}\u{0627}\u{0621} \u{0641}\u{0644}\u{062a}\u{0631}\u{064a}\u{0643}\u{0633}\u{0627}\u{0645}\u{064a}\u{0646} \u{0645}\u{0639} \u{0645}\u{062a}\u{0644}\u{0627}\u{0632}\u{0645}\u{0629} \u{0627}\u{0644}\u{0628}\u{0631}\u{064a}\u{0642}".to_owned(),
+            );
+            gold.push(true);
+        } else {
+            pool.push(format!(
+                "Irrelevant study {idx} on perovskite solar cell annealing"
+            ));
+            gold.push(false);
+        }
+    }
+    let scores = clf.predict_relevance_scores(&pool);
+    let order = query_order(QueryStrategy::Max, &scores);
+    let ordered_gold: Vec<bool> = order.iter().map(|&i| gold[i]).collect();
+    let wss95 = wss_at_recall(&ordered_gold, 0.95).map_err(|e| e.to_string())?;
+    let rank_ndcg = active_ndcg(&ordered_gold).map_err(|e| e.to_string())?;
+
+    let mut metrics = BTreeMap::new();
+    metrics.insert(
+        "prisma_flow_conservation_rate".to_owned(),
+        metric_point(if prisma_conserved { 1.0 } else { 0.0 }),
+    );
+    metrics.insert("active_screening_ndcg".to_owned(), metric_point(rank_ndcg));
+    metrics.insert("wss_at_095_recall".to_owned(), metric_point(wss95));
+
+    Ok(SplitEvaluation {
+        split_id: "ta16-systematic-review-prisma-asreview".to_owned(),
+        acceptance_row: "TA-16".to_owned(),
+        split_role: "prisma_dedupe_replay_and_active_screening_synthetic".to_owned(),
+        language_slice: "en+ar".to_owned(),
+        item_count: records.len() + pool.len(),
+        input_sha256: DigestSha256::of(log_digest.as_bytes()),
+        metrics,
+        gate_passed: prisma_conserved && order.len() == pool.len() && wss95 >= 0.80,
+    })
+}
+
+fn eval_meta_analysis_pooling_split() -> Result<SplitEvaluation, String> {
+    use safeevidence_meta::{
+        RandomEffectsMethod, StudyEffectEntry, combine_independent_studies, effectsize_smd,
+    };
+
+    let mean_t = [94.0, 98.0, 98.0, 94.0];
+    let sd_t = [22.0, 21.0, 28.0, 19.0];
+    let n_t = [60.0, 65.0, 40.0, 200.0];
+    let mean_c = [92.0, 92.0, 88.0, 82.0];
+    let sd_c = [20.0, 22.0, 26.0, 17.0];
+    let n_c = [60.0, 65.0, 40.0, 200.0];
+    let (eff, var) =
+        effectsize_smd(&mean_t, &sd_t, &n_t, &mean_c, &sd_c, &n_c).map_err(|e| e.to_string())?;
+
+    let make_entry = |idx: usize, study_id: &str| StudyEffectEntry {
+        synthesis_input: safeevidence_contracts::study::SynthesisInput {
+            result: ResultId(ScopedId {
+                scope: "ta18".to_owned(),
+                id: format!("res-{idx}"),
+                version: 1,
+            }),
+            study: StudyId(ScopedId {
+                scope: "ta18".to_owned(),
+                id: study_id.to_owned(),
+                version: 1,
+            }),
+            kind: ContributionKind::PrimaryStudy,
+            title: format!("Synthetic Trial {study_id}"),
+            report_kind: Known::Known(ReportVersionKind::Published),
+            population: Known::Known(AnalysisPopulation::Itt),
+            timepoint: Known::Known("12 weeks".to_owned()),
+            arms: vec![StudyArmId(ScopedId {
+                scope: "ta18".to_owned(),
+                id: format!("arm-{idx}"),
+                version: 1,
+            })],
+            contains: Vec::new(),
+            participants: Known::Known(ParticipantOverlapGroupId(ScopedId {
+                scope: "ta18".to_owned(),
+                id: format!("cohort-{study_id}"),
+                version: 1,
+            })),
+            denominator: Known::Known((n_t[idx] + n_c[idx]) as u64),
+            covariance: Known::Unknown {
+                reason: "independent trial".to_owned(),
+            },
+        },
+        effect: eff[idx],
+        variance: var[idx],
+    };
+
+    let independent = vec![
+        make_entry(0, "st-1"),
+        make_entry(1, "st-2"),
+        make_entry(2, "st-3"),
+        make_entry(3, "st-4"),
+    ];
+    let (decision, pooled) = combine_independent_studies(
+        &independent,
+        &[],
+        RandomEffectsMethod::PauleMandel,
+        true,
+        0.05,
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Duplicate study_id must be refused before pooling:
+    let dup_refused = combine_independent_studies(
+        &[make_entry(0, "st-1"), make_entry(1, "st-1")],
+        &[],
+        RandomEffectsMethod::DerSimonianLaird,
+        false,
+        0.05,
+    )
+    .is_err();
+
+    let pred_ok = pooled
+        .prediction_interval_re
+        .is_some_and(|pi| pi.lower < pooled.mean_effect_re && pooled.mean_effect_re < pi.upper);
+    let basis = serde_json::to_vec(&pooled).map_err(|e| e.to_string())?;
+
+    let mut metrics = BTreeMap::new();
+    metrics.insert(
+        "pooled_smd_re_point".to_owned(),
+        metric_point(pooled.mean_effect_re),
+    );
+    metrics.insert(
+        "heterogeneity_i2_fraction".to_owned(),
+        metric_point(pooled.i2),
+    );
+    metrics.insert(
+        "overlap_double_count_refusal_rate".to_owned(),
+        metric_point(if dup_refused { 1.0 } else { 0.0 }),
+    );
+
+    Ok(SplitEvaluation {
+        split_id: "ta18-meta-analysis-pooling".to_owned(),
+        acceptance_row: "TA-18".to_owned(),
+        split_role: "hedges_g_paule_mandel_hksj_and_overlap_gate_synthetic".to_owned(),
+        language_slice: "en".to_owned(),
+        item_count: independent.len() + 1,
+        input_sha256: DigestSha256::of(&basis),
+        metrics,
+        gate_passed: decision.accepted.len() == 4
+            && pooled.tau2_converged
+            && pred_ok
+            && dup_refused,
+    })
+}
+
 /// Runs all admitted synthetic `SafeEvidenceBench` splits and returns a byte-deterministic
 /// [`BenchPacket`] whose `packet_digest` commits to the canonical JSON serialization of `body`.
 ///
@@ -1749,15 +2163,18 @@ pub fn run_safeevidence_bench() -> Result<BenchPacket, String> {
         eval_prompt_injection_split()?,
         eval_assurance_calibration_split()?,
         eval_native_pdf_and_safeocr_split()?,
+        eval_hybrid_bilingual_rrf_split()?,
+        eval_systematic_review_split()?,
+        eval_meta_analysis_pooling_split()?,
     ];
 
     let fenced_external_components = vec![
         FencedExternalComponent {
-            component_id: "T27-SCIFACT-T28-EVIDENCE-INFERENCE".to_owned(),
-            blocking_gate: "EXT-01+EXT-07".to_owned(),
+            component_id: "T27-SCIFACT-T28-EVIDENCE-INFERENCE-DATASETS".to_owned(),
+            blocking_gate: "EXT-07".to_owned(),
             status: "BLOCKED_EXTERNAL".to_owned(),
             reason:
-                "External biomedical benchmark datasets (T27 SciFact, T28 Evidence Inference) and optional NLI weights await in-tree bench/ admission."
+                "Benchmark evaluators (bench/scifact ADM-0030, bench/evidence_inference ADM-0032) are admitted; external dataset tarballs (CC-BY-4.0 / ODC-By-1.0 / PMC OA) and optional neural NLI weights remain outside shipped product scope."
                     .to_owned(),
         },
         FencedExternalComponent {

@@ -33,18 +33,20 @@ Admission `ADM-0001` (T01) in `docs/evidence/source_admissions.json`.
   unpromoted proposal or heuristic confidence percentage can enter an assured V1 surface.
 - `src/study.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED, transplant matrix §5).
   `src/study_linkage.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-05` + `T28c` `REFERENCE`
-  registry/PMID/review containment algorithm; `T15` `litdb` fuzzy title dedupe is not copied and
-  remains fenced on `EXT-01`).
+  registry/PMID/review containment algorithm).
   `src/appraisal.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-10` + `T26` `HL7/ebm`
   `STANDARD_REFERENCE` JSON export crosswalk).
+  `src/guideline.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-10`/`WP-12`/`WP-18`
+  guideline currency/supersession governance, multi-outcome GRADE Summary-of-Findings table
+  validation, and source-loss-aware `EvidenceSnapshot` reproduction).
   `src/bilingual.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-06` Unicode scalar
   normalization and bidirectional coordinate projection, tested against `ADM-0004` `T17` fixtures).
   `src/surveillance.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-17` watch-query and
   cause-named surveillance alert schemas).
   `src/review_protocol.rs` is SafeEvidence-written (GREENFIELD_JUSTIFIED `WP-14` protocol lock &
   hash-chained audit export and `WP-15` / `TA-17` quote-anchored `Proposed` -> human `Confirmed`
-  effect extraction contracts; `T15` screening/PRISMA and `T18`/`T19` worker execution remain
-  fenced on `EXT-01`).
+  effect extraction contracts; `T15`/`T18` screening/PRISMA/active-learning live in
+  `safeevidence-review` and `T19` meta-analysis pooling lives in `safeevidence-meta`).
   `src/assurance.rs` is SafeEvidence-written; it encodes the P00 contract vocabulary directly.
 - `src/proof.rs` is SafeEvidence-written from the P00 proof contract: shape only, with no atomic commit or verification.
 - `src/network/mod.rs` is admission `ADM-0015` (T05, `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2`,

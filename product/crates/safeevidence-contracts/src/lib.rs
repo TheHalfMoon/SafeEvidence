@@ -7,6 +7,7 @@ pub mod bilingual;
 pub mod document_intake;
 pub mod evidence;
 pub mod fhir;
+pub mod guideline;
 pub mod network;
 pub mod objects;
 pub mod offset_projection;

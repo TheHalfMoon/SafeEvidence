@@ -1444,11 +1444,11 @@
       "packet": "T15",
       "repo": "TheHalfMoon/MedOrigin",
       "source_commit": "ec8b1b6f7392b09ecbb023600b3a83cfff6f14a8",
-      "state": "CANDIDATE",
-      "copy_authorized": false,
-      "basis": "FOUNDER_OWNED",
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
+      "basis": "PUBLIC_LICENSE",
       "license_spdx": "Apache-2.0",
-      "decision_ref": null,
+      "decision_ref": "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
       "notices": "THIRD_PARTY_NOTICES.md",
       "transitive": "Python standard library only across 38 pinned litdb files; runs inside D-03 sandboxed worker with fetches routed via T05 broker",
       "assets": "synthetic test fixtures only; live PubMed/OpenAlex/Crossref/Europe PMC item rights gated per record",
@@ -1500,8 +1500,8 @@
           "source_path": "src/medscale/litdb/dedupe.py",
           "git_blob_oid": "6944727e1278074d7ab9a6c24ac9f57aa741e6e1",
           "bytes": 6734,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/src/dedupe.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "src/medscale/litdb/ingest.py",
@@ -1542,22 +1542,22 @@
           "source_path": "src/medscale/litdb/records.py",
           "git_blob_oid": "72e4d6391bbb6872e05fca0e4ce07f6390bd3e6e",
           "bytes": 3105,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/src/records.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "src/medscale/litdb/review.py",
           "git_blob_oid": "01d2e7ebf939626ddcaa2aec6297d2a18d95b45f",
           "bytes": 11015,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/src/prisma_review.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "src/medscale/litdb/screening.py",
           "git_blob_oid": "4c5adda2e55d7eb6c27df33f8549c41474838249",
           "bytes": 2190,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/src/screening.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "src/medscale/litdb/screening_log.py",
@@ -1626,8 +1626,8 @@
           "source_path": "tests/test_litdb_dedupe.py",
           "git_blob_oid": "694bad251f87f326eb38eaf4688811dae20ac5de",
           "bytes": 3772,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/tests/t15_litdb_dedupe.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "tests/test_litdb_ingest.py",
@@ -1675,8 +1675,8 @@
           "source_path": "tests/test_litdb_review.py",
           "git_blob_oid": "1d2af156c234a6e2102dce76ae71450b71a4ae57",
           "bytes": 7386,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/tests/t15_litdb_prisma_review.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "tests/test_litdb_screen_cli.py",
@@ -1807,11 +1807,11 @@
       "packet": "T18",
       "repo": "asreview/asreview",
       "source_commit": "79d568212b2b0a78f9fd7be3c5117dfb890489f9",
-      "state": "CANDIDATE",
-      "copy_authorized": false,
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
       "basis": "PUBLIC_LICENSE",
       "license_spdx": "Apache-2.0",
-      "decision_ref": null,
+      "decision_ref": "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
       "notices": "THIRD_PARTY_NOTICES.md; donor LICENSE pinned",
       "transitive": "Pinned Python wheel closure (numpy/scipy/scikit-learn) owed at WP-14/WP-23a sandboxed research worker admission; web app excluded",
       "assets": "none; SYNERGY benchmark evaluated under its own CC0-1.0 terms",
@@ -1821,8 +1821,8 @@
           "source_path": "LICENSE",
           "git_blob_oid": "9ad3443d42495208464f13809daf46c216b35e90",
           "bytes": 11417,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/tests/fixtures/t18/LICENSE",
+          "modification": "none"
         },
         {
           "source_path": "asreview/data/loader.py",
@@ -1849,8 +1849,8 @@
           "source_path": "asreview/metrics.py",
           "git_blob_oid": "d7b4dcefd32b5f2837bac6a76e6e30d8da3a15d8",
           "bytes": 1764,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/src/active_metrics.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "asreview/models/__init__.py",
@@ -1877,8 +1877,8 @@
           "source_path": "asreview/models/classifiers.py",
           "git_blob_oid": "dfdca576c08b085d68767507fcd7b59754138f9f",
           "bytes": 1843,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/src/classifiers.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "asreview/models/cli.py",
@@ -1912,22 +1912,22 @@
           "source_path": "asreview/models/queriers.py",
           "git_blob_oid": "1a0cf5f7fd84ac35bf57af20348ae1ee3a37590f",
           "bytes": 6066,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/src/queriers.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "asreview/models/stoppers.py",
           "git_blob_oid": "e536df5decf4afe66776277774d271282016fa9d",
           "bytes": 7072,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/src/stoppers.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "asreview/simulation/simulate.py",
           "git_blob_oid": "05ad2299594f70fa37b073ea0604e8bb26bda368",
           "bytes": 14628,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-review/tests/t18_asreview_screening.rs",
+          "modification": "adapted"
         }
       ]
     },
@@ -1936,11 +1936,11 @@
       "packet": "T19",
       "repo": "statsmodels/statsmodels",
       "source_commit": "b7ec3a7c1a448ed79d75489da4cde6c304c79a21",
-      "state": "CANDIDATE",
-      "copy_authorized": false,
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
       "basis": "PUBLIC_LICENSE",
       "license_spdx": "BSD-3-Clause",
-      "decision_ref": null,
+      "decision_ref": "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
       "notices": "THIRD_PARTY_NOTICES.md",
       "transitive": "Pinned Python wheel closure (numpy/scipy/patsy/pandas) owed at WP-16/WP-23a sandboxed research worker admission; R metafor (GPL>=2) remains dev-only oracle",
       "assets": "none",
@@ -1950,15 +1950,15 @@
           "source_path": "statsmodels/stats/meta_analysis.py",
           "git_blob_oid": "033b201ccb10fecf17e1850cb5fb9f049b56a0ae",
           "bytes": 30727,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-meta/src/lib.rs",
+          "modification": "adapted"
         },
         {
           "source_path": "statsmodels/stats/tests/test_meta.py",
           "git_blob_oid": "632b7fa6dfe0adf692bdec8d7f35cb0bcd422a6c",
           "bytes": 26120,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "product/crates/safeevidence-meta/tests/t19_meta_analysis.rs",
+          "modification": "adapted"
         }
       ]
     },
@@ -2310,11 +2310,11 @@
       "packet": "T27",
       "repo": "allenai/scifact",
       "source_commit": "68b98a56d93e0f9da0d2aab4e6c3294699a0f72e",
-      "state": "CANDIDATE",
-      "copy_authorized": false,
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
       "basis": "PUBLIC_LICENSE",
       "license_spdx": "Apache-2.0",
-      "decision_ref": null,
+      "decision_ref": "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
       "notices": "THIRD_PARTY_NOTICES.md; evaluator code Apache-2.0, claims CC-BY-4.0, abstracts ODC-By-1.0 attribution required",
       "transitive": "Benchmark-only Python evaluator (bench/scifact/); dataset tarball separate from code repo and requires explicit CC-BY-4.0 / ODC-By-1.0 notice binding",
       "assets": "SciFact claims (CC-BY-4.0) and abstracts (ODC-By-1.0) require separate dataset artifact admission",
@@ -2324,22 +2324,22 @@
           "source_path": "LICENSE.md",
           "git_blob_oid": "18a738e109d7e3b28935a75d2134c5ccd602f403",
           "bytes": 542,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "bench/scifact/LICENSE.md",
+          "modification": "none"
         },
         {
           "source_path": "verisci/evaluate/lib/data.py",
           "git_blob_oid": "881a0e91eda3c853e35aa45c0d4dc76f404ccfa6",
           "bytes": 8911,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "bench/scifact/scifact_data.py",
+          "modification": "adapted"
         },
         {
           "source_path": "verisci/evaluate/lib/metrics.py",
           "git_blob_oid": "e9b0b0ce40ff7a3ec4d43ffd3d302b6dd1acb6b5",
           "bytes": 5738,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "bench/scifact/scifact_metrics.py",
+          "modification": "adapted"
         }
       ]
     },
@@ -2400,11 +2400,11 @@
       "packet": "T28",
       "repo": "jayded/evidence-inference",
       "source_commit": "a661e8c14f973398380c8865cf2f27a535aaaf6d",
-      "state": "CANDIDATE",
-      "copy_authorized": false,
+      "state": "VERIFIED_ALLOWED",
+      "copy_authorized": true,
       "basis": "PUBLIC_LICENSE",
       "license_spdx": "MIT",
-      "decision_ref": null,
+      "decision_ref": "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
       "notices": "THIRD_PARTY_NOTICES.md; code/annotations MIT; underlying PMC Open Access articles carry per-article licenses",
       "transitive": "Benchmark-only harness (bench/evidence-inference/) for WP-15 non-gating report; never shipped in product",
       "assets": "PMC OA full-text articles require per-item license filtering before benchmark ingestion",
@@ -2414,22 +2414,22 @@
           "source_path": "LICENSE",
           "git_blob_oid": "65dfccb60c9e43e2527d262db5e6a4a2fb1047b2",
           "bytes": 1116,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "bench/evidence_inference/LICENSE",
+          "modification": "none"
         },
         {
           "source_path": "evidence_inference/models/pipeline.py",
           "git_blob_oid": "2a68f6c67a453d161e48d745c4c08fce6d41e18f",
           "bytes": 72007,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "bench/evidence_inference/ei_eval.py",
+          "modification": "adapted"
         },
         {
           "source_path": "evidence_inference/preprocess/preprocessor.py",
           "git_blob_oid": "a87366389b66a59967f2111e7a27a1518301469c",
           "bytes": 16616,
-          "dest_path": null,
-          "modification": "not_copied"
+          "dest_path": "bench/evidence_inference/ei_schema.py",
+          "modification": "adapted"
         }
       ]
     },
@@ -2943,9 +2943,9 @@
       "packet": "CRATE-product-cargo",
       "ecosystem": "cargo",
       "lockfile": "product/Cargo.lock",
-      "lockfile_lf_sha256": "9999752eacee0938e8995683a0842f8e74b7bd428415e2c53af86f0a5595a7df",
-      "lockfile_lf_bytes": 41590,
-      "package_count": 179,
+      "lockfile_lf_sha256": "b3633af9fd4c94b9cd68ad361e03824a4db05fac2d3ee9ef38e8d5e18ec87417",
+      "lockfile_lf_bytes": 41909,
+      "package_count": 181,
       "state": "VERIFIED_ALLOWED",
       "copy_authorized": true,
       "basis": "PUBLIC_LICENSE",
@@ -2970,9 +2970,9 @@
       "packet": "CRATE-desktop-cargo",
       "ecosystem": "cargo",
       "lockfile": "product/apps/desktop/src-tauri/Cargo.lock",
-      "lockfile_lf_sha256": "629d5224223e0025bcb2318267b0420ffca840d79d49a1e192c11c2ec6184a55",
-      "lockfile_lf_bytes": 116802,
-      "package_count": 462,
+      "lockfile_lf_sha256": "1f0441a527f5f6dbe8d23200a1ae515515ca5d6fce40dc5b85631541e572b5c8",
+      "lockfile_lf_bytes": 117135,
+      "package_count": 464,
       "state": "VERIFIED_ALLOWED",
       "copy_authorized": true,
       "basis": "PUBLIC_LICENSE",

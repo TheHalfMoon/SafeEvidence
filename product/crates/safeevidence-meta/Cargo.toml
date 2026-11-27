@@ -1,0 +1,12 @@
+[package]
+name = "safeevidence-meta"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+safeevidence-contracts = { path = "../safeevidence-contracts" }
+serde = { version = "=1.0.229", features = ["derive"] }
+thiserror = "=2.0.21"
