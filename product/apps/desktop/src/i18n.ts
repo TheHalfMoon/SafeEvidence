@@ -78,6 +78,8 @@ export type UiCatalogue = {
   protocolHeading: string;
   protocolVersionLabel: string;
   auditEventsLabel: string;
+  spanAuditLabel: string;
+  offsetProjectionLabel: string;
   extractionsHeading: string;
   colOutcome: string;
   colEstimate: string;
@@ -98,6 +100,11 @@ export type UiCatalogue = {
   vaultDomainLabel: string;
   schemaDigestLabel: string;
   storeEstablishedLabel: string;
+  recordDoctorLabel: string;
+  mimeQuarantineLabel: string;
+  recoveryEnvelopeLabel: string;
+  privateDataReadyLabel: string;
+  residualRiskHeading: string;
   incognitoDefaultLabel: string;
   outboundOptInLabel: string;
   clinicalAuthorizedLabel: string;
@@ -153,6 +160,8 @@ export const UI_TEXT: Record<Locale, UiCatalogue> = {
     protocolHeading: "Locked Review Protocol",
     protocolVersionLabel: "Protocol version",
     auditEventsLabel: "Hash-chained audit events",
+    spanAuditLabel: "Opaque span-overlap audit",
+    offsetProjectionLabel: "Verified scalar-offset adapter formats",
     extractionsHeading: "Quote-Anchored Structured Extractions",
     colOutcome: "Outcome",
     colEstimate: "Anchored estimate",
@@ -173,6 +182,11 @@ export const UI_TEXT: Record<Locale, UiCatalogue> = {
     vaultDomainLabel: "Vault cryptographic domain",
     schemaDigestLabel: "Proof-store schema digest",
     storeEstablishedLabel: "Encrypted local vault established",
+    recordDoctorLabel: "Append-only record-semantics doctor verified",
+    mimeQuarantineLabel: "Hostile-MIME magic-byte quarantine active",
+    recoveryEnvelopeLabel: "Argon2id recovery envelope enrolled",
+    privateDataReadyLabel: "Private-data readiness authorized",
+    residualRiskHeading: "Open OS-level residual-risk classes",
     incognitoDefaultLabel: "Ephemeral WebView profile default",
     outboundOptInLabel: "Saved-query outbound surveillance opt-in",
     clinicalAuthorizedLabel: "Clinical patient-care use authorized",
@@ -224,6 +238,8 @@ export const UI_TEXT: Record<Locale, UiCatalogue> = {
     protocolHeading: "\u0628\u0631\u0648\u062A\u0648\u0643\u0648\u0644 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0642\u0641\u0644",
     protocolVersionLabel: "\u0625\u0635\u062F\u0627\u0631 \u0627\u0644\u0628\u0631\u0648\u062A\u0648\u0643\u0648\u0644",
     auditEventsLabel: "\u0623\u062D\u062F\u0627\u062B \u0627\u0644\u062A\u062F\u0642\u064A\u0642 \u0627\u0644\u0645\u062A\u0633\u0644\u0633\u0644\u0629",
+    spanAuditLabel: "\u062A\u062F\u0642\u064A\u0642 \u062A\u062F\u0627\u062E\u0644 \u0627\u0644\u0646\u0637\u0627\u0642\u0627\u062A \u0627\u0644\u0645\u0639\u062A\u0645",
+    offsetProjectionLabel: "\u0635\u064A\u063A \u0645\u062D\u0648\u0644\u0627\u062A \u0627\u0644\u0625\u0632\u0627\u062D\u0629 \u0627\u0644\u0645\u062A\u062D\u0642\u0642 \u0645\u0646\u0647\u0627",
     extractionsHeading: "\u0627\u0644\u0627\u0633\u062A\u062E\u0644\u0627\u0635\u0627\u062A \u0627\u0644\u0645\u0631\u062A\u0628\u0637\u0629 \u0628\u0627\u0642\u062A\u0628\u0627\u0633 \u062D\u0631\u0641\u064A",
     colOutcome: "\u0627\u0644\u0646\u062A\u064A\u062C\u0629",
     colEstimate: "\u0627\u0644\u062A\u0642\u062F\u064A\u0631 \u0627\u0644\u0645\u0648\u062B\u0642",
@@ -244,6 +260,11 @@ export const UI_TEXT: Record<Locale, UiCatalogue> = {
     vaultDomainLabel: "\u0646\u0637\u0627\u0642 \u062A\u0634\u0641\u064A\u0631 \u0627\u0644\u062E\u0632\u0646\u0629",
     schemaDigestLabel: "\u0628\u0635\u0645\u0629 \u0645\u062E\u0637\u0637 \u0645\u062E\u0632\u0646 \u0627\u0644\u0625\u062B\u0628\u0627\u062A",
     storeEstablishedLabel: "\u062A\u0623\u0633\u064A\u0633 \u0627\u0644\u062E\u0632\u0646\u0629 \u0627\u0644\u0645\u062D\u0644\u064A\u0629 \u0627\u0644\u0645\u0634\u0641\u0631\u0629",
+    recordDoctorLabel: "\u0627\u062C\u062A\u064A\u0627\u0632 \u0641\u062D\u0635 \u0633\u0644\u0627\u0645\u0629 \u0627\u0644\u0633\u062C\u0644\u0627\u062A \u063A\u064A\u0631 \u0627\u0644\u0642\u0627\u0628\u0644\u0629 \u0644\u0644\u062A\u0639\u062F\u064A\u0644",
+    mimeQuarantineLabel: "\u062A\u0641\u0639\u064A\u0644 \u0639\u0632\u0644 \u0627\u0644\u0645\u0644\u0641\u0627\u062A \u0627\u0644\u062E\u0628\u064A\u062B\u0629",
+    recoveryEnvelopeLabel: "\u062A\u0633\u062C\u064A\u0644 \u0645\u0638\u0631\u0648\u0641 \u0627\u0644\u0627\u0633\u062A\u0631\u062F\u0627\u062F Argon2id",
+    privateDataReadyLabel: "\u062C\u0627\u0647\u0632\u064A\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062E\u0627\u0635\u0629 \u0645\u0639\u062A\u0645\u062F\u0629",
+    residualRiskHeading: "\u0641\u0626\u0627\u062A \u0627\u0644\u0645\u062E\u0627\u0637\u0631 \u0627\u0644\u0645\u062A\u0628\u0642\u064A\u0629 \u0639\u0644\u0649 \u0645\u0633\u062A\u0648\u0649 \u0627\u0644\u0646\u0638\u0627\u0645",
     incognitoDefaultLabel: "\u0627\u0644\u0648\u0636\u0639 \u0627\u0644\u0645\u0624\u0642\u062A \u0644\u0639\u0627\u0631\u0636 \u0627\u0644\u0648\u064A\u0628",
     outboundOptInLabel: "\u0627\u0644\u0645\u0648\u0627\u0641\u0642\u0629 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A\u0629 \u0644\u0644\u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u062E\u0627\u0631\u062C\u064A\u0629",
     clinicalAuthorizedLabel: "\u0627\u0644\u062A\u0635\u0631\u064A\u062D \u0628\u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645 \u0627\u0644\u0633\u0631\u064A\u0631\u064A",

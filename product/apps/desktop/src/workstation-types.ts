@@ -55,6 +55,10 @@ export type DeepReviewPane = {
   protocolDigestPrefix: string;
   auditEventCount: number;
   auditBundleDigestPrefix: string;
+  spanAuditSpanCount: number;
+  spanAuditOverlapCount: number;
+  spanAuditFingerprintPrefix: string;
+  offsetProjectionFormatsVerified: number;
   extractions: ExtractionRow[];
   certaintyOutcome: string;
   certaintyLevel: CertaintyKey;
@@ -79,6 +83,11 @@ export type PrivacyDiagnosticsPane = {
   vaultDomainVersion: string;
   schemaDigestPrefix: string;
   storeEstablished: boolean;
+  recordSemanticsDoctorPassed: boolean;
+  hostileMimeQuarantineActive: boolean;
+  recoveryEnvelopeEnrolled: boolean;
+  privateDataReady: false;
+  openResidualRiskClasses: string[];
   webviewIncognitoDefault: boolean;
   outboundSurveillanceDefaultOptIn: false;
   clinicalUseAuthorized: false;
@@ -248,6 +257,12 @@ export function parseWorkstationOverview(value: unknown): WorkstationOverview {
     !isNonEmptyString(deepReview.protocolDigestPrefix) ||
     !isCount(deepReview.auditEventCount) ||
     !isNonEmptyString(deepReview.auditBundleDigestPrefix) ||
+    !isCount(deepReview.spanAuditSpanCount) ||
+    deepReview.spanAuditSpanCount === 0 ||
+    !isCount(deepReview.spanAuditOverlapCount) ||
+    !isNonEmptyString(deepReview.spanAuditFingerprintPrefix) ||
+    !isCount(deepReview.offsetProjectionFormatsVerified) ||
+    deepReview.offsetProjectionFormatsVerified === 0 ||
     !Array.isArray(deepReview.extractions) ||
     !isNonEmptyString(deepReview.certaintyOutcome) ||
     typeof deepReview.certaintyLevel !== "string" ||
@@ -281,6 +296,13 @@ export function parseWorkstationOverview(value: unknown): WorkstationOverview {
     !isNonEmptyString(privacyAndDiagnostics.vaultDomainVersion) ||
     !isNonEmptyString(privacyAndDiagnostics.schemaDigestPrefix) ||
     typeof privacyAndDiagnostics.storeEstablished !== "boolean" ||
+    typeof privacyAndDiagnostics.recordSemanticsDoctorPassed !== "boolean" ||
+    typeof privacyAndDiagnostics.hostileMimeQuarantineActive !== "boolean" ||
+    typeof privacyAndDiagnostics.recoveryEnvelopeEnrolled !== "boolean" ||
+    privacyAndDiagnostics.privateDataReady !== false ||
+    !Array.isArray(privacyAndDiagnostics.openResidualRiskClasses) ||
+    privacyAndDiagnostics.openResidualRiskClasses.length === 0 ||
+    !privacyAndDiagnostics.openResidualRiskClasses.every(isNonEmptyString) ||
     typeof privacyAndDiagnostics.webviewIncognitoDefault !== "boolean" ||
     privacyAndDiagnostics.outboundSurveillanceDefaultOptIn !== false ||
     privacyAndDiagnostics.clinicalUseAuthorized !== false
@@ -304,6 +326,10 @@ export function parseWorkstationOverview(value: unknown): WorkstationOverview {
       protocolDigestPrefix: deepReview.protocolDigestPrefix,
       auditEventCount: deepReview.auditEventCount,
       auditBundleDigestPrefix: deepReview.auditBundleDigestPrefix,
+      spanAuditSpanCount: deepReview.spanAuditSpanCount,
+      spanAuditOverlapCount: deepReview.spanAuditOverlapCount,
+      spanAuditFingerprintPrefix: deepReview.spanAuditFingerprintPrefix,
+      offsetProjectionFormatsVerified: deepReview.offsetProjectionFormatsVerified,
       extractions: deepReview.extractions.map(parseExtractionRow),
       certaintyOutcome: deepReview.certaintyOutcome,
       certaintyLevel: deepReview.certaintyLevel as CertaintyKey,
@@ -326,6 +352,11 @@ export function parseWorkstationOverview(value: unknown): WorkstationOverview {
       vaultDomainVersion: privacyAndDiagnostics.vaultDomainVersion,
       schemaDigestPrefix: privacyAndDiagnostics.schemaDigestPrefix,
       storeEstablished: privacyAndDiagnostics.storeEstablished,
+      recordSemanticsDoctorPassed: privacyAndDiagnostics.recordSemanticsDoctorPassed,
+      hostileMimeQuarantineActive: privacyAndDiagnostics.hostileMimeQuarantineActive,
+      recoveryEnvelopeEnrolled: privacyAndDiagnostics.recoveryEnvelopeEnrolled,
+      privateDataReady: false,
+      openResidualRiskClasses: privacyAndDiagnostics.openResidualRiskClasses,
       webviewIncognitoDefault: privacyAndDiagnostics.webviewIncognitoDefault,
       outboundSurveillanceDefaultOptIn: false,
       clinicalUseAuthorized: false,

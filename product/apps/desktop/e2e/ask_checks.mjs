@@ -272,6 +272,8 @@ export async function runAskChecks(driver) {
     assert.match(reviewText, /PROPOSED/);
     assert.match(reviewText, /CONFIRMED/);
     assert.match(reviewText, /Moderate/);
+    assert.match(reviewText, /Opaque span-overlap audit/);
+    assert.match(reviewText, /Verified scalar-offset adapter formats/);
     assert.doesNotMatch(reviewText, /\d\s*%|percent|confidence/i);
 
     await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
@@ -290,6 +292,9 @@ export async function runAskChecks(driver) {
     );
     assert.match(privacyText, /NETWORK_LOCKED/);
     assert.match(privacyText, /SAFEVD-v1/);
+    assert.match(privacyText, /Append-only record-semantics doctor verified/);
+    assert.match(privacyText, /Hostile-MIME magic-byte quarantine active/);
+    assert.match(privacyText, /core_dump/);
     assert.doesNotMatch(privacyText, /\d\s*%|percent|confidence/i);
 
     await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }))`);

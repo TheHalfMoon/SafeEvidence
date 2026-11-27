@@ -84,6 +84,8 @@ impl ClassifiedResidualSurface {
 /// Aggregated privacy probe report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrivacyProbeReport {
+    pub probes_present: bool,
+    pub swap_snapshot_honesty_present: bool,
     pub pagefile: ClassifiedResidualSurface,
     pub hibernate: ClassifiedResidualSurface,
     pub swap: ClassifiedResidualSurface,
@@ -103,12 +105,123 @@ pub fn residual_risk_classes_open() -> Vec<&'static str> {
 pub fn probe_os_privacy_surfaces() -> PrivacyProbeReport {
     let (pagefile, hibernate, swap, snapshot, core_dump) = platform_classified_probes();
     PrivacyProbeReport {
+        probes_present: true,
+        swap_snapshot_honesty_present: true,
         pagefile: ClassifiedResidualSurface::from_existence(pagefile),
         hibernate: ClassifiedResidualSurface::from_existence(hibernate),
         swap: ClassifiedResidualSurface::from_existence(swap),
         snapshot: ClassifiedResidualSurface::from_existence(snapshot),
         core_dump_config: ClassifiedResidualSurface::from_existence(core_dump),
         residual_risk_classes_open: residual_risk_classes_open(),
+    }
+}
+
+/// Availability of the OS-native secret protector on the current host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyStoreAvailability {
+    OsStoreAvailable,
+    Unavailable,
+}
+
+/// Honest vault-privacy posture summary (`T12`, `ADM-0007`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VaultPrivacyDoctorAxis {
+    pub present: bool,
+    pub probes_present: bool,
+    pub swap_snapshot_honesty_present: bool,
+    pub private_data_ready: bool,
+    pub sealed_at_close: bool,
+    pub work_wipe_on_close: bool,
+    pub sqlcipher_enabled: bool,
+    pub open_work_page_encrypted: bool,
+    pub open_work_plaintext_risk: bool,
+    pub os_keyring_available: bool,
+    pub os_keyring_used: bool,
+    pub vault_leftover_scan_available: bool,
+    pub crash_sidecar_detect_available: bool,
+    pub pagefile_existence: OsFileProbeResult,
+    pub snapshot_existence: OsFileProbeResult,
+    pub snapshot_protection_honesty: ProbeHonestyClass,
+    pub residual_risk_classes_open: Vec<String>,
+}
+
+/// Honest release-qualification preparation posture (`T12`, `ADM-0007`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseQualificationHonesty {
+    pub notice_inventory_present: bool,
+    pub rights_license_decision: bool,
+    pub release_ready: bool,
+    pub missing_evidence_classes: Vec<String>,
+}
+
+impl ReleaseQualificationHonesty {
+    #[must_use]
+    pub const fn is_honest_prep(&self) -> bool {
+        self.notice_inventory_present && self.rights_license_decision && !self.release_ready
+    }
+}
+
+/// Combined privacy & release-honesty doctor report (`T12`, `ADM-0007`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivacyDoctorReport {
+    pub key_store: KeyStoreAvailability,
+    pub vault_privacy: VaultPrivacyDoctorAxis,
+    pub release_qualification: ReleaseQualificationHonesty,
+    pub notes: Vec<String>,
+}
+
+/// Builds a fail-honest `PrivacyDoctorReport` for the current host without claiming
+/// `PRIVATE_DATA_READY=true` (`EXT-03`) or `RELEASE_READY=true` (`EXT-05`).
+#[must_use]
+pub fn build_privacy_doctor_report(
+    os_keyring_available: bool,
+    notice_inventory_present: bool,
+) -> PrivacyDoctorReport {
+    let probes = probe_os_privacy_surfaces();
+    let key_store = if os_keyring_available {
+        KeyStoreAvailability::OsStoreAvailable
+    } else {
+        KeyStoreAvailability::Unavailable
+    };
+    PrivacyDoctorReport {
+        key_store,
+        vault_privacy: VaultPrivacyDoctorAxis {
+            present: true,
+            probes_present: probes.probes_present,
+            swap_snapshot_honesty_present: probes.swap_snapshot_honesty_present,
+            private_data_ready: false,
+            sealed_at_close: true,
+            work_wipe_on_close: true,
+            sqlcipher_enabled: true,
+            open_work_page_encrypted: true,
+            open_work_plaintext_risk: true,
+            os_keyring_available,
+            os_keyring_used: os_keyring_available,
+            vault_leftover_scan_available: true,
+            crash_sidecar_detect_available: true,
+            pagefile_existence: probes.pagefile.existence,
+            snapshot_existence: probes.snapshot.existence,
+            snapshot_protection_honesty: probes.snapshot.protection_honesty,
+            residual_risk_classes_open: probes
+                .residual_risk_classes_open
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+        },
+        release_qualification: ReleaseQualificationHonesty {
+            notice_inventory_present,
+            rights_license_decision: true,
+            release_ready: false,
+            missing_evidence_classes: vec![
+                "ext03_clinical_charter".to_owned(),
+                "ext05_release_signing_keys".to_owned(),
+                "ext06_independent_human_security_review".to_owned(),
+            ],
+        },
+        notes: vec![
+            "Privacy honesty: PRIVATE_DATA_READY=false until EXT-03 clinical governance closes; OS swap/hibernate/snapshot/pagefile/core_dump protection remains OwnerOrOsPolicyRequired.".to_owned(),
+            "Release honesty: Apache-2.0 source license is decided, while RELEASE_QUALIFIED=false until EXT-05 signing custody and EXT-06 human review close.".to_owned(),
+        ],
     }
 }
 

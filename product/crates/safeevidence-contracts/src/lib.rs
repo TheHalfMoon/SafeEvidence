@@ -3,10 +3,13 @@
 pub mod appraisal;
 pub mod assurance;
 pub mod bilingual;
+pub mod document_intake;
 pub mod evidence;
 pub mod objects;
+pub mod offset_projection;
 pub mod proof;
 pub mod review_protocol;
+pub mod span_audit;
 pub mod study;
 pub mod study_linkage;
 pub mod surveillance;
