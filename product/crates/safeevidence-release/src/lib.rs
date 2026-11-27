@@ -11,6 +11,8 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub mod staging;
+
 /// SBOM document format identifier (distinct from the public project license).
 pub const SBOM_FORMAT: &str = "CycloneDX";
 /// CycloneDX spec version emitted by the generator.

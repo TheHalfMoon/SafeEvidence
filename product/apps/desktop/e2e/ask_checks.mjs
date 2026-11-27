@@ -333,6 +333,40 @@ export async function runAskChecks(driver) {
     );
     passed("Arabic locale toggle switches document to RTL, reverses tab arrow direction, and restores English LTR");
 
+    // Clipboard non-exposure check: verify Ask, citation span-jump, and Privacy tab inspection never
+    // invoke navigator.clipboard.writeText/write, document.execCommand("copy"), or auto-select sensitive text.
+    await page.eval(`(() => {
+      window.__seClipboardOps = [];
+      const origExec = document.execCommand?.bind(document);
+      document.execCommand = function(cmd, ...rest) {
+        window.__seClipboardOps.push(String(cmd));
+        return origExec ? origExec(cmd, ...rest) : false;
+      };
+      if (navigator.clipboard) {
+        for (const method of ["writeText", "write"]) {
+          if (typeof navigator.clipboard[method] === "function") {
+            navigator.clipboard[method] = async (...args) => {
+              window.__seClipboardOps.push(method + ":" + JSON.stringify(args));
+            };
+          }
+        }
+      }
+      window.getSelection()?.removeAllRanges();
+    })()`);
+    await ask(page, ANSWERED);
+    await page.eval(`document.querySelector(".citations button").click()`);
+    await waitFor(
+      () => page.eval(`document.activeElement?.tagName === "MARK"`),
+      "focus on cited mark during clipboard check",
+    );
+    const clipState = await page.eval(`({
+      ops: window.__seClipboardOps,
+      selectedText: window.getSelection()?.toString() ?? "",
+    })`);
+    assert.deepEqual(clipState.ops, [], `unexpected clipboard writes: ${clipState.ops.join(", ")}`);
+    assert.equal(clipState.selectedText, "", "span jump must not auto-select sensitive text");
+    passed("Ask and citation span-jump perform zero clipboard writes and leave selection empty");
+
     page.close();
     await driver.stop({ mustBeRunning: true });
     page = await driver.launch(dataDir);
@@ -363,6 +397,18 @@ export async function runAskChecks(driver) {
     assert.ok(webview.scanned > 0, "the web view left files to scan");
     assert.deepEqual(webview.found, [], `what the page saw is in ${webview.found.join(", ")}`);
     passed(`the web view's ${webview.scanned} files hold none of the typed question, answer, cited span or proof id`);
+
+    // Full dataDir & Crashpad/Minidump residue scan after forced process kill: verifies zero plaintext
+    // markers across encrypted vault files, lockfiles, Crashpad/minidump artifacts, and sibling dirs.
+    const fullDataDir = scanForMarkers(dataDir, markers);
+    assert.deepEqual(fullDataDir.unreadable, []);
+    assert.ok(fullDataDir.scanned > webview.scanned, "vault and sibling files in dataDir were scanned");
+    assert.deepEqual(
+      fullDataDir.found,
+      [],
+      `plaintext marker leaked in dataDir / crash artifacts: ${fullDataDir.found.join(", ")}`,
+    );
+    passed(`all ${fullDataDir.scanned} dataDir, vault, and Crashpad files hold zero plaintext markers after forced kill`);
     assert.equal(checks.length, driver.expectedChecks, "every check this driver should run has run");
     failed = false;
   } catch (error) {

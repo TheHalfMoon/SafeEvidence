@@ -49,7 +49,7 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
         DigestSha256::of(json_b.as_bytes())
     );
 
-    // Verify all 6 split identities and passing gates:
+    // Verify all 7 split identities and passing gates:
     let split_ids: Vec<&str> = run_a
         .body
         .splits
@@ -65,6 +65,7 @@ fn ta23_two_independent_runs_produce_identical_digests_and_record_split_identiti
             "ta10-perturbation-gate",
             "ta07-study-independence",
             "ta17-extraction-and-assurance",
+            "ta27-prompt-injection",
         ]
     );
     for split in &run_a.body.splits {

@@ -22,6 +22,7 @@ pub enum ClaimVerificationDefect {
     NegationOrPolarityFlip,
     UnitMismatch,
     ComparatorSwap,
+    EffectMeasureSwap,
     TimeframeSwap,
     PopulationOrSubgroupSwap,
     UnmatchedWording,
@@ -81,6 +82,17 @@ const COMPARATOR_PHRASES: &[&str] = &[
     "sham",
     "no treatment",
     "waitlist",
+];
+
+const EFFECT_MEASURE_PHRASES: &[&str] = &[
+    "relative risk",
+    "absolute risk",
+    "risk difference",
+    "odds ratio",
+    "hazard ratio",
+    "mean difference",
+    "rate ratio",
+    "number needed to treat",
 ];
 
 const POPULATION_MARKERS: &[&str] = &[
@@ -280,6 +292,15 @@ pub fn verify_claim_against_source(
             && present_phrases(&s_col, COMPARATOR_PHRASES) == claim_comparators
     }) {
         return Err(ClaimVerificationDefect::ComparatorSwap);
+    }
+
+    let claim_measures = present_phrases(&claim_collapsed, EFFECT_MEASURE_PHRASES);
+    if !any_sentence(&|s| {
+        let (s_col, _) = normalize_words(s);
+        extract_numeric_facets(s) == claim_nums
+            && present_phrases(&s_col, EFFECT_MEASURE_PHRASES) == claim_measures
+    }) {
+        return Err(ClaimVerificationDefect::EffectMeasureSwap);
     }
 
     let claim_populations = present_phrases(&claim_collapsed, POPULATION_MARKERS);
