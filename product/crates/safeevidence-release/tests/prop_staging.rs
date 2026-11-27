@@ -156,6 +156,32 @@ fn case_colliding_paths_and_forged_7axis_research_manifests_fail_closed() {
     .unwrap_err();
     assert!(err.contains("case-colliding"));
 
+    // File-vs-directory prefix collision ("bin/safeevidence.exe" vs "bin/safeevidence.exe/sub.dll") fails closed:
+    let prefix_colliding = vec![
+        StagedArtifactEntry {
+            name: "artifact-a".to_owned(),
+            relative_path: "bin/safeevidence.exe".to_owned(),
+            byte_len: payload.len() as u64,
+            sha256: sha.clone(),
+        },
+        StagedArtifactEntry {
+            name: "artifact-b".to_owned(),
+            relative_path: "bin/safeevidence.exe/sub.dll".to_owned(),
+            byte_len: payload.len() as u64,
+            sha256: sha.clone(),
+        },
+    ];
+    let prefix_err = build_unsigned_staging_manifest(
+        &dir.0,
+        prefix_colliding,
+        &sbom_two,
+        &expected_two,
+        REAL_NOTICES,
+        REAL_TAURI_CONF,
+    )
+    .unwrap_err();
+    assert!(prefix_err.contains("collides with directory prefix"));
+
     // 2. Valid 7-axis ResearchReleaseManifest builds cleanly and enforces all false external flags:
     let (sbom_one, expected_one) = build_fixture_sbom(vec![ReleaseArtifact {
         name: "safeevidence-desktop".to_owned(),
@@ -202,6 +228,23 @@ fn case_colliding_paths_and_forged_7axis_research_manifests_fail_closed() {
     let research_json = research.to_canonical_json().unwrap();
     let parsed: ResearchReleaseManifest = serde_json::from_str(&research_json).unwrap();
     assert_eq!(parsed, research);
+    assert_eq!(
+        safeevidence_release::staging::verify_research_release_manifest(
+            &research_json,
+            &unsigned,
+            &bench_sha
+        )
+        .unwrap(),
+        research
+    );
+    assert!(
+        safeevidence_release::staging::verify_research_release_manifest(
+            &research_json,
+            &unsigned,
+            &"0".repeat(64)
+        )
+        .is_err()
+    );
 
     // Every forbidden external claim fails closed on deserialization:
     for forbidden_flag in [

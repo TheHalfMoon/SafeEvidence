@@ -404,38 +404,86 @@ class AdmissionTests(unittest.TestCase):
         )
 
     def test_public_license_adr_ref_and_bench_only_licenses(self):
-        adr_rel = "docs/adr/0004-public-license.md"
+        adr_rel = (
+            "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md"
+        )
+        other_adr = "docs/adr/0001-permanently-remove-dal-and-adopt-clean-room-calibration-math.md"
         (self.root / "docs/adr").mkdir(parents=True, exist_ok=True)
-        (self.root / adr_rel).write_text("# ADR\n", encoding="utf-8")
+        (self.root / adr_rel).write_text("# ADR-0004\n", encoding="utf-8")
+        (self.root / other_adr).write_text("# ADR-0001\n", encoding="utf-8")
         (self.root / "bench/scifact").mkdir(parents=True, exist_ok=True)
         (self.root / "bench/scifact/claims.jsonl").write_bytes(BYTES)
 
-        pub_row = self.mutated(basis="PUBLIC_LICENSE", decision_ref=adr_rel)
+        pub_row = self.mutated(
+            repo="AbdulazizShehri/MedScale",
+            basis="PUBLIC_LICENSE",
+            decision_ref=adr_rel,
+        )
         self.assertEqual(self.errors(pub_row), [])
 
-        # Missing ADR file or non-PUBLIC_LICENSE basis fails closed:
+        # Unrelated ADR path, missing ADR file, or non-PUBLIC_LICENSE basis fails closed:
         self.assertTrue(
             self.errors(
                 self.mutated(
-                    basis="PUBLIC_LICENSE", decision_ref="docs/adr/9999-missing.md"
+                    repo="AbdulazizShehri/MedScale",
+                    basis="PUBLIC_LICENSE",
+                    decision_ref=other_adr,
                 )
             )
         )
         self.assertTrue(
             self.errors(
-                self.mutated(basis="FOUNDER_OWNED", decision_ref=adr_rel)
+                self.mutated(
+                    repo="AbdulazizShehri/MedScale",
+                    basis="PUBLIC_LICENSE",
+                    decision_ref="docs/adr/9999-missing.md",
+                )
             )
         )
         self.assertTrue(
             self.errors(
                 self.mutated(
-                    basis="SEPARATE_PERMISSION_VERIFIED", decision_ref=adr_rel
+                    repo="AbdulazizShehri/MedScale",
+                    basis="FOUNDER_OWNED",
+                    decision_ref=adr_rel,
                 )
             )
         )
+        self.assertTrue(
+            self.errors(
+                self.mutated(
+                    repo="AbdulazizShehri/MedScale",
+                    basis="SEPARATE_PERMISSION_VERIFIED",
+                    decision_ref=adr_rel,
+                )
+            )
+        )
+
+        # Forged PUBLIC_LICENSE rows for unverified, copyleft, unlicensed, or dropped repos fail closed:
+        for bad_repo, bad_pkt in [
+            ("ijmarshall/trialstreamer", "T35"),
+            ("bwallace/RRnlp", "T28b"),
+            ("dwadden/multivers", "T27b"),
+            ("ijmarshall/robotreviewer", "T34"),
+            ("some-org/unverified-private-repo", "T99"),
+        ]:
+            self.assertTrue(
+                self.errors(
+                    self.mutated(
+                        repo=bad_repo,
+                        packet=bad_pkt,
+                        basis="PUBLIC_LICENSE",
+                        license_spdx="MIT",
+                        decision_ref=adr_rel,
+                    )
+                ),
+                f"{bad_repo} ({bad_pkt}) must fail closed",
+            )
 
         # CC-BY-4.0 allowed strictly under bench/, denied under product/:
         bench_row = self.mutated(
+            repo="allenai/scifact",
+            packet="T27",
             basis="PUBLIC_LICENSE",
             license_spdx="CC-BY-4.0",
             decision_ref=adr_rel,
@@ -453,6 +501,8 @@ class AdmissionTests(unittest.TestCase):
         self.assertTrue(
             self.errors(
                 self.mutated(
+                    repo="allenai/scifact",
+                    packet="T27",
                     basis="PUBLIC_LICENSE",
                     license_spdx="CC-BY-4.0",
                     decision_ref=adr_rel,

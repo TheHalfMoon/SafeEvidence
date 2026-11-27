@@ -29,6 +29,9 @@ pub const WILSON_Z_95: f64 = 1.959_963_984_540_054;
 /// Default equal-width bin count for reliability diagrams (`ECE` / `MCE`).
 pub const DEFAULT_CALIBRATION_BINS: usize = 10;
 
+/// Maximum permitted equal-width bin count (`NB-1` DoS allocation bound).
+pub const MAX_CALIBRATION_BINS: usize = 10_000;
+
 /// Errors returned fail-closed by [`eval_metrics`](self) functions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EvalMetricsError {
@@ -38,8 +41,10 @@ pub enum EvalMetricsError {
     InvalidScore { index: usize },
     /// Loss value is `NaN`, infinite, or outside `[0.0, 1.0]`.
     InvalidLoss { index: usize },
-    /// Calibration bin count $M == 0$.
+    /// Calibration bin count $M == 0$ or $M > \text{MAX\_CALIBRATION\_BINS}$.
     InvalidBinCount,
+    /// `case_id` or `study_cluster_id` is empty/whitespace or `case_id` is duplicated.
+    InvalidCaseIdentity { index: usize },
     /// Outcome is `Answer` or `AnswerWithCaution` without both a committed manifest and material claim.
     UnbackedCommit { index: usize },
 }
@@ -50,7 +55,13 @@ pub fn neumaier_sum<I: IntoIterator<Item = f64>>(values: I) -> f64 {
     let mut sum = 0.0_f64;
     let mut comp = 0.0_f64;
     for v in values {
+        if !v.is_finite() {
+            return v;
+        }
         let t = sum + v;
+        if !t.is_finite() {
+            return t;
+        }
         if sum.abs() >= v.abs() {
             comp += (sum - t) + v;
         } else {
@@ -83,13 +94,14 @@ pub struct SplitMix64 {
 }
 
 impl SplitMix64 {
-    /// Seeds a deterministic generator from `"safeevidence.bootstrap.v1:<domain>:<metric>"`.
+    /// Seeds a deterministic generator from injective length-prefixed `(domain, metric)` framing.
     #[must_use]
     pub fn from_domain(domain: &str, metric: &str) -> Self {
-        let mut msg = Vec::with_capacity(32 + domain.len() + metric.len());
+        let mut msg = Vec::with_capacity(48 + domain.len() + metric.len());
         msg.extend_from_slice(b"safeevidence.bootstrap.v1:");
+        msg.extend_from_slice(&(domain.len() as u64).to_be_bytes());
         msg.extend_from_slice(domain.as_bytes());
-        msg.push(b':');
+        msg.extend_from_slice(&(metric.len() as u64).to_be_bytes());
         msg.extend_from_slice(metric.as_bytes());
         let digest = DigestSha256::of(&msg);
         let bytes: [u8; 8] = digest.as_bytes()[..8].try_into().expect("8-byte prefix");
@@ -162,7 +174,7 @@ pub fn evaluate_calibration(
     if items.is_empty() {
         return Err(EvalMetricsError::EmptyDataset);
     }
-    if bin_count == 0 {
+    if bin_count == 0 || bin_count > MAX_CALIBRATION_BINS {
         return Err(EvalMetricsError::InvalidBinCount);
     }
 
@@ -327,6 +339,7 @@ pub fn evaluate_selective_prediction(
     let mut prefix_risks = Vec::with_capacity(n);
     let mut prev_count: usize = 0;
     let mut prev_loss_sum = 0.0_f64;
+    let mut prev_loss_comp = 0.0_f64;
 
     let mut idx = 0;
     while idx < n {
@@ -339,19 +352,27 @@ pub fn evaluate_selective_prediction(
         let group_len = idx - start;
         let group_loss = neumaier_sum(sorted_by_score[start..idx].iter().map(|x| x.1));
         let group_mean_loss = group_loss / group_len as f64;
+        let base_cum_loss = prev_loss_sum + prev_loss_comp;
 
         for t in 1..=group_len {
             let m = prev_count + t;
-            let expected_cum_loss = prev_loss_sum + (t as f64) * group_mean_loss;
+            let expected_cum_loss = base_cum_loss + (t as f64) * group_mean_loss;
             prefix_risks.push(expected_cum_loss / m as f64);
         }
 
         prev_count += group_len;
-        prev_loss_sum += group_loss;
+        let next_sum = prev_loss_sum + group_loss;
+        if prev_loss_sum.abs() >= group_loss.abs() {
+            prev_loss_comp += (prev_loss_sum - next_sum) + group_loss;
+        } else {
+            prev_loss_comp += (group_loss - next_sum) + prev_loss_sum;
+        }
+        prev_loss_sum = next_sum;
+        let compensated_cum = prev_loss_sum + prev_loss_comp;
         curve.push(RiskCoveragePoint {
             committed_count: prev_count,
             coverage: prev_count as f64 / n_f64,
-            selective_risk: (prev_loss_sum / prev_count as f64).clamp(0.0, 1.0),
+            selective_risk: (compensated_cum / prev_count as f64).clamp(0.0, 1.0),
             threshold_score: level_score,
         });
     }
@@ -538,7 +559,14 @@ pub fn evaluate_p00_assurance_suite(
 
     // Sort by case_id first so every output (including bootstrap order) is 100% permutation-invariant:
     let mut ordered: Vec<(usize, &P00AssuranceCase)> = cases.iter().enumerate().collect();
+    let mut seen_case_ids = std::collections::BTreeSet::new();
     for &(orig_idx, c) in &ordered {
+        if c.case_id.trim().is_empty()
+            || c.study_cluster_id.trim().is_empty()
+            || !seen_case_ids.insert(c.case_id.as_str())
+        {
+            return Err(EvalMetricsError::InvalidCaseIdentity { index: orig_idx });
+        }
         let _ = normalize_unit_score(c.selective_score, orig_idx)?;
         if c.outcome.may_commit() && (!c.committed_manifest || !c.has_material_claim) {
             return Err(EvalMetricsError::UnbackedCommit { index: orig_idx });
@@ -552,7 +580,12 @@ pub fn evaluate_p00_assurance_suite(
 
     let cal_inputs: Vec<(f64, bool)> = ordered
         .iter()
-        .map(|(_, c)| (c.selective_score, c.safe_and_supported))
+        .map(|(_, c)| {
+            (
+                c.selective_score,
+                c.safe_and_supported && !c.requires_non_commit,
+            )
+        })
         .collect();
     let calibration = evaluate_calibration(&cal_inputs, bin_count)?;
 

@@ -182,7 +182,7 @@ fn validate_artifacts(artifacts: &[StagedArtifactEntry]) -> Result<(), String> {
     }
     let mut names = BTreeSet::new();
     let mut paths = BTreeSet::new();
-    let mut lower_paths = BTreeSet::new();
+    let mut lower_paths: BTreeSet<String> = BTreeSet::new();
     let mut prev_name: Option<&str> = None;
     for entry in artifacts {
         if entry.name.trim().is_empty() {
@@ -209,7 +209,18 @@ fn validate_artifacts(artifacts: &[StagedArtifactEntry]) -> Result<(), String> {
                 entry.relative_path
             ));
         }
-        if !lower_paths.insert(entry.relative_path.to_ascii_lowercase()) {
+        let lower_rel = entry.relative_path.to_ascii_lowercase();
+        for existing in &lower_paths {
+            if lower_rel.starts_with(&format!("{existing}/"))
+                || existing.starts_with(&format!("{lower_rel}/"))
+            {
+                return Err(format!(
+                    "artifact relative_path '{}' collides with directory prefix of '{existing}'",
+                    entry.relative_path
+                ));
+            }
+        }
+        if !lower_paths.insert(lower_rel) {
             return Err(format!(
                 "case-colliding artifact relative_path '{}' is unsafe on NTFS/APFS",
                 entry.relative_path
@@ -851,6 +862,46 @@ impl ResearchReleaseManifest {
     }
 
     #[must_use]
+    pub fn source_sha(&self) -> &str {
+        &self.source_sha
+    }
+
+    #[must_use]
+    pub fn tree_sha(&self) -> &str {
+        &self.tree_sha
+    }
+
+    #[must_use]
+    pub fn unsigned_staging_manifest_sha256(&self) -> &str {
+        &self.unsigned_staging_manifest_sha256
+    }
+
+    #[must_use]
+    pub fn bench_packet_sha256(&self) -> &str {
+        &self.bench_packet_sha256
+    }
+
+    #[must_use]
+    pub const fn completed_engineering(&self) -> bool {
+        self.completed_engineering
+    }
+
+    #[must_use]
+    pub const fn independently_verified_engineering(&self) -> bool {
+        self.independently_verified_engineering
+    }
+
+    #[must_use]
+    pub const fn ai_assisted_security_qualified(&self) -> bool {
+        self.ai_assisted_security_qualified
+    }
+
+    #[must_use]
+    pub const fn automated_scientific_evaluated(&self) -> bool {
+        self.automated_scientific_evaluated
+    }
+
+    #[must_use]
     pub const fn research_release_qualified(&self) -> bool {
         self.research_release_qualified
     }
@@ -1050,4 +1101,32 @@ pub fn build_research_release_manifest(
         actual_regulatory_authorization: false,
         manifest_sha256,
     })
+}
+
+/// Cross-verifies a serialized [`ResearchReleaseManifest`] against a live verified
+/// [`UnsignedStagingManifest`] and expected `SafeEvidenceBench` packet digest (`NB-2`).
+///
+/// # Errors
+/// Fails closed if `manifest_json` fails validation or any binding (`source_sha`, `tree_sha`,
+/// `unsigned_staging_manifest_sha256`, `bench_packet_sha256`) mismatches.
+pub fn verify_research_release_manifest(
+    manifest_json: &str,
+    unsigned_staging: &UnsignedStagingManifest,
+    expected_bench_packet_sha256: &str,
+) -> Result<ResearchReleaseManifest, String> {
+    let parsed: ResearchReleaseManifest = serde_json::from_str(manifest_json)
+        .map_err(|e| format!("research release manifest error: {e}"))?;
+    if parsed.source_sha() != unsigned_staging.source_sha {
+        return Err("research manifest source_sha mismatch against unsigned_staging".to_owned());
+    }
+    if parsed.tree_sha() != unsigned_staging.tree_sha {
+        return Err("research manifest tree_sha mismatch against unsigned_staging".to_owned());
+    }
+    if parsed.unsigned_staging_manifest_sha256() != unsigned_staging.manifest_sha256() {
+        return Err("unsigned_staging_manifest_sha256 mismatch".to_owned());
+    }
+    if parsed.bench_packet_sha256() != expected_bench_packet_sha256 {
+        return Err("bench_packet_sha256 mismatch".to_owned());
+    }
+    Ok(parsed)
 }

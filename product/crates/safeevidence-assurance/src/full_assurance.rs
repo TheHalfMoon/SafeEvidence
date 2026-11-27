@@ -162,17 +162,21 @@ pub fn evaluate_full_assurance(input: &FullAssuranceInput) -> FullAssuranceDecis
         };
     }
 
-    let appraisal_confirmed_strong = input
-        .certainty_confirmation
-        .as_ref()
-        .is_some_and(AppraisalConfirmation::is_human_confirmed)
+    let human_confirmed = matches!(
+        &input.certainty_confirmation,
+        Some(AppraisalConfirmation::Confirmed {
+            authorized_by,
+            confirmed_at_utc,
+        }) if !authorized_by.trim().is_empty() && !confirmed_at_utc.trim().is_empty()
+    );
+    let appraisal_confirmed_strong = human_confirmed
         && matches!(
             input.certainty_level,
             Some(CertaintyLevel::High | CertaintyLevel::Moderate)
         )
-        && !matches!(
+        && matches!(
             input.worst_risk_of_bias,
-            Some(BiasLevel::Serious | BiasLevel::Critical | BiasLevel::High)
+            Some(BiasLevel::Low | BiasLevel::SomeConcerns | BiasLevel::Moderate)
         );
 
     if appraisal_confirmed_strong && input.applicable_independent_studies >= 2 {

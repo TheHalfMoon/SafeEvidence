@@ -963,6 +963,172 @@ impl ProofStore {
         )
     }
 
+    /// Executes an entire living-surveillance update cycle (`advance_epoch` plus all batch events)
+    /// inside a single SQLite `IMMEDIATE` transaction so any invalid retraction, retired rights
+    /// grant, duplicate amendment ID, or source conflict rolls back the entire cycle atomically.
+    pub(crate) fn execute_surveillance_batch(
+        &mut self,
+        new_epoch: u64,
+        events: &[safeevidence_contracts::surveillance::SurveillanceUpdateEvent],
+    ) -> Result<(), StoreError> {
+        use safeevidence_contracts::surveillance::SurveillanceUpdateEvent;
+
+        let new_epoch_i64 = epoch_value(new_epoch)?;
+        flatten(
+            self.handle
+                .immediate_transaction(|tx| -> Result<(), StoreError> {
+                    if new_epoch <= authority(tx)?.0 {
+                        return Err(StoreError::EpochMustIncrease);
+                    }
+                    tx.execute(
+                        "UPDATE authority SET epoch = ?1 WHERE id = 1",
+                        params![new_epoch_i64],
+                    )?;
+                    record_store_event(tx, "EPOCH_ADVANCED", &new_epoch.to_string())?;
+
+                    let put_src_tx =
+                        |tx: &GuardedTransaction<'_>, source_id: &str, bytes: &[u8]| {
+                            let digest = DigestSha256::of(bytes).to_hex();
+                            let existing = one(tx.query(
+                                "SELECT digest FROM sources WHERE source_id = ?1",
+                                params![source_id],
+                                |row| row.get::<_, String>(0),
+                            )?);
+                            match existing {
+                                Some(found) if found == digest => Ok(()),
+                                Some(_) => Err(StoreError::SourceConflict),
+                                None => {
+                                    tx.execute(
+                                        "INSERT INTO sources (source_id, digest, bytes) VALUES (?1, ?2, ?3)",
+                                        params![source_id, digest, bytes],
+                                    )?;
+                                    record_store_event(tx, "SOURCE_STORED", source_id)
+                                }
+                            }
+                        };
+
+                    for event in events {
+                        match event {
+                            SurveillanceUpdateEvent::RetractSource {
+                                source_id,
+                                rationale,
+                                authorized_by,
+                                recorded_time,
+                            } => {
+                                if source_id.trim().is_empty()
+                                    || rationale.trim().is_empty()
+                                    || authorized_by.trim().is_empty()
+                                    || recorded_time.value.trim().is_empty()
+                                {
+                                    return Err(StoreError::InvalidRetraction);
+                                }
+                                let encoded_time = serde_json::to_string(recorded_time)
+                                    .map_err(|e| StoreError::Corrupt(e.to_string()))?;
+                                let exists = !tx
+                                    .query(
+                                        "SELECT 1 FROM sources WHERE source_id = ?1",
+                                        params![source_id],
+                                        |row| row.get::<_, i64>(0),
+                                    )?
+                                    .is_empty();
+                                if !exists {
+                                    return Err(StoreError::SourceNotAdmitted(source_id.clone()));
+                                }
+                                let added = tx.execute(
+                                    "INSERT OR IGNORE INTO source_retractions
+                                     (source_id, rationale, authorized_by, recorded_time)
+                                     VALUES (?1, ?2, ?3, ?4)",
+                                    params![source_id, rationale, authorized_by, encoded_time],
+                                )?;
+                                if added > 0 {
+                                    record_store_event(tx, "SOURCE_RETRACTED", source_id)?;
+                                }
+                            }
+                            SurveillanceUpdateEvent::AmendSource {
+                                prior_source_id,
+                                superseding_source_id,
+                                superseding_bytes,
+                                amendment,
+                            } => {
+                                let rec_prior = amendment.prior_assertion_id.as_str();
+                                let rec_super = amendment.superseding_assertion_id.as_str();
+                                let rec_id = amendment.header.id.as_str();
+                                if prior_source_id.trim().is_empty()
+                                    || superseding_source_id.trim().is_empty()
+                                    || prior_source_id != rec_prior
+                                    || superseding_source_id != rec_super
+                                    || rec_prior == rec_super
+                                    || rec_id.trim().is_empty()
+                                    || amendment.rationale.trim().is_empty()
+                                    || amendment.authorized_by.as_str().trim().is_empty()
+                                {
+                                    return Err(StoreError::InvalidAmendment);
+                                }
+                                put_src_tx(tx, superseding_source_id, superseding_bytes)?;
+                                let encoded = serde_json::to_string(amendment)
+                                    .map_err(|e| StoreError::Corrupt(e.to_string()))?;
+                                let found = tx.query(
+                                    "SELECT source_id FROM sources WHERE source_id IN (?1, ?2)",
+                                    params![rec_prior, rec_super],
+                                    |row| row.get::<_, String>(0),
+                                )?;
+                                let reused = tx.query(
+                                    "SELECT 1 FROM amendments WHERE record_id = ?1",
+                                    params![rec_id],
+                                    |row| row.get::<_, i64>(0),
+                                )?;
+                                if found.len() != 2 || !reused.is_empty() {
+                                    return Err(StoreError::InvalidAmendment);
+                                }
+                                tx.execute(
+                                    "INSERT INTO amendments (record_id, prior_id, superseding_id, record)
+                                     VALUES (?1, ?2, ?3, ?4)",
+                                    params![rec_id, rec_prior, rec_super, encoded],
+                                )?;
+                                record_store_event(tx, "SOURCE_AMENDED", rec_prior)?;
+                            }
+                            SurveillanceUpdateEvent::RotateRightsGrant {
+                                new_grant_version,
+                                ..
+                            } => {
+                                if new_grant_version.trim().is_empty() {
+                                    return Err(StoreError::InvalidRightsGrant);
+                                }
+                                if authority(tx)?.1 != *new_grant_version {
+                                    let used = tx.query(
+                                        "SELECT 1 FROM rights_grants WHERE version = ?1",
+                                        params![new_grant_version],
+                                        |row| row.get::<_, i64>(0),
+                                    )?;
+                                    if !used.is_empty() {
+                                        return Err(StoreError::RightsGrantRetired);
+                                    }
+                                    tx.execute(
+                                        "INSERT INTO rights_grants (version) VALUES (?1)",
+                                        params![new_grant_version],
+                                    )?;
+                                    tx.execute(
+                                        "UPDATE authority SET rights_grant = ?1 WHERE id = 1",
+                                        params![new_grant_version],
+                                    )?;
+                                    record_store_event(tx, "RIGHTS_GRANT_SET", new_grant_version)?;
+                                }
+                            }
+                            SurveillanceUpdateEvent::NewTrialPublished {
+                                doc_id, summary, ..
+                            } => {
+                                if doc_id.trim().is_empty() {
+                                    return Err(StoreError::SourceConflict);
+                                }
+                                put_src_tx(tx, doc_id, summary.as_bytes())?;
+                            }
+                        }
+                    }
+                    Ok(())
+                }),
+        )
+    }
+
     /// Whether a stored source has been retracted via [`Self::retract_source`].
     ///
     /// # Errors

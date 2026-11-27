@@ -225,104 +225,43 @@ fn terms_match_canonically(left: &str, right: &str) -> bool {
     )
 }
 
-fn prevalidate_surveillance_batch(
-    store: &mut ProofStore,
-    new_epoch: u64,
+fn prevalidate_surveillance_metadata(
     events: &[SurveillanceUpdateEvent],
 ) -> Result<(), SurveillanceError> {
-    if new_epoch <= store.epoch()? {
-        return Err(SurveillanceError::Store(StoreError::EpochMustIncrease));
-    }
     for event in events {
-        match event {
-            SurveillanceUpdateEvent::RetractSource {
-                source_id,
-                rationale,
-                authorized_by,
-                ..
-            } => {
-                if source_id.trim().is_empty()
-                    || rationale.trim().is_empty()
-                    || authorized_by.trim().is_empty()
-                {
-                    return Err(SurveillanceError::Store(StoreError::InvalidRetraction));
-                }
-                if store.source(source_id)?.is_none() {
-                    return Err(SurveillanceError::Store(StoreError::SourceNotAdmitted(
-                        source_id.clone(),
-                    )));
-                }
-            }
-            SurveillanceUpdateEvent::AmendSource {
-                prior_source_id,
-                superseding_source_id,
-                superseding_bytes,
-                amendment,
-            } => {
-                if prior_source_id.trim().is_empty() || superseding_source_id.trim().is_empty() {
-                    return Err(SurveillanceError::Store(StoreError::InvalidAmendment));
-                }
-                if store.source(prior_source_id)?.is_none() {
-                    return Err(SurveillanceError::Store(StoreError::SourceNotAdmitted(
-                        prior_source_id.clone(),
-                    )));
-                }
-                if let Some(existing) = store.source(superseding_source_id)?
-                    && existing != *superseding_bytes
-                {
-                    return Err(SurveillanceError::Store(StoreError::SourceConflict));
-                }
-                if amendment.rationale.trim().is_empty() {
-                    return Err(SurveillanceError::Store(StoreError::InvalidAmendment));
-                }
-            }
-            SurveillanceUpdateEvent::RotateRightsGrant {
-                new_grant_version, ..
-            } => {
-                if new_grant_version.trim().is_empty() {
-                    return Err(SurveillanceError::Store(StoreError::InvalidRightsGrant));
-                }
-            }
-            SurveillanceUpdateEvent::NewTrialPublished {
-                doc_id,
-                study_id,
-                condition,
-                intervention,
-                summary,
-                ..
-            } => {
-                if doc_id.trim().is_empty()
-                    || study_id.trim().is_empty()
-                    || canonical_term_key(condition).is_none()
-                    || canonical_term_key(intervention).is_none()
-                    || summary.chars().any(is_forbidden_bidi_control)
-                {
-                    return Err(SurveillanceError::Serialization(
-                        "NewTrialPublished carries empty or BiDi-spoofed metadata".to_owned(),
-                    ));
-                }
-                if let Some(existing) = store.source(doc_id)?
-                    && existing != summary.as_bytes()
-                {
-                    return Err(SurveillanceError::Store(StoreError::SourceConflict));
-                }
-            }
+        if let SurveillanceUpdateEvent::NewTrialPublished {
+            doc_id,
+            study_id,
+            condition,
+            intervention,
+            summary,
+            ..
+        } = event
+            && (doc_id.trim().is_empty()
+                || study_id.trim().is_empty()
+                || canonical_term_key(condition).is_none()
+                || canonical_term_key(intervention).is_none()
+                || summary.chars().any(is_forbidden_bidi_control))
+        {
+            return Err(SurveillanceError::Serialization(
+                "NewTrialPublished carries empty or BiDi-spoofed metadata".to_owned(),
+            ));
         }
     }
     Ok(())
 }
 
 /// Applies one living-surveillance update cycle to `store` and `registry`, advancing
-/// `validity_epoch` to `new_epoch` and returning the newly emitted cause-named
-/// `SurveillanceAlert`s (`TA-19`).
+/// `validity_epoch` to `new_epoch` and executing all `ProofStore` updates inside a single atomic
+/// transaction before emitting cause-named `SurveillanceAlert`s (`TA-19`).
 pub fn apply_surveillance_cycle(
     store: &mut ProofStore,
     registry: &mut WatchRegistry,
     new_epoch: u64,
     events: &[SurveillanceUpdateEvent],
 ) -> Result<Vec<SurveillanceAlert>, SurveillanceError> {
-    prevalidate_surveillance_batch(store, new_epoch, events)?;
-    store.advance_epoch(new_epoch)?;
+    prevalidate_surveillance_metadata(events)?;
+    store.execute_surveillance_batch(new_epoch, events)?;
     let mut emitted = Vec::new();
 
     for event in events {
@@ -330,10 +269,8 @@ pub fn apply_surveillance_cycle(
             SurveillanceUpdateEvent::RetractSource {
                 source_id,
                 rationale,
-                authorized_by,
-                recorded_time,
+                ..
             } => {
-                store.retract_source(source_id, rationale, authorized_by, recorded_time)?;
                 for watch in &registry.watches {
                     if watch.cited_source_ids.iter().any(|s| s == source_id) {
                         let proof_state = match &watch.linked_proof_id {
@@ -356,11 +293,9 @@ pub fn apply_surveillance_cycle(
             SurveillanceUpdateEvent::AmendSource {
                 prior_source_id,
                 superseding_source_id,
-                superseding_bytes,
                 amendment,
+                ..
             } => {
-                store.put_source(superseding_source_id, superseding_bytes)?;
-                store.amend(amendment)?;
                 for watch in &registry.watches {
                     if watch.cited_source_ids.iter().any(|s| s == prior_source_id) {
                         let proof_state = match &watch.linked_proof_id {
@@ -387,7 +322,6 @@ pub fn apply_surveillance_cycle(
                 new_grant_version,
                 reason,
             } => {
-                store.set_rights_grant(new_grant_version)?;
                 for watch in &registry.watches {
                     let proof_state = match &watch.linked_proof_id {
                         Some(pid) => Some(store.read(pid)?.state),
@@ -413,7 +347,6 @@ pub fn apply_surveillance_cycle(
                 contradicts_existing,
                 summary,
             } => {
-                store.put_source(doc_id, summary.as_bytes())?;
                 for watch in &registry.watches {
                     if terms_match_canonically(&watch.condition, condition)
                         && terms_match_canonically(&watch.intervention, intervention)

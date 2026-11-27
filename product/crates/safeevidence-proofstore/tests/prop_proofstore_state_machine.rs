@@ -203,6 +203,42 @@ fn vocalized_arabic_watch_matching_and_atomic_batch_prevalidation_hold() {
     assert_eq!(alerts.len(), 1);
     assert_eq!(alerts[0].watch_id, "watch-ar-1");
     assert_eq!(alerts[0].cause_code, AlertCauseCode::NewContradictingTrial);
+
+    // 3. Retired rights-grant rotation at the end of a multi-event batch rolls back the ENTIRE
+    // SQLite IMMEDIATE transaction (epoch stays 3, doc-1 stays un-retracted!):
+    store.advance_epoch(3).unwrap();
+    store.set_rights_grant("grant-2").unwrap();
+    let retired_batch = apply_surveillance_cycle(
+        &mut store,
+        &mut registry,
+        4,
+        &[
+            SurveillanceUpdateEvent::RetractSource {
+                source_id: "doc-1".to_owned(),
+                rationale: "Would retract if not rolled back".to_owned(),
+                authorized_by: "editor".to_owned(),
+                recorded_time: MedicalTime::new(
+                    "2026-11-27T00:00:00Z",
+                    TimePrecision::Instant,
+                    false,
+                ),
+            },
+            SurveillanceUpdateEvent::RotateRightsGrant {
+                new_grant_version: "grant-1".to_owned(),
+                reason: "Attempt to revive retired grant-1".to_owned(),
+            },
+        ],
+    );
+    assert!(retired_batch.is_err());
+    assert_eq!(
+        store.epoch().unwrap(),
+        3,
+        "atomic transaction must roll back epoch advance when trailing event fails"
+    );
+    assert!(
+        !store.is_source_retracted("doc-1").unwrap(),
+        "atomic transaction must roll back prior RetractSource event"
+    );
 }
 
 #[test]

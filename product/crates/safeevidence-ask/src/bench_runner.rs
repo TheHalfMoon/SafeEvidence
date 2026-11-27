@@ -1294,13 +1294,22 @@ fn eval_assurance_calibration_split() -> Result<SplitEvaluation, String> {
     )
     .map_err(|e| format!("ta13 suite failed: {e:?}"))?;
 
-    let rate_interval = |r: &safeevidence_assurance::eval_metrics::BoundedRateReport| {
-        let pt = r.point_estimate.unwrap_or(0.0);
-        match r.wilson_ci95 {
-            Some((lo, hi)) => metric_with_ci(pt, lo, hi),
-            None => metric_point(pt),
+    let rate_interval = |r: &safeevidence_assurance::eval_metrics::BoundedRateReport,
+                         label: &str|
+     -> Result<MetricInterval, String> {
+        let pt = r
+            .point_estimate
+            .ok_or_else(|| format!("ta13 {label} had zero denominator"))?;
+        match r.bootstrap_ci95.or(r.wilson_ci95) {
+            Some((lo, hi)) => Ok(metric_with_ci(pt, lo, hi)),
+            None => Ok(metric_point(pt)),
         }
     };
+
+    let sel_risk = report
+        .selective
+        .selective_risk
+        .ok_or_else(|| "ta13 selective_risk undefined (zero committed coverage)".to_owned())?;
 
     let mut metrics = BTreeMap::new();
     metrics.insert(
@@ -1319,30 +1328,36 @@ fn eval_assurance_calibration_split() -> Result<SplitEvaluation, String> {
         metric_point(report.selective.oracle_aurc),
     );
     metrics.insert("e_aurc".to_owned(), metric_point(report.selective.e_aurc));
-    metrics.insert(
-        "selective_risk".to_owned(),
-        metric_point(report.selective.selective_risk.unwrap_or(1.0)),
-    );
+    metrics.insert("selective_risk".to_owned(), metric_point(sel_risk));
     metrics.insert(
         "unsafe_commit_rate_on_non_commit".to_owned(),
-        rate_interval(&report.unsafe_commit_rate_on_non_commit_cases),
+        rate_interval(
+            &report.unsafe_commit_rate_on_non_commit_cases,
+            "unsafe_commit_on_non_commit",
+        )?,
     );
     metrics.insert(
         "overall_unsafe_commit_rate".to_owned(),
-        rate_interval(&report.overall_unsafe_commit_rate),
+        rate_interval(&report.overall_unsafe_commit_rate, "overall_unsafe_commit")?,
     );
     metrics.insert(
         "useful_coverage".to_owned(),
-        rate_interval(&report.useful_coverage),
+        rate_interval(&report.useful_coverage, "useful_coverage")?,
     );
     metrics.insert(
         "over_abstention_rate".to_owned(),
-        rate_interval(&report.over_abstention_rate),
+        rate_interval(&report.over_abstention_rate, "over_abstention")?,
     );
     metrics.insert(
         "false_escalation_rate".to_owned(),
-        rate_interval(&report.false_escalation_rate),
+        rate_interval(&report.false_escalation_rate, "false_escalation")?,
     );
+
+    let mut basis = VS1A_CORPUS_BYTES.to_vec();
+    for c in &cases {
+        basis.extend_from_slice(c.case_id.as_bytes());
+        basis.extend_from_slice(&c.selective_score.to_be_bytes());
+    }
 
     let gate_passed = full_two.outcome == TerminalOutcome::Answer
         && report.unsafe_commit_rate_on_non_commit_cases.numerator == 0
@@ -1359,7 +1374,7 @@ fn eval_assurance_calibration_split() -> Result<SplitEvaluation, String> {
         split_role: "selective_assurance_and_calibration_synthetic".to_owned(),
         language_slice: "en+ar".to_owned(),
         item_count: cases.len(),
-        input_sha256: corpus_digest,
+        input_sha256: DigestSha256::of(&basis),
         metrics,
         gate_passed,
     })
@@ -1451,11 +1466,11 @@ pub fn run_safeevidence_bench() -> Result<BenchPacket, String> {
 
     let fenced_external_components = vec![
         FencedExternalComponent {
-            component_id: "T27-SCIFACT-T27B-MULTIVERS-T28-EVIDENCE-INFERENCE".to_owned(),
+            component_id: "T27-SCIFACT-T28-EVIDENCE-INFERENCE".to_owned(),
             blocking_gate: "EXT-01+EXT-07".to_owned(),
             status: "BLOCKED_EXTERNAL".to_owned(),
             reason:
-                "External biomedical datasets and NLI/Evidence-Inference weights require Issue #5 source and model-card admission."
+                "External biomedical benchmark datasets (T27 SciFact, T28 Evidence Inference) and optional NLI weights await in-tree bench/ admission."
                     .to_owned(),
         },
         FencedExternalComponent {

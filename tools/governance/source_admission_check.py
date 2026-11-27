@@ -27,9 +27,39 @@ BASES = {"FOUNDER_OWNED", "PUBLIC_LICENSE", "SEPARATE_PERMISSION_VERIFIED"}
 DECISION_REF = re.compile(
     r"https://github\.com/TheHalfMoon/SafeEvidence/issues/[0-9]+#issuecomment-[0-9]+\Z"
 )
-REPO_ADR_DECISION_REF = re.compile(
-    r"docs/(?:adr/[0-9]{4}-[a-z0-9-]+\.md|plan/PLAN_AMENDMENT_V1_[0-9]+\.md)\Z"
-)
+PUBLIC_LICENSE_ADR_REFS = {
+    "docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md",
+    "docs/plan/PLAN_AMENDMENT_V1_7.md",
+}
+ADR0004_EXCLUDED_REPOS = {
+    "ijmarshall/robotreviewer",
+    "ijmarshall/trialstreamer",
+    "bwallace/rrnlp",
+    "dwadden/multivers",
+}
+ADR0004_EXCLUDED_PACKETS = {"T27b", "T28b", "T34", "T35"}
+ADR0004_VERIFIED_PUBLIC_REPOS = {
+    "abdulazizshehri/medscale",
+    "thehalfmoon/medorigin",
+    "abdulazizshehri/safeocr",
+    "thehalfmoon/commandmed",
+    "maziyarpanahi/openmed",
+    "asreview/asreview",
+    "asreview/synergy-dataset",
+    "statsmodels/statsmodels",
+    "xberg-io/xberg",
+    "docling-project/docling.rs",
+    "anush008/fastembed-rs",
+    "asg017/sqlite-vec",
+    "mozilla/uniffi-rs",
+    "awslabs/tough",
+    "allenai/scifact",
+    "jayded/evidence-inference",
+    "wenglab-informaticsresearch/picox",
+    "paddlepaddle/paddleocr",
+    "beir-cellar/beir",
+    "ncbi/medcpt",
+}
 WITHHELD_PRIVATE_REPOS = {
     "thehalfmoon/dal",
     "thehalfmoon/kernux",
@@ -223,11 +253,12 @@ def check_row(
         repo_lower = ""
     else:
         repo_lower = row["repo"].lower()
-    if repo_lower == "thehalfmoon/dal" or row.get("packet") == "T14":
+    pkt_str = row["packet"] if isinstance(row["packet"], str) else ""
+    if repo_lower == "thehalfmoon/dal" or pkt_str == "T14":
         errors.append(f"{label}: DAL (T14) is permanently banned from SafeEvidence")
     elif repo_lower in WITHHELD_PRIVATE_REPOS:
         errors.append(f"{label}: withheld private repository cannot appear in public manifest")
-    if not isinstance(row["packet"], str) or not PACKET.fullmatch(row["packet"]):
+    if not pkt_str or not PACKET.fullmatch(pkt_str):
         errors.append(f"{label}: packet id invalid")
     if not is_full_oid(row["source_commit"]):
         errors.append(f"{label}: source_commit must be 40 hex")
@@ -238,6 +269,13 @@ def check_row(
         errors.append(f"{label}: copy_authorized must be true only for VERIFIED_ALLOWED")
     files = row["files"]
     if state == "VERIFIED_ALLOWED":
+        if (
+            repo_lower in ADR0004_EXCLUDED_REPOS
+            or pkt_str in ADR0004_EXCLUDED_PACKETS
+        ):
+            errors.append(
+                f"{label}: copyleft, unlicensed, or dropped packet/repository cannot be admitted under ADR-0004"
+            )
         basis = row["basis"]
         if not isinstance(basis, str) or basis not in BASES:
             errors.append(f"{label}: basis cannot admit")
@@ -245,9 +283,11 @@ def check_row(
         valid_github_ref = isinstance(decision, str) and bool(DECISION_REF.fullmatch(decision))
         valid_adr_ref = (
             basis == "PUBLIC_LICENSE"
-            and repo_lower != "thehalfmoon/ottari"
+            and repo_lower in ADR0004_VERIFIED_PUBLIC_REPOS
+            and repo_lower not in ADR0004_EXCLUDED_REPOS
+            and pkt_str not in ADR0004_EXCLUDED_PACKETS
             and isinstance(decision, str)
-            and bool(REPO_ADR_DECISION_REF.fullmatch(decision))
+            and decision in PUBLIC_LICENSE_ADR_REFS
             and resolve_regular_file(root, decision) is not None
         )
         if not (valid_github_ref or valid_adr_ref):
@@ -427,7 +467,7 @@ def check_closure(
     valid_github_ref = isinstance(decision, str) and bool(DECISION_REF.fullmatch(decision))
     valid_adr_ref = (
         isinstance(decision, str)
-        and bool(REPO_ADR_DECISION_REF.fullmatch(decision))
+        and decision in PUBLIC_LICENSE_ADR_REFS
         and resolve_regular_file(root, decision) is not None
     )
     if not (valid_github_ref or valid_adr_ref):

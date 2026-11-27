@@ -48,11 +48,12 @@ fn minimal_valid_png() -> Vec<u8> {
 fn security_regressions_pdf_actions_bidi_c1_and_image_polyglots_quarantine() {
     // 1. Expanded PDF active/auto-exec/launch/embedded names & compact /JS delimiters:
     for payload in [
-        &b"%PDF-1.7\n<</S/JavaScript/JS/PayloadName>>"[..],
+        &b"%PDF-1.7\n<</S/JavaScript/JS(app.alert(1))>>"[..],
+        &b"%PDF-1.7\n<</S/JavaScript/JS<616c657274>>>"[..],
         &b"%PDF-1.7\n<</S/JavaScript/JS[(app.alert(1))]>>"[..],
-        &b"%PDF-1.7\n<</JS"[..],
         &b"%PDF-1.7\n<</OpenAction 2 0 R>>"[..],
         &b"%PDF-1.7\n<</AA <</O 3 0 R>>>>"[..],
+        &b"%PDF-1.7\n<</AA<</O 3 0 R>>>>"[..],
         &b"%PDF-1.7\n<</S /Launch /F (cmd.exe)>>"[..],
         &b"%PDF-1.7\n<</S /SubmitForm /F (https://evil.invalid)>>"[..],
         &b"%PDF-1.7\n<</S /ImportData /F (payload.fdf)>>"[..],
@@ -78,11 +79,32 @@ fn security_regressions_pdf_actions_bidi_c1_and_image_polyglots_quarantine() {
         );
     }
 
-    // 2. BiDi directional overrides and C1 controls (U+0085 NEL, U+009B CSI) in TextPlain quarantine:
+    // Benign scientific PDFs with /URI DOI paths (/AA/ and /JS/) and XMP metadata pass cleanly:
+    for benign_pdf in [
+        &b"%PDF-1.7\n<</Type/Action/S/URI/URI(https://doi.org/10.1000/AA/123/JS/456)>>\n%%EOF"[..],
+        &b"%PDF-1.7\n1 0 obj\n<?xml version=\"1.0\"?><x:xmpmeta xmlns:x=\"adobe:ns:meta/\"/>\nendobj\n%%EOF"[..],
+    ] {
+        assert_eq!(
+            mime_decision(&DocumentIntakeRequest {
+                mime: DocumentMimeClass::ApplicationPdf,
+                bytes: benign_pdf.to_vec(),
+                fixture_id: None,
+            }),
+            (
+                QuarantineDecision::AdmitToSandboxedParser,
+                DocumentDenyReason::None
+            )
+        );
+    }
+
+    // 2. BiDi directional overrides, leading/mid C1 controls (U+0085 NEL, U+009B CSI), and misplaced/double BOM quarantine:
     for bad_text in [
         "Dose 40 \u{202E}mg daily",
         "Dose 40 \u{2066}mg\u{2069} daily",
         "Mid-string BOM \u{FEFF} token",
+        " \u{FEFF}Misplaced BOM after space",
+        "\u{FEFF}\u{FEFF}Double BOM",
+        "\u{0085}Leading C1 NEL line",
         "C1 CSI \u{009B}31m escape",
         "C1 NEL \u{0085} line",
     ] {
@@ -100,7 +122,35 @@ fn security_regressions_pdf_actions_bidi_c1_and_image_polyglots_quarantine() {
         );
     }
 
-    // 3. Valid PNG and JPEG pass, while truncated trailers or HTML/script polyglots quarantine:
+    // Single leading UTF-8 BOM at byte 0 on clean text remains admitted:
+    assert_eq!(
+        mime_decision(&DocumentIntakeRequest {
+            mime: DocumentMimeClass::TextPlain,
+            bytes: "\u{FEFF}Clean synthetic cohort report.".as_bytes().to_vec(),
+            fixture_id: None,
+        }),
+        (
+            QuarantineDecision::AdmitToSandboxedParser,
+            DocumentDenyReason::None
+        )
+    );
+
+    // 3. Valid PNG (including XMP metadata) and JPEG pass, while truncated trailers or HTML/script polyglots quarantine:
+    let mut xmp_png = minimal_valid_png();
+    let xmp_chunk = b"<?xml version=\"1.0\"?><x:xmpmeta/>";
+    let insert_at = xmp_png.len() - 12;
+    xmp_png.splice(insert_at..insert_at, xmp_chunk.iter().copied());
+    assert_eq!(
+        mime_decision(&DocumentIntakeRequest {
+            mime: DocumentMimeClass::ImagePng,
+            bytes: xmp_png,
+            fixture_id: None,
+        }),
+        (
+            QuarantineDecision::AdmitToSandboxedParser,
+            DocumentDenyReason::None
+        )
+    );
     let clean_png = minimal_valid_png();
     assert_eq!(
         mime_decision(&DocumentIntakeRequest {
@@ -127,8 +177,9 @@ fn security_regressions_pdf_actions_bidi_c1_and_image_polyglots_quarantine() {
         )
     );
 
-    let mut polyglot_png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR<script>evil()</script>".to_vec();
-    polyglot_png.extend_from_slice(b"IEND\xaeB`\x82");
+    let mut polyglot_png =
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR<script>evil()</script>0123456789".to_vec();
+    polyglot_png.extend_from_slice(b"\x00\x00\x00\x00IEND\xaeB`\x82");
     assert_eq!(
         mime_decision(&DocumentIntakeRequest {
             mime: DocumentMimeClass::ImagePng,
@@ -138,6 +189,22 @@ fn security_regressions_pdf_actions_bidi_c1_and_image_polyglots_quarantine() {
         (
             QuarantineDecision::Quarantine,
             DocumentDenyReason::MimeDenied
+        )
+    );
+
+    // Non-zero IEND length field is rejected on PNG framing:
+    let mut bad_iend_png = minimal_valid_png();
+    let iend_len_idx = bad_iend_png.len() - 12;
+    bad_iend_png[iend_len_idx] = 1;
+    assert_eq!(
+        mime_decision(&DocumentIntakeRequest {
+            mime: DocumentMimeClass::ImagePng,
+            bytes: bad_iend_png,
+            fixture_id: None,
+        }),
+        (
+            QuarantineDecision::Quarantine,
+            DocumentDenyReason::MagicHeaderMismatch
         )
     );
 

@@ -1,7 +1,7 @@
 //! Deterministic multi-facet claim-to-span verification (`WP-08`, `TA-10` deterministic slice)
 //! and per-source PICO applicability gate (`WP-09`, `TA-11`).
 //!
-//! Copy-first boundary: neural NLI reranking/scoring (`SciFact` / `MultiVerS` / ONNX cross-encoder)
+//! Copy-first boundary: neural NLI reranking/scoring (`SciFact` / ONNX cross-encoder)
 //! remains fenced on `EXT-01` and `EXT-07`. This module implements the SafeEvidence-owned
 //! deterministic facet verifier (`SOURCE_TRANSPLANT_MATRIX_V1` section 5) required before
 //! `AnswerProofManifest` admission and the per-source PICO applicability evaluator (`WP-09`).

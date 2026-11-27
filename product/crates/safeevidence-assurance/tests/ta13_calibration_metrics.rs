@@ -136,9 +136,15 @@ fn wilson_ci95_and_neumaier_sum_and_fail_closed_guards_hold() {
     assert_close(lo_all, 1.0 - expected_hi_zero, "wilson k=n lower");
     assert_close(hi_all, 1.0, "wilson k=n upper");
 
-    // Neumaier compensated sum beats naive left-to-right catastrophic cancellation:
+    // Neumaier compensated sum beats naive left-to-right catastrophic cancellation and never turns overflow into NaN:
     let cancelled = [1.0, 1e100, 1.0, -1e100];
     assert_close(neumaier_sum(cancelled), 2.0, "neumaier cancellation");
+    assert_eq!(neumaier_sum([f64::MAX, f64::MAX]), f64::INFINITY);
+
+    // Length-prefixed SplitMix64 domain seeding prevents ("a:b", "c") == ("a", "b:c") collisions:
+    let mut rng_ab_c = SplitMix64::from_domain("a:b", "c");
+    let mut rng_a_bc = SplitMix64::from_domain("a", "b:c");
+    assert_ne!(rng_ab_c.next_u64(), rng_a_bc.next_u64());
 
     // Fail-closed input validation:
     assert_eq!(
@@ -147,6 +153,13 @@ fn wilson_ci95_and_neumaier_sum_and_fail_closed_guards_hold() {
     );
     assert_eq!(
         evaluate_calibration(&[(0.5, true)], 0),
+        Err(EvalMetricsError::InvalidBinCount)
+    );
+    assert_eq!(
+        evaluate_calibration(
+            &[(0.5, true)],
+            safeevidence_assurance::eval_metrics::MAX_CALIBRATION_BINS + 1
+        ),
         Err(EvalMetricsError::InvalidBinCount)
     );
     assert_eq!(
@@ -234,6 +247,14 @@ fn p00_assurance_suite_enforces_manifest_backing_and_cluster_invariance() {
     assert_eq!(rep_fwd.false_escalation_rate.denominator, 3);
     assert_close(rep_fwd.selective.e_aurc, 0.0, "optimal ranking e_aurc");
 
+    // Empty or duplicate case/cluster identity fails closed:
+    let mut bad_id = cases.clone();
+    bad_id[0].study_cluster_id = "   ".to_owned();
+    assert_eq!(
+        evaluate_p00_assurance_suite("unit-p00", &bad_id, 10, 100),
+        Err(EvalMetricsError::InvalidCaseIdentity { index: 0 })
+    );
+
     // Unbacked commit must fail closed:
     cases[0].outcome = TerminalOutcome::Answer;
     cases[0].committed_manifest = false;
@@ -294,11 +315,26 @@ fn full_assurance_enforces_p00_guard_precedence_and_grade_confirmation_rules() {
         TerminalOutcome::AnswerWithCaution
     );
 
-    // High/Critical Risk-of-Bias downgrades Answer -> AnswerWithCaution:
+    // High/Critical or unassessed (None / NoInformation) Risk-of-Bias downgrades Answer -> AnswerWithCaution:
     let mut high_rob = base.clone();
     high_rob.worst_risk_of_bias = Some(BiasLevel::High);
     assert_eq!(
         evaluate_full_assurance(&high_rob).outcome,
+        TerminalOutcome::AnswerWithCaution
+    );
+    let mut unassessed_rob = base.clone();
+    unassessed_rob.worst_risk_of_bias = None;
+    assert_eq!(
+        evaluate_full_assurance(&unassessed_rob).outcome,
+        TerminalOutcome::AnswerWithCaution
+    );
+    let mut empty_actor = base.clone();
+    empty_actor.certainty_confirmation = Some(AppraisalConfirmation::Confirmed {
+        authorized_by: "   ".to_owned(),
+        confirmed_at_utc: "2026-11-27T00:00:00Z".to_owned(),
+    });
+    assert_eq!(
+        evaluate_full_assurance(&empty_actor).outcome,
         TerminalOutcome::AnswerWithCaution
     );
 
