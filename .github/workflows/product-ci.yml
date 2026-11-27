@@ -1,0 +1,87 @@
+name: Product Workspace
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  product:
+    name: product (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-15]
+    env:
+      CARGO_TERM_COLOR: never
+      # The vendored OpenSSL build needs a native Perl on Windows, not Git Bash's.
+      PERL: ${{ matrix.os == 'windows-latest' && 'C:\Strawberry\perl\bin\perl.exe' || 'perl' }}
+    steps:
+      - name: Checkout exact reviewed revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Check exact Git HEAD
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Validate source admissions
+        shell: bash
+        run: python tools/governance/source_admission_check.py --root .
+      - name: Install pinned toolchain
+        shell: bash
+        working-directory: product
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy --no-self-update
+      - name: Fetch locked dependencies
+        shell: bash
+        working-directory: product
+        run: |
+          cargo fetch --locked
+          cargo fetch --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Install cargo-deny
+        shell: bash
+        run: cargo +1.98.1 install cargo-deny --version 0.20.2 --locked
+      - name: Check TA-29 dependency denial
+        shell: bash
+        run: python tools/ci/ta29_dependency_denial.py
+      - name: Check the core's tree holds no socket crates
+        shell: bash
+        run: python tools/ci/core_no_sockets.py
+      - name: Generate and check the TA-02 SBOM
+        shell: bash
+        working-directory: product
+        run: cargo run --offline --locked -p safeevidence-release --bin sbom -- "$RUNNER_TEMP/sbom.cdx.json"
+      - name: Fetch advisory database
+        shell: bash
+        working-directory: product
+        run: cargo deny fetch
+      - name: Run the Linux keyring helper against a real Secret Service
+        if: matrix.os == 'ubuntu-latest'
+        timeout-minutes: 25
+        shell: bash
+        working-directory: product
+        run: |
+          for attempt in 1 2 3; do
+            sudo timeout 120 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && break
+            test "$attempt" != 3
+          done
+          for attempt in 1 2 3; do
+            sudo timeout 240 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y dbus gnome-keyring && break
+            test "$attempt" != 3
+          done
+          dbus-run-session -- bash -c '
+            printf "synthetic-test-only\n" | gnome-keyring-daemon --unlock --components=secrets
+            cargo test --offline --locked -p safeevidence-linux-keyring-helper --test native_keyring -- --ignored --test-threads=1
+          '
+      - name: Run TA-03 checks under OS network isolation
+        shell: bash
+        working-directory: product
+        run: bash ../tools/ci/ta03_isolated.sh

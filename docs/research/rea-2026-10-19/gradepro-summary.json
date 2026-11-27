@@ -1,0 +1,122 @@
+{
+  "name": "gradepro",
+  "url": "https://help.gradepro.org/support/solutions/articles/204000075706-key-features-explained",
+  "evidence_id": "ev_a09edf8ae1b20d5b7d807878d5735b63dd69b8ee627612e20635955ccac8a7e8",
+  "title": "Key Features Explained : GRADEpro",
+  "script_count": 13,
+  "dom_count": 2259,
+  "accessibility_count": 1394,
+  "key_labels": [
+    [
+      "heading",
+      "Key Features Explained"
+    ],
+    [
+      "heading",
+      "Introduction"
+    ],
+    [
+      "heading",
+      "1. Ready-to-use frameworks"
+    ],
+    [
+      "heading",
+      "1.1 Evidence (SoF) tables"
+    ],
+    [
+      "heading",
+      "1.2 Evidence to Decision (EtD) frameworks"
+    ],
+    [
+      "heading",
+      "1.3 Multiple intervention approach"
+    ],
+    [
+      "heading",
+      "1.4 Adolopment"
+    ],
+    [
+      "heading",
+      "2. Collaborative guideline development"
+    ],
+    [
+      "heading",
+      "2.1 PanelVoice"
+    ],
+    [
+      "heading",
+      "2.2 Guideline document editor"
+    ],
+    [
+      "heading",
+      "2.3 Questions and Outcomes Generation"
+    ],
+    [
+      "heading",
+      "3. Digital dissemination"
+    ],
+    [
+      "heading",
+      "3.1 Interactive Summary of Findings"
+    ],
+    [
+      "heading",
+      "3.2 Decision Aids"
+    ],
+    [
+      "heading",
+      "3.3 Visual Clinical Guidelines"
+    ],
+    [
+      "heading",
+      "4. Tailor-made publication suites"
+    ],
+    [
+      "heading",
+      "4.1 Publication Platform"
+    ],
+    [
+      "heading",
+      "4.2 Recommendation Map"
+    ],
+    [
+      "heading",
+      "4.3 RecChat"
+    ],
+    [
+      "heading",
+      "4.4 Integration with existing online journals and websites"
+    ],
+    [
+      "heading",
+      "Was this article helpful?"
+    ],
+    [
+      "button",
+      "Toggle navigation"
+    ],
+    [
+      "heading",
+      "Table of contents"
+    ],
+    [
+      "button",
+      "No, I need further help"
+    ],
+    [
+      "button",
+      "Yes, it is helpful"
+    ],
+    [
+      "button",
+      "Cookie policy"
+    ]
+  ],
+  "limitations": [
+    "Observation starts when REA attaches; prior network and console activity is unavailable.",
+    "Raw network headers, bodies, cookies, storage values, console objects, and WebSocket payloads are never retained; explicitly requested primitive console text is retained verbatim, while payload captures retain value-free shapes.",
+    "Source maps are reported only as declarative URLs and are not fetched.",
+    "URL-less scripts and console events without an allowed source URL are excluded because their origin cannot be proven.",
+    "CDP discovery omitted the target attachment state; attached is reported as unknown."
+  ]
+}

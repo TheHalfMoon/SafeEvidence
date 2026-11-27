@@ -1,0 +1,455 @@
+// The Ask flow's end-to-end checks, shared by the Windows and Linux drivers. It uses no packages.
+//
+// It checks what a person would see, on the real native command and the real OS protector. It is the Ask subset
+// of TA-20. It says nothing about Deep Review, pack import or TA-21: where a driver has a network log, the log
+// covers the page only, not the process. Mutants should be able to fail each check, so a probe that would pass
+// with the protection removed does not belong here.
+//
+// A driver has:
+// - `launch(dataDir)`, which starts the app and returns a page with `eval(expression)` and `close()`.
+//   A page may have `requests` and `isAppRequest(url)`, if the driver can see the page's network.
+// - `stop({ mustBeRunning })`, which kills the app and waits until it has gone.
+// - `diagnose()`, which reports what it can after a failure.
+// - `keyStore`, which names the OS protector and checks that the key is under it.
+// - `expectedChecks`, so that a check a driver skips cannot vanish unnoticed.
+
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+
+const ANSWERED = "Does veltrixamine help adults with glimmer syndrome?";
+const ASK_MORE = "Does veltrixamine help with glimmer syndrome?";
+const CONFLICT_QUESTION = "Does orbalin help adults with ember fatigue?";
+const RETRACTED_QUESTION = "Does quenzil help adults with hollow cough?";
+const BLOCKED_RIGHTS_QUESTION = "Does tessarine help adults with marble rash?";
+const ESCALATE_QUESTION = "Should I prescribe veltrixamine to my patient, an adult with glimmer syndrome?";
+const ARABIC_QUESTION = "\u0647\u0644 \u064A\u0633\u0627\u0639\u062F veltrixamine \u0627\u0644\u0628\u0627\u0644\u063A\u064A\u0646\u061F";
+const OUTSIDE_GRAMMAR = "What should I take?";
+// A question whose words appear nowhere in the app, so the storage scan can look for what the person typed.
+const TYPED_NONCE = "zqvortelinax";
+const TYPED = `Does ${TYPED_NONCE} help adults with glimmer syndrome?`;
+
+export async function waitFor(check, what, timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const value = await check();
+      if (value) return value;
+    } catch {
+      // Not ready yet.
+    }
+    assert.ok(Date.now() < deadline, `timed out waiting for ${what}`);
+    await sleep(100);
+  }
+}
+
+/// Every file under `root` that holds a marker, in UTF-8 or UTF-16LE, which Chromium uses for some
+/// stored strings. A file that cannot be read is reported, never skipped.
+function scanForMarkers(root, markers) {
+  const needles = markers.flatMap((marker) => [Buffer.from(marker, "utf8"), Buffer.from(marker, "utf16le")]);
+  const found = [];
+  const unreadable = [];
+  let scanned = 0;
+  for (const name of readdirSync(root, { recursive: true })) {
+    const path = join(root, name);
+    let bytes;
+    try {
+      bytes = readFileSync(path);
+    } catch (error) {
+      // A directory is walked, not read, and a file the web view removed while it exited holds nothing.
+      if (error.code !== "EISDIR" && error.code !== "ENOENT") unreadable.push(`${name}: ${error.code}`);
+      continue;
+    }
+    scanned += 1;
+    if (needles.some((needle) => bytes.includes(needle))) found.push(name);
+  }
+  return { scanned, found, unreadable };
+}
+
+// As React sees a person typing: its value tracker needs the native setter and a real input event.
+async function ask(page, question) {
+  await page.eval(`(() => {
+    const box = document.querySelector("#question");
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(box, ${JSON.stringify(question)});
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector('button[type="submit"]').click();
+  })()`);
+  await waitFor(
+    () => page.eval(`document.querySelector(".asked span")?.textContent === ${JSON.stringify(question)} && !document.querySelector('button[type="submit"]').disabled`),
+    `the reply to "${question}"`,
+  );
+}
+
+function readView(page) {
+  return page.eval(`({
+    outcome: document.querySelector("#outcome-heading")?.textContent ?? null,
+    brief: document.querySelector(".brief")?.textContent ?? null,
+    proof: document.querySelector(".proof code")?.textContent ?? null,
+    proofLine: document.querySelector(".proof")?.textContent ?? null,
+    citations: document.querySelectorAll(".citations button").length,
+    funnel: document.querySelectorAll(".funnel li").length,
+    failure: document.querySelector('[role="alert"]')?.textContent ?? null,
+    body: document.body.innerText,
+  })`);
+}
+
+export async function runAskChecks(driver) {
+  const checks = [];
+  const passed = (name) => {
+    checks.push(name);
+    console.log(`ok - ${name}`);
+  };
+  const dataDir = mkdtempSync(join(tmpdir(), "se-e2e-"));
+  let failed = true;
+  try {
+    let page = await driver.launch(dataDir);
+    await waitFor(() => page.eval(`!!document.querySelector("#question")`), "the view");
+
+    let view = await readView(page);
+    assert.match(view.body, /Invented engineering fixture\. Not medical information\./);
+    passed("the view says its data is invented");
+
+    await ask(page, ANSWERED);
+    view = await readView(page);
+    assert.equal(view.failure, null);
+    assert.equal(view.outcome, "Answer, with caution");
+    assert.ok(view.brief?.length > 0);
+    assert.match(view.proof, /^vs1a-[0-9a-f]{64}$/);
+    assert.match(view.proofLine, /^Just committed as proof /);
+    assert.ok(view.citations > 0);
+    assert.equal(view.funnel, 7);
+    assert.match(view.body, /doc-veltrix-peds \(APPLICABILITY_UNRESOLVED\): population children does not match adults/);
+    assert.doesNotMatch(view.body, /%|\u066A|percent|confidence/i);
+    passed("an answer shows its outcome, committed proof, citations and funnel, with no percentage");
+    const answered = view;
+
+    const stores = readdirSync(dataDir).filter((name) => name.startsWith("synthetic-ask-store-"));
+    assert.equal(stores.length, 1);
+    const stored = readdirSync(join(dataDir, stores[0]));
+    assert.ok(stored.includes("vault.db") && stored.includes("store-established"), stored.join());
+    driver.keyStore.check(stored);
+    passed(`the store is in the test's own directory, with its key under ${driver.keyStore.name}`);
+
+    await ask(page, OUTSIDE_GRAMMAR);
+    await ask(page, ANSWERED);
+    view = await readView(page);
+    assert.equal(view.proof, answered.proof);
+    assert.match(view.proofLine, /^Already committed as proof /);
+    passed("asking again finds the proof in the store, so the first request really committed it");
+
+    await page.eval(`document.querySelector(".citations button").click()`);
+    const span = await waitFor(
+      () => page.eval(`document.activeElement?.tagName === "MARK" ? document.activeElement.textContent : ""`),
+      "focus on the cited span",
+    );
+    assert.ok(span.length > 0);
+    assert.ok(answered.brief.includes(span), "the cited span appears in the brief");
+    passed("span jump moves focus to the cited text, and that text is in the brief");
+
+    await ask(page, OUTSIDE_GRAMMAR);
+    view = await readView(page);
+    assert.equal(view.outcome, "No answer given");
+    assert.equal(view.brief, null);
+    assert.equal(view.proof, null);
+    assert.equal(view.citations, 0);
+    assert.equal(view.funnel, 7);
+    assert.equal(await page.eval(`document.querySelector("mark")`), null);
+    passed("an abstention shows its outcome and funnel, and clears the earlier answer and its span");
+
+    await ask(page, ASK_MORE);
+    view = await readView(page);
+    assert.equal(view.outcome, "More information needed");
+    assert.equal(view.brief, null);
+    passed("a question missing its population asks for more");
+
+    await ask(page, CONFLICT_QUESTION);
+    view = await readView(page);
+    assert.equal(view.outcome, "The evidence conflicts");
+    assert.match(view.body, /Sources disagree on a material point\./);
+    assert.equal(view.brief, null);
+    assert.equal(view.proof, null);
+    assert.equal(view.citations, 0);
+    passed("conflicting independent studies show CONFLICT with no brief or proof");
+
+    await ask(page, RETRACTED_QUESTION);
+    view = await readView(page);
+    assert.equal(view.outcome, "No answer given");
+    assert.match(view.body, /A required source is invalid or retracted\./);
+    assert.match(view.body, /doc-quenzil-retracted \(SOURCE_INVALID_OR_RETRACTED\)/);
+    assert.equal(view.brief, null);
+    passed("retracted evidence abstains and shows its typed exclusion code");
+
+    await ask(page, BLOCKED_RIGHTS_QUESTION);
+    view = await readView(page);
+    assert.equal(view.outcome, "Blocked");
+    assert.match(view.body, /The rights to use a source are not established\./);
+    assert.match(view.body, /doc-tessarine-unknown-rights \(RIGHTS_UNRESOLVED\)/);
+    assert.equal(view.brief, null);
+    passed("unestablished source rights block presentation and show RIGHTS_UNRESOLVED");
+
+    await ask(page, ESCALATE_QUESTION);
+    view = await readView(page);
+    assert.equal(view.outcome, "Needs clinician review");
+    assert.match(view.body, /This needs a clinician's decision\./);
+    assert.equal(view.brief, null);
+    passed("patient-specific care requests escalate to clinician review");
+
+    await ask(page, ARABIC_QUESTION);
+    view = await readView(page);
+    assert.equal(view.outcome, "No answer given");
+    assert.match(view.body, /This language is not supported yet\./);
+    assert.equal(await page.eval(`document.querySelector(".asked span")?.getAttribute("dir")`), "auto");
+    assert.equal(view.brief, null);
+    passed("Arabic script abstains explicitly as unsupported language with dir=auto isolation");
+
+    await ask(page, TYPED);
+    view = await readView(page);
+    assert.notEqual(view.outcome, "Answer, with caution", "the typed question has no evidence");
+
+    // A local listener, so a blocked fetch is told from one that simply could not resolve a name.
+    let probeHits = 0;
+    const probe = createServer((_request, response) => {
+      probeHits += 1;
+      response.end("reached");
+    });
+    await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
+    const probeUrl = `http://127.0.0.1:${probe.address().port}/`;
+    const csp = await page.eval(`(async () => {
+      const violated = [];
+      document.addEventListener("securitypolicyviolation", (event) => violated.push(event.effectiveDirective));
+      const style = document.createElement("style");
+      style.textContent = "#question { order: 77; }";
+      document.head.append(style);
+      const inlineStyle = getComputedStyle(document.querySelector("#question")).order === "77";
+      let remoteFetch = true;
+      try { await fetch(${JSON.stringify(probeUrl)}, { mode: "no-cors" }); } catch { remoteFetch = false; }
+      let inlineEval = true;
+      try { new Function("return 1")(); } catch { inlineEval = false; }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return { inlineStyle, remoteFetch, inlineEval, blockedFetch: violated.includes("connect-src") };
+    })()`);
+    await new Promise((resolve) => probe.close(resolve));
+    // The event shows it was the CSP that stopped the fetch, not some other rule about loopback.
+    assert.deepEqual(csp, { inlineStyle: false, remoteFetch: false, inlineEval: false, blockedFetch: true });
+    assert.equal(probeHits, 0, "the fetch never reached the listener");
+    passed("the running page's CSP blocks inline style, an off-app fetch and eval");
+
+    if (page.requests) {
+      const remote = page.requests.filter((url) => !page.isAppRequest(url) && url !== probeUrl);
+      assert.deepEqual(remote, []);
+      passed("once loaded, this page requested nothing outside the app, apart from the CSP probe");
+    }
+
+    // A core command that exists but is not granted, so a refusal can only come from the capability.
+    const refusal = await page.eval(`window.__TAURI_INTERNALS__.invoke("plugin:app|version").then(() => "allowed", (error) => String(error))`);
+    // Exact, because Tauri's "not found" errors for a renamed command also say "not allowed".
+    assert.match(refusal, /^app\.version not allowed\. Permissions associated with this command/, refusal);
+    passed("the capability refuses a real core command the page was not granted");
+
+    // Keyboard WAI-ARIA tablist navigation across Evidence, Deep Review, Packs, and Privacy panes:
+    await page.eval(`(() => {
+      const tab = document.querySelector("#tab-ask");
+      tab.focus();
+      tab.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    })()`);
+    const evidenceText = await waitFor(
+      () => page.eval(`document.activeElement?.id === "tab-evidence" && document.querySelector("#evidence-heading") ? document.body.innerText : ""`),
+      "the Evidence pane via ArrowRight",
+    );
+    assert.match(evidenceText, /doc-veltrix-a/);
+    assert.match(evidenceText, /doc-quenzil-retracted/);
+    assert.doesNotMatch(evidenceText, /%|\u066A|percent|confidence/i);
+
+    await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
+    const reviewText = await waitFor(
+      () => page.eval(`document.activeElement?.id === "tab-review" && document.querySelector("#review-heading") ? document.body.innerText : ""`),
+      "the Deep Review pane via ArrowRight",
+    );
+    assert.match(reviewText, /proto-synthetic-01/);
+    assert.match(reviewText, /PROPOSED/);
+    assert.match(reviewText, /CONFIRMED/);
+    assert.match(reviewText, /Moderate/);
+    assert.match(reviewText, /Opaque span-overlap audit/);
+    assert.match(reviewText, /Verified scalar-offset adapter formats/);
+    assert.doesNotMatch(reviewText, /%|\u066A|percent|confidence/i);
+
+    await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
+    const packsText = await waitFor(
+      () => page.eval(`document.activeElement?.id === "tab-packs" && document.querySelector("#packs-heading") ? document.body.innerText : ""`),
+      "the Packs pane via ArrowRight",
+    );
+    assert.match(packsText, /pack-vs1a-synthetic/);
+    assert.match(packsText, /doc-tessarine-unknown-rights \(RIGHTS_UNRESOLVED\)/);
+    assert.doesNotMatch(packsText, /%|\u066A|percent|confidence/i);
+
+    await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))`);
+    const privacyText = await waitFor(
+      () => page.eval(`document.activeElement?.id === "tab-privacy" && document.querySelector("#privacy-heading") ? document.body.innerText : ""`),
+      "the Privacy pane via ArrowRight",
+    );
+    assert.match(privacyText, /NETWORK_LOCKED/);
+    assert.match(privacyText, /SAFEVD-v1/);
+    assert.match(privacyText, /Append-only record-semantics doctor verified/);
+    assert.match(privacyText, /Hostile-MIME magic-byte quarantine active/);
+    assert.match(privacyText, /core_dump/);
+    assert.doesNotMatch(privacyText, /%|\u066A|percent|confidence/i);
+
+    await page.eval(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }))`);
+    await waitFor(() => page.eval(`document.activeElement?.id === "tab-ask" && !!document.querySelector("#question")`), "Home returning to Ask tab");
+    passed("keyboard tab navigation opens Evidence, Deep Review, Packs and Privacy panes with no percentage");
+
+    // Live Arabic RTL toggle and RTL keyboard ArrowLeft navigation:
+    await page.eval(`document.querySelector("#locale-toggle").click()`);
+    const rtlState = await waitFor(
+      () => page.eval(`document.documentElement.dir === "rtl" && document.documentElement.lang === "ar" ? {
+        dir: document.documentElement.dir,
+        shellDir: document.querySelector(".workstation-shell")?.getAttribute("dir"),
+        askTab: document.querySelector("#tab-ask")?.textContent,
+      } : null`),
+      "RTL Arabic locale switch",
+    );
+    assert.equal(rtlState.dir, "rtl");
+    assert.equal(rtlState.shellDir, "rtl");
+    assert.equal(rtlState.askTab, "\u0627\u0644\u0627\u0633\u062A\u0639\u0644\u0627\u0645");
+    await page.eval(`(() => {
+      const tab = document.querySelector("#tab-ask");
+      tab.focus();
+      tab.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    })()`);
+    await waitFor(
+      () => page.eval(`document.activeElement?.id === "tab-evidence" && !!document.querySelector("#evidence-heading")`),
+      "RTL ArrowLeft advancing to Evidence tab",
+    );
+    await page.eval(`(() => {
+      document.querySelector("#locale-toggle").click();
+      document.querySelector("#tab-ask").click();
+    })()`);
+    await waitFor(
+      () => page.eval(`document.documentElement.dir === "ltr" && !!document.querySelector("#question")`),
+      "LTR English restoration",
+    );
+    passed("Arabic locale toggle switches document to RTL, reverses tab arrow direction, and restores English LTR");
+
+    // Clipboard non-exposure check: verify Ask, citation span-jump, and Privacy tab inspection never
+    // invoke navigator.clipboard.writeText/write, document.execCommand("copy"), or auto-select sensitive text.
+    await page.eval(`(() => {
+      window.__seClipboardOps = [];
+      const origExec = document.execCommand?.bind(document);
+      document.execCommand = function(cmd, ...rest) {
+        window.__seClipboardOps.push(String(cmd));
+        return origExec ? origExec(cmd, ...rest) : false;
+      };
+      const hookTarget = (target) => {
+        if (!target) return;
+        for (const method of ["writeText", "write"]) {
+          if (typeof target[method] === "function") {
+            try {
+              target[method] = async (...args) => {
+                window.__seClipboardOps.push(method + ":" + JSON.stringify(args));
+              };
+            } catch {
+              // Read-only getter on prototype in some engines; instance hook covers it if writable.
+            }
+          }
+        }
+      };
+      if (typeof Clipboard !== "undefined" && Clipboard.prototype) {
+        hookTarget(Clipboard.prototype);
+      }
+      hookTarget(navigator.clipboard);
+      window.getSelection()?.removeAllRanges();
+    })()`);
+    await ask(page, ANSWERED);
+    await page.eval(`document.querySelector(".citations button").click()`);
+    await waitFor(
+      () => page.eval(`document.activeElement?.tagName === "MARK"`),
+      "focus on cited mark during clipboard check",
+    );
+    await page.eval(`document.querySelector("#tab-privacy").click()`);
+    await waitFor(
+      () => page.eval(`!!document.querySelector("#privacy-heading")`),
+      "Privacy tab during clipboard check",
+    );
+    await page.eval(`document.querySelector("#tab-ask").click()`);
+    await waitFor(
+      () => page.eval(`!!document.querySelector("#question")`),
+      "returning to Ask tab after clipboard check",
+    );
+    const clipState = await page.eval(`({
+      ops: window.__seClipboardOps,
+      selectedText: window.getSelection()?.toString() ?? "",
+    })`);
+    assert.deepEqual(clipState.ops, [], `unexpected clipboard writes: ${clipState.ops.join(", ")}`);
+    assert.equal(clipState.selectedText, "", "span jump must not auto-select sensitive text");
+    passed("Ask, citation span-jump, and Privacy inspection perform zero clipboard writes and leave selection empty");
+
+    page.close();
+    await driver.stop({ mustBeRunning: true });
+    page = await driver.launch(dataDir);
+    await waitFor(() => page.eval(`!!document.querySelector("#question")`), "the view after restart");
+    await ask(page, ANSWERED);
+    view = await readView(page);
+    assert.equal(view.outcome, answered.outcome);
+    assert.equal(view.proof, answered.proof);
+    assert.equal(view.brief, answered.brief);
+    assert.match(view.proofLine, /^Already committed as proof /);
+    passed("after a kill and restart, the proof is still in the store");
+    page.close();
+
+    // WebView storage: what the page saw must not be left in the web view's own files. The store is
+    // encrypted and has its own residue tests, so this reads only the web view's profile.
+    await driver.stop({ mustBeRunning: true });
+    // The web view's own processes can outlive the app briefly, and still be writing.
+    await driver.webViewExited?.();
+    await sleep(3000);
+    // Not the question: it is also the view's example text, so the bundle's own code cache holds it.
+    const markers = [answered.brief, answered.proof, span, TYPED_NONCE];
+    const control = mkdtempSync(join(tmpdir(), "se-e2e-control-"));
+    writeFileSync(join(control, "planted"), Buffer.from(span, "utf16le"));
+    assert.deepEqual(scanForMarkers(control, markers).found, ["planted"], "the scan finds a UTF-16 marker");
+    rmSync(control, { recursive: true, force: true });
+    const webview = scanForMarkers(join(dataDir, "webview"), markers);
+    assert.deepEqual(webview.unreadable, []);
+    assert.ok(webview.scanned > 0, "the web view left files to scan");
+    assert.deepEqual(webview.found, [], `what the page saw is in ${webview.found.join(", ")}`);
+    passed(`the web view's ${webview.scanned} files hold none of the typed question, answer, cited span or proof id`);
+
+    // Full dataDir & Crashpad/Minidump residue scan after forced process kill: verifies zero plaintext
+    // markers across encrypted vault files, lockfiles, Crashpad/minidump artifacts, and sibling dirs.
+    const fullDataDir = scanForMarkers(dataDir, markers);
+    assert.deepEqual(fullDataDir.unreadable, []);
+    assert.ok(fullDataDir.scanned > webview.scanned, "vault and sibling files in dataDir were scanned");
+    assert.deepEqual(
+      fullDataDir.found,
+      [],
+      `plaintext marker leaked in dataDir / crash artifacts: ${fullDataDir.found.join(", ")}`,
+    );
+    passed(`all ${fullDataDir.scanned} dataDir, vault, and Crashpad files hold zero plaintext markers after forced kill`);
+    assert.equal(checks.length, driver.expectedChecks, "every check this driver should run has run");
+    failed = false;
+  } catch (error) {
+    console.log(`--- failed: ${error.stack ?? error}`);
+    await driver.diagnose();
+    // The web view is still running, so a directory can vanish during the walk. That must not hide the real failure.
+    try {
+      console.log("--- data directory\n" + readdirSync(dataDir, { recursive: true }).slice(0, 40).join("\n"));
+    } catch (walkError) {
+      console.log(`--- data directory unreadable: ${walkError.message}`);
+    }
+    throw error;
+  } finally {
+    await driver.stop().catch(() => {});
+    console.log(`${checks.length} checks passed${failed ? ", then one failed" : ""}`);
+    // A web view can hold its files for a while after the process exits. A leftover directory holds invented
+    // data only, and must not hide the test's real result.
+    await sleep(1000);
+    try {
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+    } catch (error) {
+      console.log(`note: could not remove ${dataDir}: ${error.code}`);
+    }
+  }
+}

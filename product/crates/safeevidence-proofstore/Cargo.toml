@@ -1,0 +1,17 @@
+[package]
+name = "safeevidence-proofstore"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+libsqlite3-sys = { version = "=0.38.2", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+safeevidence-contracts = { version = "=0.0.0", path = "../safeevidence-contracts" }
+safeevidence-vault = { version = "=0.0.0", path = "../safeevidence-vault" }
+serde_json = "=1.0.151"
+
+[dev-dependencies]
+safeevidence-ask = { version = "=0.0.0", path = "../safeevidence-ask" }

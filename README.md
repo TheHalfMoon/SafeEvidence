@@ -2,7 +2,7 @@
 
 **Local clinical evidence and decision assurance, built for desktop and mobile without a mandatory cloud.**
 
-> **Foundation status:** planning only. SafeEvidence is not a medical device, has not been clinically validated, and must not be used for diagnosis, treatment, triage, prescribing, or patient-care decisions until the relevant claims are independently qualified.
+> **V1 Research Workstation Status (`RESEARCH_INTENDED_USE_V1`):** SafeEvidence V1 is a local-first biomedical literature research, evidence-appraisal, and decision-assurance workstation (`docs/decisions/V1_RESEARCH_INTENDED_USE_CHARTER_2026-11-27.md`, `docs/plan/PLAN_AMENDMENT_V1_7.md`). SafeEvidence is **not** a medical device, has **not** been clinically validated (`ACTUAL_CLINICAL_VALIDATION = FALSE`, `ACTUAL_REGULATORY_AUTHORIZATION = FALSE`), does not ingest patient health records (`PHI`) in V1, and must **not** be used for patient-specific diagnosis, treatment, triage, dosing, or prescribing.
 
 ## Product thesis
 
@@ -166,3 +166,10 @@ post-merge GitHub Actions passed at main
 **P00: CLOSED_CANONICAL (planning only). P01: PRE_ENTRY_GATES_PENDING.**
 See `docs/P01_ENTRY_READINESS_2026-10-08.md` and the original P1 registers.
 No clinical qualification, live medical device or finished product is implied.
+
+## V1 planning baseline
+
+The copy-first implementation plan, source transplant matrix, REA research
+dossier and freeze manifest are indexed in `docs/PLAN_FREEZE.md`. Planning
+only: it imports no donor code and claims no clinical capability. Later imports are
+listed in `docs/evidence/source_admissions.json`.

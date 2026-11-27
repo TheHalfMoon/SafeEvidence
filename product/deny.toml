@@ -1,0 +1,54 @@
+# cargo-deny 0.20+ configuration for SafeEvidence. Admission ADM-0002 (T11).
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+unmaintained = "workspace"
+unsound = "all"
+ignore = [
+    # SQLCipher 4.14.0 embeds SQLite 3.51.3 via libsqlite3-sys 0.38.2. libsqlite3-sys 0.39.x switches
+    # bundled-sqlcipher to sqlcipher-src 419.0.6 (still bundling SQLite 3.53.4 < 3.54.0 and licensed under
+    # unadmitted WTFPL/blessing). safeevidence-vault inspects sibling `-wal` headers pre-open (rejecting
+    # non-empty < 32-byte WALs or page_size != 4096), pins codec cipher_page_size == 4096 (so sqlite3Codec
+    # HMAC-SHA512 zeroes unauthenticated 4096-byte page buffers), and safeevidence-ask uses :memory: only.
+    { id = "RUSTSEC-2026-0459", reason = "Mitigated in safeevidence-vault (pre-open WAL page_size == 4096 + 4096-byte SQLCipher HMAC buffer zeroing; ask is :memory:); sqlcipher-src 419.0.6 uses WTFPL/blessing and SQLite 3.53.4" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.8
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "MPL-2.0",
+]
+unused-allowed-license = "allow"
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+deny = [
+    { crate = "reqwest" },
+    { crate = "ureq" },
+    { crate = "hyper" },
+    { crate = "hf-hub" },
+    { crate = "liter-llm" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

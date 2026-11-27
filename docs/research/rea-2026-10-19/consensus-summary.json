@@ -1,0 +1,134 @@
+{
+  "name": "consensus",
+  "url": "https://consensus.app/home",
+  "evidence_id": "ev_e0515394d85dbae30495bd95be017bb9845a91c029ca42c46f2b2691785433be",
+  "title": "Consensus: AI for Research",
+  "script_count": 18,
+  "dom_count": 680,
+  "accessibility_count": 390,
+  "key_labels": [
+    [
+      "button",
+      "Open sidebar"
+    ],
+    [
+      "button",
+      "Sign up"
+    ],
+    [
+      "heading",
+      "Research starts here"
+    ],
+    [
+      "button",
+      "Get a Yes / No answer"
+    ],
+    [
+      "button",
+      "Draft a report"
+    ],
+    [
+      "button",
+      "Search with filters"
+    ],
+    [
+      "button",
+      "Open support chat"
+    ],
+    [
+      "heading",
+      "The new standard for academic research"
+    ],
+    [
+      "heading",
+      "Used daily at top research institutions"
+    ],
+    [
+      "heading",
+      "Automate Literature Review with Deep Search"
+    ],
+    [
+      "button",
+      "Conflicting evidence on SSRIs and suicide risk in adolescents "
+    ],
+    [
+      "button",
+      "Compare randomized vs observational evidence on intermittent fasting "
+    ],
+    [
+      "button",
+      "How has the definition of metabolic syndrome evolved over the last 20 years? "
+    ],
+    [
+      "heading",
+      "Try Medical mode"
+    ],
+    [
+      "button",
+      "Approach to sudden hypoxia in a post-operative patient "
+    ],
+    [
+      "button",
+      "What labs and imaging are indicated for altered mental status overnight? "
+    ],
+    [
+      "button",
+      "Screening recommendations for colorectal cancer in high-risk patients "
+    ],
+    [
+      "heading",
+      "Use filters with natural language"
+    ],
+    [
+      "button",
+      "How has the scientific consensus on dietary fat evolved since the 1990s? "
+    ],
+    [
+      "button",
+      "Evidence on microplastic exposure and health excluding animal and in vitro studies "
+    ],
+    [
+      "button",
+      "Controlled studies only evaluating cognitive training programs for memory improvement "
+    ],
+    [
+      "heading",
+      "See where the research agrees"
+    ],
+    [
+      "button",
+      "Do SGLT2 inhibitors reduce all-cause mortality in type 2 diabetes? "
+    ],
+    [
+      "button",
+      "Does air pollution exposure increase cardiovascular disease risk? "
+    ],
+    [
+      "button",
+      "Does early intubation improve outcomes in ARDS? "
+    ],
+    [
+      "button",
+      "Filter"
+    ],
+    [
+      "button",
+      "Submit search"
+    ],
+    [
+      "button",
+      "Sources"
+    ],
+    [
+      "button",
+      "Skills"
+    ]
+  ],
+  "limitations": [
+    "Observation starts when REA attaches; prior network and console activity is unavailable.",
+    "Raw network headers, bodies, cookies, storage values, console objects, and WebSocket payloads are never retained; explicitly requested primitive console text is retained verbatim, while payload captures retain value-free shapes.",
+    "Source maps are reported only as declarative URLs and are not fetched.",
+    "URL-less scripts and console events without an allowed source URL are excluded because their origin cannot be proven.",
+    "CDP discovery omitted the target attachment state; attached is reported as unknown."
+  ]
+}

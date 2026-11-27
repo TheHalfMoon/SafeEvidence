@@ -1,0 +1,119 @@
+name: Desktop End-to-End Linux
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # A real WebKitGTK window with a real Secret Service, driven by WebKitWebDriver. It is not a required check yet,
+  # because it has not shown it is reliable on hosted runners. The Linux build places the keyring helper beside
+  # the app, from `src-tauri/binaries`, which this job fills first.
+  desktop-e2e-linux:
+    name: desktop end-to-end (ubuntu-24.04)
+    # Pinned: Ubuntu 26.04, now behind ubuntu-latest, has no webkit2gtk-driver package, so WebKitWebDriver is missing.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - name: Checkout exact reviewed revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Check exact Git HEAD
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Select the runner's Node from its tool cache
+        run: |
+          # The trailing slash keeps directories only: each version also holds an `x64.complete` marker file.
+          node_dir=$(ls -d "$RUNNER_TOOL_CACHE"/node/2[24].*/*/ | sort -V | tail -n 1)
+          node_dir=${node_dir%/}
+          test -n "$node_dir"
+          echo "$node_dir/bin" >> "$GITHUB_PATH"
+      - name: Check Node comes from the tool cache
+        run: |
+          command -v node
+          node --version
+          case "$(command -v node)" in *hostedtoolcache*) ;; *) exit 1 ;; esac
+      - name: Install pinned toolchain
+        working-directory: product
+        run: rustup toolchain install 1.98.1 --profile minimal --no-self-update
+      - name: Install the WebView, driver, display and keyring
+        timeout-minutes: 25
+        run: |
+          for attempt in 1 2 3; do
+            sudo timeout 120 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && break
+            test "$attempt" != 3
+          done
+          for attempt in 1 2 3; do
+            sudo timeout 240 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y libwebkit2gtk-4.1-dev libgtk-3-dev webkit2gtk-driver xvfb dbus gnome-keyring libglib2.0-bin strace && break
+            test "$attempt" != 3
+          done
+      - name: Build the frontend
+        working-directory: product/apps/desktop
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+      - name: Build the keyring helper the Linux app needs beside it
+        shell: bash
+        working-directory: product
+        run: |
+          # The Linux build copies this beside the app, so tauri-build needs it before any build of the app.
+          cargo build --locked -p safeevidence-linux-keyring-helper
+          mkdir -p apps/desktop/src-tauri/binaries
+          cp target/debug/safeevidence-linux-keyring-helper \
+            apps/desktop/src-tauri/binaries/safeevidence-linux-keyring-helper-x86_64-unknown-linux-gnu
+      - name: Build the app for the end-to-end test
+        working-directory: product/apps/desktop/src-tauri
+        run: cargo build --locked --features custom-protocol,e2e
+      - name: Check the build placed the helper beside the app
+        working-directory: product/apps/desktop/src-tauri
+        run: |
+          test -x target/debug/safeevidence-linux-keyring-helper
+          cmp target/debug/safeevidence-linux-keyring-helper ../../../target/debug/safeevidence-linux-keyring-helper
+      - name: Run the Ask flow in a real window
+        working-directory: product/apps/desktop
+        timeout-minutes: 10
+        run: |
+          dbus-run-session -- bash -c '
+            printf "synthetic-test-only\n" | gnome-keyring-daemon --unlock --components=secrets
+            # The driver starts the app under strace, which also traces the web view processes. No apostrophes in
+            # this block: it sits inside single quotes.
+            mkdir -p "$RUNNER_TEMP/network-trace"
+            SAFEEVIDENCE_NETWORK_TRACE="$RUNNER_TEMP/network-trace" \
+              xvfb-run -a node e2e/ask_e2e_linux.mjs "$PWD/src-tauri/target/debug/safeevidence-desktop"
+          '
+      # Evidence for VS-1a, not a NETWORK_LOCKED run or a TA-21 pass (plan-v1.1 section C). It reports and does not fail.
+      - name: Report network calls during the run
+        if: always()
+        run: python3 tools/ci/network_trace_report.py "$RUNNER_TEMP/network-trace"
+      # The same capture for a build as it ships: no e2e feature, so no WebDriver automation, and incognito.
+      # It covers startup and 30 seconds idle, not a question, since nothing drives the window.
+      - name: Build the app as it ships, apart from release mode and signing
+        working-directory: product/apps/desktop/src-tauri
+        run: cargo build --locked --features custom-protocol
+      - name: Capture a launch of that build
+        working-directory: product/apps/desktop
+        timeout-minutes: 5
+        run: |
+          mkdir -p "$RUNNER_TEMP/shipped-trace"
+          dbus-run-session -- bash -c '
+            printf "synthetic-test-only\n" | gnome-keyring-daemon --unlock --components=secrets
+            app="$PWD/src-tauri/target/debug/safeevidence-desktop"
+            xvfb-run -a strace -ff -qq -e trace=execve,socket,bind,listen,accept,accept4,connect,sendto,sendmsg,sendmmsg \
+              -o "$RUNNER_TEMP/shipped-trace/trace" "$app" &
+            sleep 30
+            # Fails the step if the app is not running by now, so an early crash cannot look like a quiet run.
+            pkill -KILL -f "^$app$"
+            wait || true
+          '
+      - name: Report network calls by that build
+        if: always()
+        run: python3 tools/ci/network_trace_report.py "$RUNNER_TEMP/shipped-trace"

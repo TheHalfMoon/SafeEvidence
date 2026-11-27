@@ -65,3 +65,28 @@ documentation repair.
 A founder-stated permission alone does not certify other rightsholders'
 code or nested assets. If permission evidence is pending, code copying and
 distribution must wait. No source is silently relicensed into Apache-2.0.
+
+## Admitted copied components
+
+| Admission | Component | Source | License | Destination |
+|---|---|---|---|---|
+| ADM-0001 | T01 contracts | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/crates/safeevidence-contracts` |
+| ADM-0002 | T11 `deny.toml` and SBOM generator (adapted) | same revision | Apache-2.0 | `product/deny.toml`, `product/crates/safeevidence-release` |
+| ADM-0003 | T03 private vault | `TheHalfMoon/ottari` @ `73706029849bcbe51243624e37f03a1969dc74ca` | Apache-2.0 | `product/crates/safeevidence-vault` |
+| ADM-0004 | T17 span logic, fixtures, and audit tests (Rust port + fixtures) | `maziyarpanahi/openmed` @ `8440bdac59621981372d318f43c8bfb2d6625b86` | Apache-2.0 | `product/crates/safeevidence-contracts` |
+| ADM-0005 | T13 precedence mechanics (port, generated vectors and fixture question texts) | `TheHalfMoon/commandMed` @ `51f73ec05750137e5bd94ffa0765f6383f475fee` | Apache-2.0 | `product/crates/safeevidence-assurance` |
+| ADM-0006 | T36 desktop shell (adapted) | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/apps/desktop` |
+| ADM-0007 | T12 privacy probes, doctor axes, and hostile-MIME tests (adapted) | `AbdulazizShehri/MedScale` @ `5c33d77c0a82748c1fab85a9f2fd7b515145fea2` | Apache-2.0 | `product/tests/privacy` |
+| ADM-0008 | T30 tool-source audit (adapted) | `TheHalfMoon/ottari` @ `73706029849bcbe51243624e37f03a1969dc74ca` | Apache-2.0 | `tools/governance/donor/tool_audit.py` |
+| ADM-0009 | T03 Linux Secret Service calls, as a helper process (adapted) | `TheHalfMoon/ottari` @ `73706029849bcbe51243624e37f03a1969dc74ca` | Apache-2.0 | `product/crates/safeevidence-linux-keyring-helper` |
+| ADM-0010 | Product Rust dependency closure (`CRATE-product-cargo`, 175 packages) | `crates.io` (`product/Cargo.lock`) | SPDX allowlist (`product/deny.toml`) | `product/Cargo.lock` |
+| ADM-0011 | Desktop Rust dependency closure (`CRATE-desktop-cargo`, 460 packages) | `crates.io` (`product/apps/desktop/src-tauri/Cargo.lock`) | SPDX allowlist (`product/apps/desktop/src-tauri/deny.toml`) | `product/apps/desktop/src-tauri/Cargo.lock` |
+| ADM-0012 | Desktop npm dependency closure (`CRATE-desktop-npm`, 82 packages; `--ignore-scripts`) | `registry.npmjs.org` (`product/apps/desktop/package-lock.json`) | MIT, Apache-2.0, Apache-2.0 OR MIT, BSD-3-Clause, ISC, MPL-2.0 | `product/apps/desktop/package-lock.json` |
+
+Runtime Rust and npm dependencies keep their own licenses. `product/Cargo.lock`,
+`product/apps/desktop/src-tauri/Cargo.lock`, and `product/apps/desktop/package-lock.json`
+are the exact closures validated in CI by `source_admission_check.py`, `cargo deny check`,
+and the CycloneDX 1.5 SBOM generator (`safeevidence-release`, TA-02).
+
+Native code built into the vault through its Rust dependencies, each under its own license:
+SQLCipher (BSD-style, via `libsqlite3-sys`) and OpenSSL (Apache-2.0, via `openssl-src`).

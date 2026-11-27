@@ -1,0 +1,173 @@
+name: Desktop End-to-End
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # A real WebView2 window, driven over its debugging protocol. It is not a required check, because a few passes
+  # on hosted runners do not show it is reliable there. `desktop-e2e-linux.yml` runs the shared checks on Ubuntu.
+  desktop-e2e:
+    name: desktop end-to-end (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: never
+      PERL: 'C:\Strawberry\perl\bin\perl.exe'
+    steps:
+      - name: Checkout exact reviewed revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Check exact Git HEAD
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Select the runner's Node from its tool cache
+        shell: bash
+        run: |
+          # The trailing slash keeps directories only: each version also holds an `x64.complete` marker file.
+          node_dir=$(ls -d "$RUNNER_TOOL_CACHE"/node/2[24].*/*/ | sort -V | tail -n 1)
+          node_dir=${node_dir%/}
+          test -n "$node_dir"
+          cygpath -w "$node_dir" >> "$GITHUB_PATH"
+      - name: Check Node comes from the tool cache
+        shell: bash
+        run: |
+          command -v node
+          node --version
+          case "$(command -v node)" in *hostedtoolcache*) ;; *) exit 1 ;; esac
+      - name: Install pinned toolchain
+        shell: bash
+        working-directory: product
+        run: rustup toolchain install 1.98.1 --profile minimal --no-self-update
+      - name: Build the frontend
+        shell: bash
+        working-directory: product/apps/desktop
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+      - name: Build the app for the end-to-end test
+        shell: bash
+        working-directory: product/apps/desktop/src-tauri
+        run: cargo build --locked --features custom-protocol,e2e
+      - name: Run the Ask flow in a real window
+        shell: bash
+        working-directory: product/apps/desktop
+        timeout-minutes: 10
+        run: |
+          # The app and its WebView2 processes are polled for sockets while the test runs, as VS-1a's no-socket
+          # capture evidence (plan-v1.1 section C). It reports, and fails only if the capture cannot be trusted.
+          out="$(cygpath -w "$RUNNER_TEMP")"
+          pwsh -NoProfile -File ../../../tools/ci/windows_socket_poll.ps1 -Out "$out\sockets.txt" -Stop "$out\stop.flag" &
+          poller=$!
+          status=0
+          node e2e/ask_e2e.mjs "$(cygpath -w "$PWD/src-tauri/target/debug/safeevidence-desktop.exe")" || status=$?
+          touch "$RUNNER_TEMP/stop.flag"
+          wait "$poller"
+          exit "$status"
+      - name: Report sockets held during the run
+        if: always()
+        shell: bash
+        # 9333 is the e2e build's debugging port, so seeing it shows the poller sees the app's processes.
+        run: python tools/ci/windows_socket_report.py "$RUNNER_TEMP/sockets.txt" 9333
+      # The same capture for a build as it ships: no e2e feature, so no debugging port. It covers startup and
+      # 30 seconds idle, not a question, since nothing drives the window. It is a debug build and unsigned.
+      - name: Build the app as it ships, apart from release mode and signing
+        working-directory: product/apps/desktop/src-tauri
+        run: cargo build --locked --features custom-protocol
+      - name: Capture a launch of that build
+        shell: bash
+        working-directory: product/apps/desktop
+        timeout-minutes: 5
+        run: |
+          out="$(cygpath -w "$RUNNER_TEMP")"
+          pwsh -NoProfile -File ../../../tools/ci/windows_socket_poll.ps1 -Out "$out\shipped-sockets.txt" -Stop "$out\shipped-stop.flag" &
+          poller=$!
+          ./src-tauri/target/debug/safeevidence-desktop.exe 2> "$RUNNER_TEMP/shipped-stderr.txt" &
+          sleep 30
+          status=0
+          # Fails the step if the app is not running by now, so an early crash cannot look like a quiet run.
+          tasklist //FI "IMAGENAME eq safeevidence-desktop.exe" | grep -q safeevidence-desktop.exe || status=1
+          # A startup failure does not exit: it waits on a dialog nobody clicks. It writes its title to stderr first.
+          cat "$RUNNER_TEMP/shipped-stderr.txt"
+          if grep -q "could not start" "$RUNNER_TEMP/shipped-stderr.txt"; then status=1; fi
+          taskkill //F //T //IM safeevidence-desktop.exe || true
+          touch "$RUNNER_TEMP/shipped-stop.flag"
+          wait "$poller"
+          exit "$status"
+      - name: Report sockets held by that build
+        if: always()
+        shell: bash
+        run: python tools/ci/windows_socket_report.py "$RUNNER_TEMP/shipped-sockets.txt" webview2
+      # WebView2 holds a loopback connection to port 80, where the runner's kernel HTTP service listens. Stop that
+      # service, listen on the port, and launch the same build again, to see whether any bytes cross the connection.
+      # It covers startup and 30 seconds idle, not a question.
+      - name: Record what reaches loopback port 80
+        shell: bash
+        working-directory: product/apps/desktop
+        timeout-minutes: 5
+        run: |
+          net stop http //y
+          node e2e/port80_listener.mjs "$(cygpath -w "$RUNNER_TEMP/port80.txt")" "$(cygpath -w "$RUNNER_TEMP/port80-stop.flag")" &
+          listener=$!
+          sleep 3
+          # Controls, one per address family: each must be recorded, or a listener that sees nothing would pass.
+          curl -s -m 3 -o /dev/null http://127.0.0.1/port80-control || true
+          curl -s -m 3 -o /dev/null "http://[::1]/port80-control-v6" || true
+          ./src-tauri/target/debug/safeevidence-desktop.exe 2> "$RUNNER_TEMP/port80-stderr.txt" &
+          sleep 30
+          status=0
+          tasklist //FI "IMAGENAME eq safeevidence-desktop.exe" | grep -q safeevidence-desktop.exe || status=1
+          if grep -q "could not start" "$RUNNER_TEMP/port80-stderr.txt"; then status=1; fi
+          taskkill //F //T //IM safeevidence-desktop.exe || true
+          sleep 2
+          touch "$RUNNER_TEMP/port80-stop.flag"
+          wait "$listener"
+          cat "$RUNNER_TEMP/port80.txt"
+          grep -q "port80-control HTTP" "$RUNNER_TEMP/port80.txt" || { echo "the listener did not record the IPv4 control"; status=1; }
+          grep -q "port80-control-v6 HTTP" "$RUNNER_TEMP/port80.txt" || { echo "the listener did not record the IPv6 control"; status=1; }
+          # The question is what the app's connection carries, so a run where nothing else connected answers nothing.
+          others="$(grep "^connection|" "$RUNNER_TEMP/port80.txt" | grep -v "port80-control" || true)"
+          [ -n "$others" ] || { echo "no connection besides the controls arrived"; status=1; }
+          # The listener keeps only the first bytes, so any byte from another connection fails the step.
+          if echo "$others" | awk -F"|" '$5 != "" && $5 != "0" { found = 1 } END { exit !found }'; then echo "a connection besides the controls carried bytes"; status=1; fi
+          exit "$status"
+      # The same listener while the end-to-end test asks a question, in the e2e build, across both of its launches.
+      # The HTTP service is still stopped from the step above. It fails if the typed question reaches the port.
+      # The shipped-style build above overwrote the e2e binary at the same path, so build the e2e app again.
+      - name: Build the app for the end-to-end test again
+        working-directory: product/apps/desktop/src-tauri
+        run: cargo build --locked --features custom-protocol,e2e
+      - name: Record what reaches loopback port 80 during an Ask
+        shell: bash
+        working-directory: product/apps/desktop
+        timeout-minutes: 10
+        run: |
+          node e2e/port80_listener.mjs "$(cygpath -w "$RUNNER_TEMP/port80-ask.txt")" "$(cygpath -w "$RUNNER_TEMP/port80-ask-stop.flag")" &
+          listener=$!
+          sleep 3
+          curl -s -m 3 -o /dev/null http://127.0.0.1/port80-control || true
+          curl -s -m 3 -o /dev/null "http://[::1]/port80-control-v6" || true
+          status=0
+          node e2e/ask_e2e.mjs "$(cygpath -w "$PWD/src-tauri/target/debug/safeevidence-desktop.exe")" || status=$?
+          sleep 2
+          touch "$RUNNER_TEMP/port80-ask-stop.flag"
+          wait "$listener"
+          cat "$RUNNER_TEMP/port80-ask.txt"
+          grep -q "port80-control HTTP" "$RUNNER_TEMP/port80-ask.txt" || { echo "the listener did not record the IPv4 control"; status=1; }
+          grep -q "port80-control-v6 HTTP" "$RUNNER_TEMP/port80-ask.txt" || { echo "the listener did not record the IPv6 control"; status=1; }
+          others="$(grep "^connection|" "$RUNNER_TEMP/port80-ask.txt" | grep -v "port80-control" || true)"
+          [ -n "$others" ] || { echo "no connection besides the controls arrived"; status=1; }
+          # The listener keeps only the first bytes, so any byte from another connection fails the step.
+          if echo "$others" | awk -F"|" '$5 != "" && $5 != "0" { found = 1 } END { exit !found }'; then echo "a connection besides the controls carried bytes"; status=1; fi
+          # zqvortelinax is the nonce the test types into the question (e2e/ask_checks.mjs).
+          if grep -q "zqvortelinax" "$RUNNER_TEMP/port80-ask.txt"; then echo "the typed question reached loopback port 80"; status=1; fi
+          exit "$status"

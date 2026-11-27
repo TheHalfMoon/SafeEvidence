@@ -13,7 +13,13 @@ WORKFLOWS = (
     ".github/workflows/p00-foundation-docs.yml",
     ".github/workflows/p01-preentry-governance.yml",
     ".github/workflows/g01a-synthetic-reproducibility.yml",
+    ".github/workflows/product-ci.yml",
+    ".github/workflows/desktop-ci.yml",
+    ".github/workflows/desktop-e2e.yml",
+    ".github/workflows/desktop-e2e-linux.yml",
 )
+WINDOWS_ONLY_WORKFLOW = ".github/workflows/desktop-e2e.yml"
+LINUX_ONLY_WORKFLOW = ".github/workflows/desktop-e2e-linux.yml"
 EXPECTED_CHECKOUT_SHA = "d23441a48e516b6c34aea4fa41551a30e30af803"
 # Exact reviewed workflow snapshots. Normalize checkout newlines through
 # read_text() so Windows CRLF checkouts retain the same audited content hash.
@@ -23,11 +29,31 @@ PINNED_WORKFLOW_SHA256 = {
     ".github/workflows/p00-foundation-docs.yml": "ffc5b4246ee09dad96caed7cf759e8565fe0e80b2e6ffe8642cfa6ad2d1b8db6",
     ".github/workflows/p01-preentry-governance.yml": "efe37c703ed5c24ec230e355ef2579070507d626b00f6f17f93a418ebe6dbfab",
     ".github/workflows/g01a-synthetic-reproducibility.yml": "51eee1d5a8f2863ca28556cc5b4dc34a99634c4615926a5a0579e4b1f527cd7b",
+    ".github/workflows/product-ci.yml": "f1c76cafda29723c5a2c8085a1bfc082eaeb0593dfeedb3a1a52bfd3d4c75b6f",
+    ".github/workflows/desktop-ci.yml": "47e48dbb7e11a289039ed7192fd0de65367a124558021181662d7a667d2e94ea",
+    ".github/workflows/desktop-e2e.yml": "b7c82c042e53fa5b799fbe6f4c80c066058c2357c0d24a3e82fb54c8423a6408",
+    ".github/workflows/desktop-e2e-linux.yml": "af7f0e5cd3a7b70ce227ce792029c5759b8386f9d659c516e3ea99980027265f",
 }
+
+# The TA-03 gate runs from this script, so it is pinned like a workflow.
+CORE_SOCKET_SCRIPT = "tools/ci/core_no_sockets.py"
+CORE_SOCKET_SCRIPT_SHA256 = "7363a273e45ce5e3f167142327828e167f275ccb91c1891c59622c99ef404e87"
+TA03_SCRIPT = "tools/ci/ta03_isolated.sh"
+TA29_SCRIPT = "tools/ci/ta29_dependency_denial.py"
+TA29_SCRIPT_SHA256 = "b77022615499713081f2fd621a253d9be96bbb824363d947c1e07cb98a4fe768"
+TA29_DESKTOP_SCRIPT = "tools/ci/ta29_desktop_denial.py"
+TA29_DESKTOP_SCRIPT_SHA256 = "4acd672c1a495d7e4ff1149d58fc3c02636d2c76d64c3c92d4bb546fefcd4d54"
+NETWORK_TRACE_SCRIPT = "tools/ci/network_trace_report.py"
+NETWORK_TRACE_SCRIPT_SHA256 = "1626491e01a4284ce219111da1859c6d1c9e8b26fb247448bc98eb5ff66caf6f"
+WINDOWS_SOCKET_SCRIPTS_SHA256 = {
+    "tools/ci/windows_socket_poll.ps1": "7e1496eec40f34332eecca1e82ab5a2a5808bb42fb8f1fcb7577c92766ffcd24",
+    "tools/ci/windows_socket_report.py": "c79a9c093f99129038866ad0623cb87b3eba09db29e00f29a0e9501617a3aa7b",
+}
+TA03_SCRIPT_SHA256 = "fa83a8a0b1abc085d5cb8e3ca0be5dbd2ff401d5cdf3c1e707aa792fb230c22b"
 
 CHECKOUT_LINE = re.compile(r"^\s*uses:\s*actions/checkout@([^\s#]+)", re.MULTILINE)
 # Reject additions to the execution surface, not just a moving checkout tag.
-# These three tiny workflows require exactly one external action each.
+# These workflows require exactly one external action each.
 # This line-level inventory includes step uses and reusable job-level uses.
 # Scan executable action keys in both block and inline YAML mappings. Quoted
 # keys are semantically the same as bare "uses" and must not evade inventory.
@@ -82,6 +108,31 @@ class WorkflowCheckoutPinTests(unittest.TestCase):
                     "Any workflow change requires separately reviewed digest re-pinning",
                 )
 
+    def test_ta03_gate_script_matches_pinned_revision(self):
+        source = (ROOT / TA03_SCRIPT).read_text(encoding="utf-8")
+        self.assertEqual(TA03_SCRIPT_SHA256, workflow_content_digest(source))
+
+    def test_core_socket_gate_script_matches_pinned_revision(self):
+        source = (ROOT / CORE_SOCKET_SCRIPT).read_text(encoding="utf-8")
+        self.assertEqual(CORE_SOCKET_SCRIPT_SHA256, workflow_content_digest(source))
+
+    def test_ta29_gate_script_matches_pinned_revision(self):
+        source = (ROOT / TA29_SCRIPT).read_text(encoding="utf-8")
+        self.assertEqual(TA29_SCRIPT_SHA256, workflow_content_digest(source))
+
+    def test_network_trace_report_matches_pinned_revision(self):
+        source = (ROOT / NETWORK_TRACE_SCRIPT).read_text(encoding="utf-8")
+        self.assertEqual(hashlib.sha256(source.encode("utf-8")).hexdigest(), NETWORK_TRACE_SCRIPT_SHA256)
+
+    def test_windows_socket_scripts_match_pinned_revisions(self):
+        for path, digest in WINDOWS_SOCKET_SCRIPTS_SHA256.items():
+            source = (ROOT / path).read_text(encoding="utf-8")
+            self.assertEqual(hashlib.sha256(source.encode("utf-8")).hexdigest(), digest, path)
+
+    def test_ta29_desktop_gate_script_matches_pinned_revision(self):
+        source = (ROOT / TA29_DESKTOP_SCRIPT).read_text(encoding="utf-8")
+        self.assertEqual(TA29_DESKTOP_SCRIPT_SHA256, workflow_content_digest(source))
+
     def test_semantic_yaml_escape_bypass_fails_frozen_workflow_digest(self):
         workflow = WORKFLOWS[0]
         approved = f"actions/checkout@{EXPECTED_CHECKOUT_SHA}"
@@ -110,7 +161,7 @@ class WorkflowCheckoutPinTests(unittest.TestCase):
         self.assertEqual(expected, workflow_content_digest(source.replace("\n", "\r\n")))
         self.assertNotEqual(expected, workflow_content_digest(source + "# changed\n"))
 
-    def test_all_three_workflows_use_identical_immutable_checkout(self):
+    def test_all_workflows_use_identical_immutable_checkout(self):
         for workflow in WORKFLOWS:
             with self.subTest(workflow=workflow):
                 source = (ROOT / workflow).read_text(encoding="utf-8")
@@ -274,8 +325,22 @@ class WorkflowCheckoutPinTests(unittest.TestCase):
         self.assertEqual(2, len(workflow_action_references(source)))
         self.assertEqual("", workflow_action_references(source)[0])
 
+    def test_the_end_to_end_workflow_runs_only_where_its_protocol_exists(self):
+        # WebView2's debugging protocol exists only on Windows, so this one workflow is the exception below.
+        source = (ROOT / WINDOWS_ONLY_WORKFLOW).read_text(encoding="utf-8")
+        self.assertIn("runs-on: windows-latest", source)
+        self.assertNotIn("matrix.os", source)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"', source)
+
+    def test_the_linux_end_to_end_workflow_runs_only_where_its_driver_exists(self):
+        # WebKitWebDriver exists only on Linux, so this workflow is an exception below too.
+        source = (ROOT / LINUX_ONLY_WORKFLOW).read_text(encoding="utf-8")
+        self.assertIn("runs-on: ubuntu-24.04", source)
+        self.assertNotIn("matrix.os", source)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"', source)
+
     def test_synthetic_and_preentry_ci_include_macos(self):
-        for workflow in WORKFLOWS[1:]:
+        for workflow in [item for item in WORKFLOWS[1:] if item not in (WINDOWS_ONLY_WORKFLOW, LINUX_ONLY_WORKFLOW)]:
             with self.subTest(workflow=workflow):
                 source = (ROOT / workflow).read_text(encoding="utf-8")
                 self.assertIn(

@@ -1,0 +1,198 @@
+{
+  "name": "elicit",
+  "url": "https://elicit.com/solutions/literature-review",
+  "evidence_id": "ev_c1eebb63042099f501493595c576a939c17269f0b37cdbcfc9177faf5b194f05",
+  "title": "Systematic Literature Reviews | Elicit: AI for research &amp; decision-making",
+  "script_count": 7,
+  "dom_count": 1648,
+  "accessibility_count": 1407,
+  "key_labels": [
+    [
+      "button",
+      "Open navigation menu"
+    ],
+    [
+      "heading",
+      "State of the art accuracy"
+    ],
+    [
+      "heading",
+      "Researchers especially love these features"
+    ],
+    [
+      "heading",
+      "Systematic Literature Reviews"
+    ],
+    [
+      "heading",
+      "The future of evidence synthesis"
+    ],
+    [
+      "heading",
+      "Elicit helps accelerate every step of a systematic review"
+    ],
+    [
+      "heading",
+      "FEATURES"
+    ],
+    [
+      "heading",
+      "What our users say"
+    ],
+    [
+      "button",
+      "Do you have access to paywalled papers or only open access?"
+    ],
+    [
+      "button",
+      "Can you extract data from tables and figures?"
+    ],
+    [
+      "button",
+      "Are Elicit Systematic Reviews compliant with HTA, IVDR, MDR, or similar regulatory guidelines?"
+    ],
+    [
+      "button",
+      "Can I customize screening and extraction criteria?"
+    ],
+    [
+      "button",
+      "Can I update my review as new papers are published?"
+    ],
+    [
+      "button",
+      "Can I collaborate with a teammate on my systematic review?"
+    ],
+    [
+      "button",
+      "Previous"
+    ],
+    [
+      "button",
+      "Next"
+    ],
+    [
+      "heading",
+      "TESTIMONIALS"
+    ],
+    [
+      "heading",
+      "SOLUTIONS"
+    ],
+    [
+      "heading",
+      "INDUSTRIES"
+    ],
+    [
+      "heading",
+      "RESOURCES"
+    ],
+    [
+      "heading",
+      "MORE"
+    ],
+    [
+      "heading",
+      "AI FOR EVIDENCE SYNTHESIS"
+    ],
+    [
+      "heading",
+      "HOW IT WORKS"
+    ],
+    [
+      "heading",
+      "Academic papers"
+    ],
+    [
+      "heading",
+      "INCLUDED SOURCES"
+    ],
+    [
+      "heading",
+      "Clinical trials"
+    ],
+    [
+      "heading",
+      "INCLUDED SOURCES"
+    ],
+    [
+      "heading",
+      "BYOData"
+    ],
+    [
+      "heading",
+      "SUPPORTED FILES"
+    ],
+    [
+      "heading",
+      "Sentence-level citations"
+    ],
+    [
+      "heading",
+      "Dynamic screening & extraction"
+    ],
+    [
+      "heading",
+      "Accuracy & precision"
+    ],
+    [
+      "heading",
+      "Validation & impact"
+    ],
+    [
+      "heading",
+      "Can AI take systematic reviews to the next level?"
+    ],
+    [
+      "heading",
+      "CASE STUDIES"
+    ],
+    [
+      "heading",
+      "VISION"
+    ],
+    [
+      "heading",
+      "Do you have access to paywalled papers or only open access?"
+    ],
+    [
+      "heading",
+      "Can you extract data from tables and figures?"
+    ],
+    [
+      "heading",
+      "Are Elicit Systematic Reviews compliant with HTA, IVDR, MDR, or similar regulatory guidelines?"
+    ],
+    [
+      "heading",
+      "Can I customize screening and extraction criteria?"
+    ],
+    [
+      "heading",
+      "Can I update my review as new papers are published?"
+    ],
+    [
+      "heading",
+      "Can I collaborate with a teammate on my systematic review?"
+    ],
+    [
+      "heading",
+      "Refine your protocol"
+    ],
+    [
+      "heading",
+      "Gather every source"
+    ],
+    [
+      "heading",
+      "Screen each paper"
+    ]
+  ],
+  "limitations": [
+    "Observation starts when REA attaches; prior network and console activity is unavailable.",
+    "Raw network headers, bodies, cookies, storage values, console objects, and WebSocket payloads are never retained; explicitly requested primitive console text is retained verbatim, while payload captures retain value-free shapes.",
+    "Source maps are reported only as declarative URLs and are not fetched.",
+    "URL-less scripts and console events without an allowed source URL are excluded because their origin cannot be proven.",
+    "CDP discovery omitted the target attachment state; attached is reported as unknown."
+  ]
+}
