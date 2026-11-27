@@ -11,7 +11,8 @@ through
 This coordinated disclosure policy covers:
 
 - The root G01a synthetic reproducibility, source-admission, and governance
-  validation suite (`tools/governance/`, `tools/ci/`, `src/safeevidence/`).
+  validation suite (`tools/governance/`, `tools/ci/`, `crates/g01a-synthetic/`,
+  `fixtures/`).
 - The `product/` Rust workspace (`safeevidence-contracts`, `safeevidence-vault`,
   `safeevidence-assurance`, `safeevidence-proofstore`, `safeevidence-ask`,
   `safeevidence-release`, `safeevidence-keyring-wire`,
@@ -90,17 +91,28 @@ Every security remediation landing on `main` requires:
 
 ## Relationship to governance records and optional external review
 
-- **Issue [#3](https://github.com/TheHalfMoon/SafeEvidence/issues/3) &
-  Issue [#4](https://github.com/TheHalfMoon/SafeEvidence/issues/4):** V1
-  research-workstation intended use and automated `SafeEvidenceBench` scientific
-  evaluation are ratified under [ADR-0003](docs/adr/0003-v1-research-workstation-scope-and-automated-scientific-evaluation.md);
-  clinical validation and patient-data use remain out of scope (`FALSE`).
+- **Issue [#3](https://github.com/TheHalfMoon/SafeEvidence/issues/3)
+  (`EXT-04`):** Historical `P01-G01` phase-ownership pre-entry tracker (kept
+  `BLOCKED` by `tools/governance/p01_preentry_check.py`), while V1 research
+  workstation engineering proceeds in `product/` under `EXT-02` and
+  [ADR-0004](docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md).
+- **Issue [#4](https://github.com/TheHalfMoon/SafeEvidence/issues/4)
+  (`EXT-03`):** V1 non-clinical research-workstation intended use and automated
+  `SafeEvidenceBench` scientific evaluation are ratified under
+  [ADR-0003](docs/adr/0003-v1-research-workstation-scope-and-automated-scientific-evaluation.md);
+  clinician holdouts, patient-specific clinical decision support (`WP-21`), PHI
+  processing, clinical validation, and regulatory authorization remain out of V1
+  scope (`ACTUAL_CLINICAL_VALIDATION = FALSE`,
+  `ACTUAL_REGULATORY_AUTHORIZATION = FALSE`).
 - **Issue [#5](https://github.com/TheHalfMoon/SafeEvidence/issues/5):** Public
   permissive-license slice admissions are governed by
   [ADR-0004](docs/adr/0004-public-license-source-admission-and-zero-cost-governance-simplification.md)
   and enforced fail-closed by `tools/governance/source_admission_check.py`; DAL
   (`T14`) is permanently excluded under
-  [ADR-0001](docs/adr/0001-permanently-remove-dal-and-adopt-clean-room-calibration-math.md).
+  [ADR-0001](docs/adr/0001-permanently-remove-dal-and-adopt-clean-room-calibration-math.md);
+  per-model ONNX/weight license cards remain gated under `EXT-07`, and paid OS
+  CA code signing / production TUF root custody (`EXT-05`) remain out of the
+  zero-cost V1 research baseline (`OS_CA_CODE_SIGNED = FALSE`).
 - **Issue [#17](https://github.com/TheHalfMoon/SafeEvidence/issues/17):**
   Mandatory internal human review gates are superseded by
   [ADR-0002](docs/adr/0002-ai-assisted-security-qualification-framework.md).
