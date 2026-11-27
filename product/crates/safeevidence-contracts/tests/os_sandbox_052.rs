@@ -1,7 +1,7 @@
 //! `ADM-0018` / `T10` Linux Landlock FS + TCP + rlimit composition (`TA-26`).
 
 use safeevidence_contracts::os_sandbox::{
-    OsSandboxCompositionInventory, OsSandboxDoctorStatus, OsSandboxPlan, try_apply_os_sandbox,
+    OsSandboxCompositionInventory, OsSandboxDoctorStatus, OsSandboxPlan,
 };
 
 #[test]
@@ -29,7 +29,7 @@ fn doctor_linux_composition_axis_honest() {
 #[cfg(not(target_os = "linux"))]
 #[test]
 fn composition_not_ready_on_non_linux() {
-    use safeevidence_contracts::os_sandbox::OsSandboxApplyError;
+    use safeevidence_contracts::os_sandbox::{OsSandboxApplyError, try_apply_os_sandbox};
 
     let plan =
         OsSandboxPlan::linux_landlock_composition_ready_base(vec!["C:\\Windows\\Temp".into()]);
